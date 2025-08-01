@@ -12,6 +12,20 @@ export default function MleoRunner() {
 
   const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
+  const [leoObj, setLeoObj] = useState(null);
+  const [jumpSoundObj, setJumpSoundObj] = useState(null);
+
+  // פונקציית קפיצה מחוץ ל-useEffect
+  function jump() {
+    if (leoObj && !leoObj.jumping) {
+      if (jumpSoundObj) {
+        jumpSoundObj.currentTime = 0;
+        jumpSoundObj.play().catch(() => {});
+      }
+      leoObj.dy = -10;
+      leoObj.jumping = true;
+    }
+  }
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -104,6 +118,10 @@ export default function MleoRunner() {
       currentScore = 0;
       setScore(0);
       setGameOver(false);
+
+      // נשמור את האובייקט לשימוש חיצוני בפונקציית jump
+      setLeoObj(leo);
+      setJumpSoundObj(jumpSound);
     }
 
     function checkCollision(r1, r2) {
@@ -283,19 +301,6 @@ export default function MleoRunner() {
       update();
     }
 
-    function jump() {
-      if (leo && !leo.jumping) {
-        if (jumpSound) {
-          jumpSound.currentTime = 0;
-          jumpSound.play().catch(() => {});
-        }
-        leo.dy = -10;
-        leo.jumping = true;
-      }
-    }
-
-    window.jump = jump;
-
     function handleKey(e) {
       if (e.code === "Space") {
         e.preventDefault();
@@ -377,17 +382,13 @@ export default function MleoRunner() {
 
         {!showIntro && (
           <>
-            {!showIntro && (
-              <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20">
-                Score: {score} | High Score: {highScore}
-              </div>
-            )}
+            <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20">
+              Score: {score} | High Score: {highScore}
+            </div>
 
-            {!showIntro && (
-              <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] top-40">
-                {score}
-              </div>
-            )}
+            <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] top-40">
+              {score}
+            </div>
 
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
               <canvas ref={canvasRef} width={960} height={480} className="relative z-0 border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh]" />
@@ -408,7 +409,7 @@ export default function MleoRunner() {
 
             {gameRunning && (
               <button
-                onClick={() => window.jump()}
+                onClick={jump}
                 className="fixed bottom-16 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
                sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
               >
@@ -418,7 +419,7 @@ export default function MleoRunner() {
 
             {gameRunning && (
               <button
-                onClick={() => window.jump()}
+                onClick={jump}
                 className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
               >
                 Jump
