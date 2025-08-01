@@ -12,7 +12,6 @@ export default function MleoRunner() {
 
   const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
-  const jumpRef = useRef(() => {}); // ✅ נוסיף ref שישמור את הפונקציה jump
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -40,15 +39,16 @@ export default function MleoRunner() {
     obstacleImg.src = "/images/obstacle.png";
 
     const backgrounds = [
-      "/images/game-day.png",
-      "/images/game-evening.png",
-      "/images/game-night.png",
-      "/images/game-space.png",
-      "/images/game-park.png",
-    ];
-    let bgImg = new window.Image();
-    bgImg.src = backgrounds[0];
+  "/images/game-day.png",
+  "/images/game-evening.png",
+  "/images/game-night.png",
+  "/images/game-space.png",
+  "/images/game-park.png",
+];
+let bgImg = new window.Image();
+bgImg.src = backgrounds[0];
 
+    // 🎵 יצירת קבצי סאונד רק בדפדפן
     let bgMusic, jumpSound, coinSound, gameOverSound;
 
     if (typeof window !== "undefined") {
@@ -82,20 +82,20 @@ export default function MleoRunner() {
     let running = true;
     let currentScore = 0;
     let speedMultiplier = 1;
-    let showHitbox = false;
+    let showHitbox = false; // ✅ מאפשר הדלקה/כיבוי עם מקש H
 
     function initGame() {
       const isMobile = window.innerWidth < 768;
       const scale = isMobile ? 1.8 : 1.5;
 
-      leo = {
-        x: canvas.width / 2 - (100 * scale),
-        y: 200,
-        width: 70 * scale,
-        height: 70 * scale,
-        dy: 0,
-        jumping: false
-      };
+leo = { 
+  x: canvas.width / 2 - (100 * scale), 
+  y: 200, 
+  width: 70 * scale, 
+  height: 70 * scale, 
+  dy: 0, 
+  jumping: false 
+};
 
       gravity = 0.5;
       coins = [];
@@ -124,21 +124,6 @@ export default function MleoRunner() {
       frameCount++;
       if (frameCount % 6 === 0) frame = (frame + 1) % 4;
     }
-
-    // ✅ פונקציית הקפיצה
-    function jump() {
-      if (leo && !leo.jumping) {
-        if (jumpSound) {
-          jumpSound.currentTime = 0;
-          jumpSound.play().catch(() => {});
-        }
-        leo.dy = -10;
-        leo.jumping = true;
-      }
-    }
-
-    // ✅ נשמור את הפונקציה העדכנית ב־ref
-    jumpRef.current = jump;
 
     function update() {
       if (!running) return;
@@ -213,13 +198,14 @@ export default function MleoRunner() {
         if (c.x + c.size < 0) coins.splice(i, 1);
       });
 
-      obstacles.forEach((o, i) => {
-        const reducedHitbox = {
-          x: o.x + o.width * 0.2,
-          y: o.y - o.height * 0.85,
-          width: o.width * 0.6,
-          height: o.height * 0.8,
-        };
+      // ✅ בדיקת פגיעה במכשול (Hitbox מוקטן + אפשרות הדמיה עם H)
+  obstacles.forEach((o, i) => {
+  const reducedHitbox = {
+    x: o.x + o.width * 0.2,      // במקום 0.15 → מקטין יותר מהצד
+    y: o.y - o.height * 0.85,    // במקום 0.9 → מקטין יותר מלמעלה
+    width: o.width * 0.6,        // במקום 0.7 → צר יותר
+    height: o.height * 0.8,      // במקום 0.9 → נמוך יותר
+  };
 
         if (showHitbox) {
           ctx.save();
@@ -232,10 +218,10 @@ export default function MleoRunner() {
         if (checkCollision(leo, reducedHitbox)) {
           if (leo.y + leo.height - 15 <= reducedHitbox.y) {
             if (jumpSound) {
-              jumpSound.currentTime = 0;
-              jumpSound.play().catch(() => {});
-            }
-            leo.dy = -10;
+        jumpSound.currentTime = 0;
+        jumpSound.play().catch(() => {});
+      }
+      leo.dy = -10;
             leo.jumping = true;
           } else {
             running = false;
@@ -269,7 +255,7 @@ export default function MleoRunner() {
         if (o.x + o.width < 0) obstacles.splice(i, 1);
       });
 
-      if (showLevelUp && Date.now() - levelUpTimer < 2000) {
+            if (showLevelUp && Date.now() - levelUpTimer < 2000) {
         ctx.save();
         ctx.font = 'bold 48px Arial';
         ctx.fillStyle = 'yellow';
@@ -299,10 +285,22 @@ export default function MleoRunner() {
       update();
     }
 
+    function jump() {
+      if (leo && !leo.jumping) {
+        if (jumpSound) {
+        jumpSound.currentTime = 0;
+        jumpSound.play().catch(() => {});
+      }
+      leo.dy = -10;
+        leo.jumping = true;
+      }
+    }
+
+    // ✅ הוספנו אפשרות ללחוץ על H כדי להציג/להסתיר Hitbox
     function handleKey(e) {
       if (e.code === "Space") {
         e.preventDefault();
-        jumpRef.current(); // ✅ תמיד יפעיל את הפונקציה העדכנית
+        jump();
       }
       if (e.code === "KeyH") {
         showHitbox = !showHitbox;
@@ -321,6 +319,7 @@ export default function MleoRunner() {
   return (
     <Layout>
       <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative">
+        {/* 🎬 מסך פתיחה */}
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -353,18 +352,53 @@ export default function MleoRunner() {
             >
               ▶ Start Game
             </button>
+
+            {/* 📊 טבלת השיאים */}
+            <div className="absolute top-12 right-20 bg-black/50 p-4 rounded-lg w-72 shadow-lg hidden sm:block">
+              <h2 className="text-lg font-bold mb-2 text-yellow-300">🏆 Leaderboard</h2>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="text-left">#</th>
+                    <th className="text-left">Player</th>
+                    <th className="text-right">High Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((p, i) => (
+                    <tr key={i} className="border-t border-gray-600">
+                      <td className="text-left py-1">{i + 1}</td>
+                      <td className="text-left py-1">{p.name}</td>
+                      <td className="text-right py-1">{p.score}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
+        {/* 🎮 מסך המשחק */}
         {!showIntro && (
           <>
-            <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20">
-              Score: {score} | High Score: {highScore}
-            </div>
+          {/* ניקוד במסכים רחבים */}
+{!showIntro && (
+  <div
+    className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20"
+  >
+    Score: {score} | High Score: {highScore}
+  </div>
+)}
 
-            <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] top-40">
-              {score}
-            </div>
+{/* ניקוד במסכים רגילים */}
+{!showIntro && (
+  <div
+    className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] top-40"
+  >
+    {score}
+  </div>
+)}
+
 
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
               <canvas ref={canvasRef} width={960} height={480} className="relative z-0 border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh]" />
@@ -379,29 +413,41 @@ export default function MleoRunner() {
               )}
             </div>
 
+            {/* 🔙 Back */}
             <button onClick={() => window.history.back()} className="fixed top-4 left-4 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded z-[999]">
               ⬅ Back
             </button>
 
-            {gameRunning && (
-              <button
-                onClick={() => jumpRef.current()}
-                className="fixed bottom-16 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
+            {/* ⬆ Jump */}
+{/* כפתור Jump רגיל */}
+{gameRunning && (
+  <button
+    onClick={() => {
+      const e = new KeyboardEvent("keydown", { code: "Space" });
+      document.dispatchEvent(e);
+    }}
+    className="fixed bottom-16 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
                sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
-              >
-                Jump
-              </button>
-            )}
+  >
+    Jump
+  </button>
+)}
 
-            {gameRunning && (
-              <button
-                onClick={() => jumpRef.current()}
-                className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
-              >
-                Jump
-              </button>
-            )}
+{/* כפתור Jump נוסף למסכים רחבים בצד שמאל */}
+{gameRunning && (
+  <button
+    onClick={() => {
+      const e = new KeyboardEvent("keydown", { code: "Space" });
+      document.dispatchEvent(e);
+    }}
+    className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+  >
+    Jump
+  </button>
+)}
 
+
+            {/* 🚪 Exit */}
             <button
               onClick={() => {
                 if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
