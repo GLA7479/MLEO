@@ -202,7 +202,7 @@ leo = {
   obstacles.forEach((o, i) => {
   const reducedHitbox = {
     x: o.x + o.width * 0.5,      // במקום 0.15 → מקטין יותר מהצד
-    y: o.y - o.height * 0.95,    // במקום 0.9 → מקטין יותר מלמעלה
+    y: o.y - o.height * 0.75,    // במקום 0.9 → מקטין יותר מלמעלה
     width: o.width * 0.4,        // במקום 0.7 → צר יותר
     height: o.height * 0.8,      // במקום 0.9 → נמוך יותר
   };
@@ -381,19 +381,22 @@ leo = {
         {/* 🎮 מסך המשחק */}
         {!showIntro && (
           <>
-{/* ניקוד במסכים רחבים */}
-{!showIntro && (
-  <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20">
-    Score: {score} | High Score: {highScore}
-  </div>
-)}
+<>
+  {/* ניקוד במסכים רחבים */}
+  {!showIntro && (
+    <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
+      Score: {score} | High Score: {highScore}
+    </div>
+  )}
 
-{/* ניקוד במסכים קטנים */}
-{!showIntro && (
-  <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
-    Score: {score} | High Score: {highScore}
-  </div>
-)}
+  {/* ניקוד במסכים קטנים */}
+  {!showIntro && (
+    <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
+      Score: {score} | High Score: {highScore}
+    </div>
+  )}
+</>
+
 
 
 
