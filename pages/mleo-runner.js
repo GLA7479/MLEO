@@ -12,20 +12,7 @@ export default function MleoRunner() {
 
   const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
-  const [leoObj, setLeoObj] = useState(null);
-  const [jumpSoundObj, setJumpSoundObj] = useState(null);
-
-  // פונקציית קפיצה מחוץ ל-useEffect
-  function jump() {
-    if (leoObj && !leoObj.jumping) {
-      if (jumpSoundObj) {
-        jumpSoundObj.currentTime = 0;
-        jumpSoundObj.play().catch(() => {});
-      }
-      leoObj.dy = -10;
-      leoObj.jumping = true;
-    }
-  }
+  const jumpRef = useRef(() => {}); // ✅ נוסיף ref שישמור את הפונקציה jump
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -118,10 +105,6 @@ export default function MleoRunner() {
       currentScore = 0;
       setScore(0);
       setGameOver(false);
-
-      // נשמור את האובייקט לשימוש חיצוני בפונקציית jump
-      setLeoObj(leo);
-      setJumpSoundObj(jumpSound);
     }
 
     function checkCollision(r1, r2) {
@@ -141,6 +124,21 @@ export default function MleoRunner() {
       frameCount++;
       if (frameCount % 6 === 0) frame = (frame + 1) % 4;
     }
+
+    // ✅ פונקציית הקפיצה
+    function jump() {
+      if (leo && !leo.jumping) {
+        if (jumpSound) {
+          jumpSound.currentTime = 0;
+          jumpSound.play().catch(() => {});
+        }
+        leo.dy = -10;
+        leo.jumping = true;
+      }
+    }
+
+    // ✅ נשמור את הפונקציה העדכנית ב־ref
+    jumpRef.current = jump;
 
     function update() {
       if (!running) return;
@@ -304,7 +302,7 @@ export default function MleoRunner() {
     function handleKey(e) {
       if (e.code === "Space") {
         e.preventDefault();
-        jump();
+        jumpRef.current(); // ✅ תמיד יפעיל את הפונקציה העדכנית
       }
       if (e.code === "KeyH") {
         showHitbox = !showHitbox;
@@ -355,28 +353,6 @@ export default function MleoRunner() {
             >
               ▶ Start Game
             </button>
-
-            <div className="absolute top-12 right-20 bg-black/50 p-4 rounded-lg w-72 shadow-lg hidden sm:block">
-              <h2 className="text-lg font-bold mb-2 text-yellow-300">🏆 Leaderboard</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="text-left">#</th>
-                    <th className="text-left">Player</th>
-                    <th className="text-right">High Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.map((p, i) => (
-                    <tr key={i} className="border-t border-gray-600">
-                      <td className="text-left py-1">{i + 1}</td>
-                      <td className="text-left py-1">{p.name}</td>
-                      <td className="text-right py-1">{p.score}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
 
@@ -409,7 +385,7 @@ export default function MleoRunner() {
 
             {gameRunning && (
               <button
-                onClick={jump}
+                onClick={() => jumpRef.current()}
                 className="fixed bottom-16 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
                sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
               >
@@ -419,7 +395,7 @@ export default function MleoRunner() {
 
             {gameRunning && (
               <button
-                onClick={jump}
+                onClick={() => jumpRef.current()}
                 className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
               >
                 Jump
