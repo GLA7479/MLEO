@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MLEO Runner Game - Jump on Top of Obstacles</title>
+  <style>
+    body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #222; font-family: Arial, sans-serif; }
+    #gameContainer { position: relative; }
+    canvas { border: 3px solid gold; border-radius: 10px; background: #87ceeb; display: block; }
+    #score, #highScore { position: absolute; top: 10px; font-size: 20px; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 6px 12px; border-radius: 6px; }
+    #score { left: 10px; }
+    #highScore { right: 10px; }
+    #startBtn, #restartBtn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 12px 20px; font-size: 20px; background: gold; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    #restartBtn { display: none; }
+    #gameOverText { position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%); font-size: 36px; font-weight: bold; color: red; display: none; }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <div id="score">Score: 0</div>
+    <div id="highScore">High Score: 0</div>
+    <div id="gameOverText">Game Over!</div>
+    <button id="startBtn">Start Game</button>
+    <button id="restartBtn">Restart</button>
+    <canvas id="gameCanvas" width="960" height="480"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const scoreEl = document.getElementById("score");
+    const highScoreEl = document.getElementById("highScore");
+    const startBtn = document.getElementById("startBtn");
+    const restartBtn = document.getElementById("restartBtn");
+    const gameOverText = document.getElementById("gameOverText");
+
+    const leoSprite = new Image(); leoSprite.src = "./images/dog-spritesheet.png";
+    const coinImg = new Image(); coinImg.src = "./images/leo-logo.png";
+    const obstacleImg = new Image(); obstacleImg.src = "./images/obstacle.png";
+    const bgImg = new Image(); bgImg.src = "./images/background.png";
+
+    let leo, gravity, score, coins, obstacles, gameRunning, frame = 0, frameCount = 0;
+    let bgX = 0;
+    let highScore = localStorage.getItem("mleoHighScore") || 0;
+    highScoreEl.textContent = "High Score: " + highScore;
+
+    function initGame() {
+      leo = { x: 80, y: 320, width: 90, height: 90, dy: 0, jumping: false };
+      gravity = 0.5;
+      score = 0;
+      coins = [];
+      obstacles = [];
+      gameRunning = true;
+      frame = 0;
+      frameCount = 0;
+      scoreEl.textContent = "Score: 0";
+      gameOverText.style.display = "none";
+      restartBtn.style.display = "none";
+    }
+
+    function drawBackground() {
+      bgX -= 1.5;
+      if (bgX <= -canvas.width) bgX = 0;
+      ctx.drawImage(bgImg, bgX, 0, canvas.width, canvas.height);
+      ctx.drawImage(bgImg, bgX + canvas.width, 0, canvas.width, canvas.height);
+    }
+
+    function drawLeo() {
+      const sw = leoSprite.width / 4;
+      const sh = leoSprite.height;
+      ctx.drawImage(leoSprite, frame * sw, 0, sw, sh, leo.x, leo.y, leo.width, leo.height);
+      frameCount++;
+      if (frameCount % 6 === 0) frame = (frame + 1) % 4;
+    }
+
+    function drawCoins() {
+      coins.forEach(c => { c.x -= 3; ctx.drawImage(coinImg, c.x, c.y, c.size, c.size); });
+    }
+
+    function drawObstacles() {
+      obstacles.forEach(o => { o.x -= 4; ctx.drawImage(obstacleImg, o.x, o.y - o.height, o.width, o.height); });
+    }
+
+    function checkCollision(r1, r2) {
+      return (
+        r1.x < r2.x + r2.width &&
+        r1.x + r1.width > r2.x &&
+        r1.y < r2.y + r2.height &&
+        r1.y + r1.height > r2.y
+      );
+    }
+
+    function update() {
+      if (!gameRunning) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+
+      const ground = canvas.height - 90;
+
+      leo.y += leo.dy;
+      if (leo.y + leo.height < ground) leo.dy += gravity;
+      else { leo.dy = 0; leo.jumping = false; leo.y = ground - leo.height; }
+
+      drawLeo();
+      drawCoins();
+      drawObstacles();
+
+      if (Math.random() < 0.03) coins.push({ x: canvas.width, y: Math.random()*150+150, size: 42 });
+      if (Math.random() < 0.012) obstacles.push({ x: canvas.width, y: ground, width: 65, height: 65 });
+
+      coins.forEach((c,i) => {
+        if (checkCollision(leo, {x:c.x, y:c.y, width:c.size, height:c.size})) {
+          coins.splice(i,1);
+          score++;
+          scoreEl.textContent = "Score: " + score;
+        }
+        if (c.x+c.size<0) coins.splice(i,1);
+      });
+
+      obstacles.forEach((o,i) => {
+        const obstacleRect = {x:o.x, y:o.y-o.height, width:o.width, height:o.height};
+        if (checkCollision(leo, obstacleRect)) {
+          // בדיקה אם הכלב נוגע מלמעלה
+          if (leo.y + leo.height - 10 <= obstacleRect.y) {
+            leo.dy = -10; // קפיצה מחדש
+            leo.jumping = true;
+          } else {
+            gameOver();
+          }
+        }
+        if (o.x+o.width<0) obstacles.splice(i,1);
+      });
+
+      requestAnimationFrame(update);
+    }
+
+    function gameOver() {
+      gameRunning = false;
+      gameOverText.style.display = "block";
+      restartBtn.style.display = "block";
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("mleoHighScore", highScore);
+        highScoreEl.textContent = "High Score: " + highScore;
+      }
+    }
+
+    document.addEventListener("keydown", e => {
+      if (e.code === "Space" && gameRunning && !leo.jumping) {
+        leo.dy = -11;
+        leo.jumping = true;
+      }
+    });
+
+    startBtn.addEventListener("click", () => {
+      startBtn.style.display = "none";
+      initGame();
+      update();
+    });
+
+    restartBtn.addEventListener("click", () => {
+      initGame();
+      update();
+    });
+  </script>
+</body>
+</html>
