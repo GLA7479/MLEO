@@ -381,23 +381,20 @@ leo = {
         {/* 🎮 מסך המשחק */}
         {!showIntro && (
           <>
-          {/* ניקוד במסכים רחבים */}
+{/* ניקוד במסכים רחבים */}
 {!showIntro && (
-  <div
-    className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20"
-  >
+  <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-20">
     Score: {score} | High Score: {highScore}
   </div>
 )}
 
-{/* ניקוד במסכים רגילים */}
+{/* ניקוד במסכים קטנים */}
 {!showIntro && (
-  <div
-    className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] top-40"
-  >
-    {score}
+  <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
+    Score: {score} | High Score: {highScore}
   </div>
 )}
+
 
 
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
@@ -426,7 +423,7 @@ leo = {
       const e = new KeyboardEvent("keydown", { code: "Space" });
       document.dispatchEvent(e);
     }}
-    className="fixed bottom-16 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
+    className="fixed bottom-36 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
                sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
   >
     Jump
