@@ -12,13 +12,18 @@ export default function MleoCatcher() {
   const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
   const leoRef = useRef(null);
+  const itemsRef = useRef([]);
+  const currentScoreRef = useRef(0);
+  const runningRef = useRef(false);
 
   useEffect(() => {
-    const savedHighScore = localStorage.getItem("mleoCatcherHighScore") || 0;
-    setHighScore(Number(savedHighScore));
+    if (typeof window !== "undefined") {
+      const savedHighScore = localStorage.getItem("mleoCatcherHighScore") || 0;
+      setHighScore(Number(savedHighScore));
 
-    const stored = JSON.parse(localStorage.getItem("mleoCatcherLeaderboard") || "[]");
-    setLeaderboard(stored);
+      const stored = JSON.parse(localStorage.getItem("mleoCatcherLeaderboard") || "[]");
+      setLeaderboard(stored);
+    }
   }, []);
 
   const updateLeaderboard = (name, score) => {
@@ -34,8 +39,27 @@ export default function MleoCatcher() {
     setLeaderboard(stored);
   };
 
-  useEffect(() => {
-    if (!gameRunning) return;
+  function initGame() {
+    const canvas = canvasRef.current;
+    leoRef.current = { x: canvas.width / 2 - 50, y: canvas.height - 120, width: 90, height: 100, dx: 0 };
+    itemsRef.current = [];
+    currentScoreRef.current = 0;
+    setScore(0);
+    setGameOver(false);
+  }
+
+  function spawnItem() {
+    const types = ["coin", "diamond", "bomb"];
+    const type = types[Math.floor(Math.random() * types.length)];
+    itemsRef.current.push({ x: Math.random() * (canvasRef.current.width - 40), y: -40, size: 40, type });
+  }
+
+  function checkCollision(a, b) {
+    return a.x < b.x + b.size && a.x + a.width > b.x && a.y < b.y + b.size && a.y + a.height > b.y;
+  }
+
+  function updateGame() {
+    if (!runningRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -55,87 +79,79 @@ export default function MleoCatcher() {
     const bgImg = new window.Image();
     bgImg.src = "/images/game-day.png";
 
-    let leo = { x: canvas.width / 2 - 50, y: canvas.height - 120, width: 90, height: 100, dx: 0 };
-    leoRef.current = leo;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (bgImg.complete) ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
-    let items = [];
-    let currentScore = 0;
-    let running = true;
+    const leo = leoRef.current;
+    leo.x += leo.dx;
+    if (leo.x < 0) leo.x = 0;
+    if (leo.x + leo.width > canvas.width) leo.x = canvas.width - leo.width;
 
-    function spawnItem() {
-      const types = ["coin", "diamond", "bomb"];
-      const type = types[Math.floor(Math.random() * types.length)];
-      items.push({ x: Math.random() * (canvas.width - 40), y: -40, size: 40, type });
-    }
-
-    function checkCollision(a, b) {
-      return a.x < b.x + b.size && a.x + a.width > b.x && a.y < b.y + b.size && a.y + a.height > b.y;
-    }
-
-    function drawLeo() {
-      if (!leoSprite.complete) return;
+    if (leoSprite.complete) {
       const sw = leoSprite.width / 4;
       const sh = leoSprite.height;
       ctx.drawImage(leoSprite, 0, 0, sw, sh, leo.x, leo.y, leo.width, leo.height);
     }
 
-    function update() {
-      if (!running) return;
+    itemsRef.current.forEach((item, i) => {
+      item.y += 3;
+      if (item.type === "coin" && coinImg.complete) ctx.drawImage(coinImg, item.x, item.y, item.size, item.size);
+      if (item.type === "diamond" && diamondImg.complete) ctx.drawImage(diamondImg, item.x, item.y, item.size, item.size);
+      if (item.type === "bomb" && bombImg.complete) ctx.drawImage(bombImg, item.x, item.y, item.size, item.size);
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (bgImg.complete) ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-
-      leo.x += leo.dx;
-      if (leo.x < 0) leo.x = 0;
-      if (leo.x + leo.width > canvas.width) leo.x = canvas.width - leo.width;
-
-      drawLeo();
-
-      items.forEach((item, i) => {
-        item.y += 3;
-        if (item.type === "coin" && coinImg.complete) ctx.drawImage(coinImg, item.x, item.y, item.size, item.size);
-        if (item.type === "diamond" && diamondImg.complete) ctx.drawImage(diamondImg, item.x, item.y, item.size, item.size);
-        if (item.type === "bomb" && bombImg.complete) ctx.drawImage(bombImg, item.x, item.y, item.size, item.size);
-
-        if (checkCollision(leo, item)) {
-          if (item.type === "coin") currentScore++;
-          if (item.type === "diamond") currentScore += 5;
-          if (item.type === "bomb") {
-            running = false;
-            setGameOver(true);
-            updateLeaderboard(playerName, currentScore);
-          }
-          items.splice(i, 1);
-          setScore(currentScore);
-        } else if (item.y > canvas.height) {
-          items.splice(i, 1);
+      if (checkCollision(leo, item)) {
+        if (item.type === "coin") currentScoreRef.current++;
+        if (item.type === "diamond") currentScoreRef.current += 5;
+        if (item.type === "bomb") {
+          runningRef.current = false;
+          setGameOver(true);
+          updateLeaderboard(playerName, currentScoreRef.current);
         }
-      });
+        itemsRef.current.splice(i, 1);
+        setScore(currentScoreRef.current);
+      } else if (item.y > canvas.height) {
+        itemsRef.current.splice(i, 1);
+      }
+    });
 
-      if (Math.random() < 0.05) spawnItem();
+    if (Math.random() < 0.05) spawnItem();
 
-      requestAnimationFrame(update);
-    }
+    requestAnimationFrame(updateGame);
+  }
 
-    function startGame() {
-      leo.x = canvas.width / 2 - 50;
-      items = [];
-      currentScore = 0;
-      setScore(0);
-      setGameOver(false);
-      running = true;
-      update();
-    }
+  function startGame() {
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const wrapper = document.getElementById("game-wrapper");
+    if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
+    else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
+
+    initGame();
+    runningRef.current = true;
+    updateGame();
+  }
+
+  const moveLeft = () => {
+    if (leoRef.current) leoRef.current.dx = -5;
+  };
+  const moveRight = () => {
+    if (leoRef.current) leoRef.current.dx = 5;
+  };
+  const stopMove = () => {
+    if (leoRef.current) leoRef.current.dx = 0;
+  };
+
+  useEffect(() => {
+    if (!gameRunning) return;
 
     function handleKey(e) {
       if (!leoRef.current) return;
-      if (e.code === "ArrowLeft") leoRef.current.dx = -5;
-      if (e.code === "ArrowRight") leoRef.current.dx = 5;
+      if (e.code === "ArrowLeft") moveLeft();
+      if (e.code === "ArrowRight") moveRight();
     }
 
     function handleKeyUp(e) {
       if (!leoRef.current) return;
-      if (e.code === "ArrowLeft" || e.code === "ArrowRight") leoRef.current.dx = 0;
+      if (e.code === "ArrowLeft" || e.code === "ArrowRight") stopMove();
     }
 
     document.addEventListener("keydown", handleKey);
@@ -145,21 +161,9 @@ export default function MleoCatcher() {
     return () => {
       document.removeEventListener("keydown", handleKey);
       document.removeEventListener("keyup", handleKeyUp);
-      running = false;
+      runningRef.current = false;
     };
   }, [gameRunning]);
-
-  const moveLeft = () => {
-    if (leoRef.current) leoRef.current.dx = -5;
-  };
-
-  const moveRight = () => {
-    if (leoRef.current) leoRef.current.dx = 5;
-  };
-
-  const stopMove = () => {
-    if (leoRef.current) leoRef.current.dx = 0;
-  };
 
   return (
     <Layout>
@@ -184,34 +188,15 @@ export default function MleoCatcher() {
             >
               ▶ Start Game
             </button>
-
-            <div className="absolute top-12 right-4 bg-black/50 p-4 rounded-lg w-72 shadow-lg hidden sm:block">
-              <h2 className="text-lg font-bold mb-2 text-yellow-300">🏆 Leaderboard</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="text-left">#</th>
-                    <th className="text-left">Player</th>
-                    <th className="text-right">Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.map((p, i) => (
-                    <tr key={i} className="border-t border-gray-600">
-                      <td className="py-1">{i + 1}</td>
-                      <td className="py-1">{p.name}</td>
-                      <td className="text-right py-1">{p.score}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
 
         {!showIntro && (
           <>
-            <div className="absolute top-10 left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999]">
+            <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
+              Score: {score} | High Score: {highScore}
+            </div>
+            <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
               Score: {score} | High Score: {highScore}
             </div>
 
@@ -221,22 +206,29 @@ export default function MleoCatcher() {
               {gameOver && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-[999]">
                   <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">GAME OVER</h2>
-                <button
-  className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
-  onClick={() => {
-    setGameOver(false);
-    setGameRunning(false);
-    setTimeout(() => setGameRunning(true), 50); // מאתחל את המשחק מחדש
-  }}
->
-  Start Again
-</button>
-
+                  <button
+                    className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
+                    onClick={() => {
+                      setGameRunning(false);
+                      setTimeout(() => setGameRunning(true), 50);
+                    }}
+                  >
+                    Start Again
+                  </button>
                 </div>
               )}
             </div>
 
-            <button onClick={() => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); setGameRunning(false); setGameOver(false); setShowIntro(true); }} className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]">
+            <button
+              onClick={() => {
+                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+                else if (document.webkitFullscreenElement) document.webkitExitFullscreen();
+                setGameRunning(false);
+                setGameOver(false);
+                setShowIntro(true);
+              }}
+              className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+            >
               Exit
             </button>
 
@@ -249,7 +241,6 @@ export default function MleoCatcher() {
                 >
                   ◀ Left
                 </button>
-
                 <button
                   onTouchStart={moveRight}
                   onTouchEnd={stopMove}

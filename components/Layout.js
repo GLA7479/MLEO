@@ -1,10 +1,11 @@
-
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/router";
 import Header from "./Header";
-import { Footer, FloatingPresaleButton } from "./Header";
+import { Footer } from "./Header";
 
 export default function Layout({ children, video, page }) {
   const videoRef = useRef(null);
+  const router = useRouter();
 
   useEffect(() => {
     if (videoRef.current) {
@@ -12,6 +13,11 @@ export default function Layout({ children, video, page }) {
       videoRef.current.play().catch(() => {});
     }
   }, [video]);
+
+  // בדיקה אם הנתיב הנוכחי הוא עמוד המשחקים או אחד המשחקים עצמם
+  const hideButton =
+    router.pathname === "/game" ||
+    router.pathname.startsWith("/mleo-");
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -34,13 +40,15 @@ export default function Layout({ children, video, page }) {
 
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {/* כפתור פריסייל מוקטן */}
-      <a
-        href="/presale"
-        className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transition z-50"
-      >
-        🚀 Join Presale
-      </a>
+      {/* כפתור פריסייל – לא יוצג בעמוד GAME ובמשחקים */}
+      {!hideButton && (
+        <a
+          href="/presale"
+          className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transition z-50"
+        >
+          🚀 Join Presale
+        </a>
+      )}
 
       <Footer />
     </div>
