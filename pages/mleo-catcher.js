@@ -11,6 +11,7 @@ export default function MleoCatcher() {
   const [highScore, setHighScore] = useState(0);
   const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
+  const leoRef = useRef(null);
 
   useEffect(() => {
     const savedHighScore = localStorage.getItem("mleoCatcherHighScore") || 0;
@@ -31,9 +32,6 @@ export default function MleoCatcher() {
     stored = stored.sort((a, b) => b.score - a.score).slice(0, 20);
     localStorage.setItem("mleoCatcherLeaderboard", JSON.stringify(stored));
     setLeaderboard(stored);
-
-    // בעתיד: שליחת הנתונים לשרת חיצוני לשמירה
-    // fetch("/api/leaderboard", { method: "POST", body: JSON.stringify({ name, score }) });
   };
 
   useEffect(() => {
@@ -58,6 +56,8 @@ export default function MleoCatcher() {
     bgImg.src = "/images/game-day.png";
 
     let leo = { x: canvas.width / 2 - 50, y: canvas.height - 120, width: 90, height: 100, dx: 0 };
+    leoRef.current = leo;
+
     let items = [];
     let currentScore = 0;
     let running = true;
@@ -128,24 +128,38 @@ export default function MleoCatcher() {
     }
 
     function handleKey(e) {
-      if (e.code === "ArrowLeft") leo.dx = -5;
-      if (e.code === "ArrowRight") leo.dx = 5;
+      if (!leoRef.current) return;
+      if (e.code === "ArrowLeft") leoRef.current.dx = -5;
+      if (e.code === "ArrowRight") leoRef.current.dx = 5;
     }
 
-    function stopMove(e) {
-      if (e.code === "ArrowLeft" || e.code === "ArrowRight") leo.dx = 0;
+    function handleKeyUp(e) {
+      if (!leoRef.current) return;
+      if (e.code === "ArrowLeft" || e.code === "ArrowRight") leoRef.current.dx = 0;
     }
 
     document.addEventListener("keydown", handleKey);
-    document.addEventListener("keyup", stopMove);
+    document.addEventListener("keyup", handleKeyUp);
     startGame();
 
     return () => {
       document.removeEventListener("keydown", handleKey);
-      document.removeEventListener("keyup", stopMove);
+      document.removeEventListener("keyup", handleKeyUp);
       running = false;
     };
   }, [gameRunning]);
+
+  const moveLeft = () => {
+    if (leoRef.current) leoRef.current.dx = -5;
+  };
+
+  const moveRight = () => {
+    if (leoRef.current) leoRef.current.dx = 5;
+  };
+
+  const stopMove = () => {
+    if (leoRef.current) leoRef.current.dx = 0;
+  };
 
   return (
     <Layout>
@@ -207,9 +221,17 @@ export default function MleoCatcher() {
               {gameOver && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-[999]">
                   <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">GAME OVER</h2>
-                  <button className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg" onClick={() => setGameRunning(true)}>
-                    Start Again
-                  </button>
+                <button
+  className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
+  onClick={() => {
+    setGameOver(false);
+    setGameRunning(false);
+    setTimeout(() => setGameRunning(true), 50); // מאתחל את המשחק מחדש
+  }}
+>
+  Start Again
+</button>
+
                 </div>
               )}
             </div>
@@ -219,14 +241,23 @@ export default function MleoCatcher() {
             </button>
 
             {gameRunning && (
-              <div className="fixed bottom-8 left-0 right-0 flex justify-center gap-6 z-[999]">
-                <button onTouchStart={() => document.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowLeft" }))} onTouchEnd={() => document.dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowLeft" }))} className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg">
+              <>
+                <button
+                  onTouchStart={moveLeft}
+                  onTouchEnd={stopMove}
+                  className="fixed bottom-8 left-4 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg"
+                >
                   ◀ Left
                 </button>
-                <button onTouchStart={() => document.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowRight" }))} onTouchEnd={() => document.dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowRight" }))} className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg">
+
+                <button
+                  onTouchStart={moveRight}
+                  onTouchEnd={stopMove}
+                  className="fixed bottom-8 right-4 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg"
+                >
                   Right ▶
                 </button>
-              </div>
+              </>
             )}
           </>
         )}
