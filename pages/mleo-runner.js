@@ -35,20 +35,30 @@ export default function MleoRunner() {
     const coinImg = new window.Image();
     coinImg.src = "/images/leo-logo.png";
 
+    const diamondImg = new window.Image();
+    diamondImg.src = "/images/diamond.png";
+
+    // ✅ תמונת מגנט
+    const magnetImg = new window.Image();
+    magnetImg.src = "/images/magnet.png";
+
+const coin2Img = new window.Image();
+coin2Img.src = "/images/coin2.png";
+
+
     const obstacleImg = new window.Image();
     obstacleImg.src = "/images/obstacle.png";
 
     const backgrounds = [
-  "/images/game-day.png",
-  "/images/game-evening.png",
-  "/images/game-night.png",
-  "/images/game-space.png",
-  "/images/game-park.png",
-];
-let bgImg = new window.Image();
-bgImg.src = backgrounds[0];
+      "/images/game-day.png",
+      "/images/game-evening.png",
+      "/images/game-night.png",
+      "/images/game-space.png",
+      "/images/game-park.png",
+    ];
+    let bgImg = new window.Image();
+    bgImg.src = backgrounds[0];
 
-    // 🎵 יצירת קבצי סאונד רק בדפדפן
     let bgMusic, jumpSound, coinSound, gameOverSound;
 
     if (typeof window !== "undefined") {
@@ -74,7 +84,9 @@ bgImg.src = backgrounds[0];
       if (gameOverSound) gameOverSound.volume = 0.7;
     }
 
-    let leo, gravity, coins, obstacles, frame = 0, frameCount = 0;
+    let leo, gravity, coins, diamonds, obstacles, frame = 0, frameCount = 0;
+let coins2 = [];
+
     let level = 1;
     let showLevelUp = false;
     let levelUpTimer = 0;
@@ -82,23 +94,29 @@ bgImg.src = backgrounds[0];
     let running = true;
     let currentScore = 0;
     let speedMultiplier = 1;
-    let showHitbox = false; // ✅ מאפשר הדלקה/כיבוי עם מקש H
+    let showHitbox = false;
+
+    // ✅ משתנים למגנט
+    let powerUps = [];
+    let magnetActive = false;
 
     function initGame() {
       const isMobile = window.innerWidth < 768;
       const scale = isMobile ? 1.8 : 1.5;
 
-leo = { 
-  x: canvas.width / 2 - (100 * scale), 
-  y: 200, 
-  width: 70 * scale, 
-  height: 70 * scale, 
-  dy: 0, 
-  jumping: false 
-};
+      leo = {
+        x: canvas.width / 2 - (100 * scale),
+        y: 200,
+        width: 70 * scale,
+        height: 70 * scale,
+        dy: 0,
+        jumping: false,
+      };
 
       gravity = 0.5;
       coins = [];
+      diamonds = [];
+      powerUps = [];
       obstacles = [];
       frame = 0;
       frameCount = 0;
@@ -165,6 +183,21 @@ leo = {
         }
       });
 
+      diamonds.forEach((d) => {
+        if (diamondImg.complete) {
+          d.x -= 3 * speedMultiplier;
+          ctx.drawImage(diamondImg, d.x, d.y, d.size, d.size);
+        }
+      });
+
+      // ✅ ציור מגנט
+      powerUps.forEach((p) => {
+        p.x -= 3 * speedMultiplier;
+        if (p.type === "magnet" && magnetImg.complete) {
+          ctx.drawImage(magnetImg, p.x, p.y, p.size, p.size);
+        }
+      });
+
       obstacles.forEach((o) => {
         if (obstacleImg.complete && obstacleImg.naturalWidth > 0) {
           o.x -= 4 * speedMultiplier;
@@ -172,7 +205,16 @@ leo = {
         }
       });
 
-      if (Math.random() < 0.03) coins.push({ x: canvas.width, y: Math.random() * 120 + 120, size: 38 });
+      if (Math.random() < 0.022) coins.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 38 });
+if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
+
+      if (Math.random() < 0.002) diamonds.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 42 });
+
+      // ✅ יצירת מגנט
+      if (Math.random() < 0.0015) {
+        powerUps.push({ type: "magnet", x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
+      }
+
       if (Math.random() < 0.012) {
         const isMobile = window.innerWidth < 768;
         const scale = isMobile ? 1.8 : 1.5;
@@ -185,11 +227,12 @@ leo = {
       }
 
       coins.forEach((c, i) => {
-        if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size })) {
+        if (
+          checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive
+        ) {
           coins.splice(i, 1);
           currentScore++;
           setScore(currentScore);
-
           if (coinSound) {
             coinSound.currentTime = 0;
             coinSound.play().catch(() => {});
@@ -198,14 +241,57 @@ leo = {
         if (c.x + c.size < 0) coins.splice(i, 1);
       });
 
-      // ✅ בדיקת פגיעה במכשול (Hitbox מוקטן + אפשרות הדמיה עם H)
-  obstacles.forEach((o, i) => {
-  const reducedHitbox = {
-    x: o.x + o.width * 0.5,      // במקום 0.15 → מקטין יותר מהצד
-    y: o.y - o.height * 0.75,    // במקום 0.9 → מקטין יותר מלמעלה
-    width: o.width * 0.4,        // במקום 0.7 → צר יותר
-    height: o.height * 0.8,      // במקום 0.9 → נמוך יותר
-  };
+coins2.forEach((c) => {
+  if (coin2Img.complete && coin2Img.naturalWidth > 0) {
+    c.x -= 3 * speedMultiplier;
+    ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
+  }
+});
+
+
+      diamonds.forEach((d, i) => {
+        if (
+          checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) || magnetActive
+        ) {
+          diamonds.splice(i, 1);
+          currentScore += 5;
+          setScore(currentScore);
+          if (coinSound) coinSound.play().catch(() => {});
+        }
+      });
+
+coins2.forEach((c, i) => {
+  if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive) {
+    coins2.splice(i, 1);
+    currentScore += 2;
+    setScore(currentScore);
+    if (coinSound) {
+      coinSound.currentTime = 0;
+      coinSound.play().catch(() => {});
+    }
+  }
+  if (c.x + c.size < 0) coins2.splice(i, 1);
+});
+
+
+      // ✅ איסוף מגנט
+      powerUps.forEach((p, i) => {
+        if (checkCollision(leo, { x: p.x, y: p.y, width: p.size, height: p.size })) {
+          powerUps.splice(i, 1);
+          if (p.type === "magnet") {
+            magnetActive = true;
+            setTimeout(() => (magnetActive = false), 5000);
+          }
+        }
+      });
+
+      obstacles.forEach((o, i) => {
+        const reducedHitbox = {
+          x: o.x + o.width * 0.5,
+          y: o.y - o.height * 0.75,
+          width: o.width * 0.4,
+          height: o.height * 0.8,
+        };
 
         if (showHitbox) {
           ctx.save();
@@ -218,10 +304,10 @@ leo = {
         if (checkCollision(leo, reducedHitbox)) {
           if (leo.y + leo.height - 15 <= reducedHitbox.y) {
             if (jumpSound) {
-        jumpSound.currentTime = 0;
-        jumpSound.play().catch(() => {});
-      }
-      leo.dy = -10;
+              jumpSound.currentTime = 0;
+              jumpSound.play().catch(() => {});
+            }
+            leo.dy = -10;
             leo.jumping = true;
           } else {
             running = false;
@@ -255,7 +341,7 @@ leo = {
         if (o.x + o.width < 0) obstacles.splice(i, 1);
       });
 
-            if (showLevelUp && Date.now() - levelUpTimer < 2000) {
+      if (showLevelUp && Date.now() - levelUpTimer < 2000) {
         ctx.save();
         ctx.font = 'bold 48px Arial';
         ctx.fillStyle = 'yellow';
@@ -288,15 +374,14 @@ leo = {
     function jump() {
       if (leo && !leo.jumping) {
         if (jumpSound) {
-        jumpSound.currentTime = 0;
-        jumpSound.play().catch(() => {});
-      }
-      leo.dy = -10;
+          jumpSound.currentTime = 0;
+          jumpSound.play().catch(() => {});
+        }
+        leo.dy = -10;
         leo.jumping = true;
       }
     }
 
-    // ✅ הוספנו אפשרות ללחוץ על H כדי להציג/להסתיר Hitbox
     function handleKey(e) {
       if (e.code === "Space") {
         e.preventDefault();
@@ -318,6 +403,7 @@ leo = {
 
   return (
     <Layout>
+
       <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative">
         {/* 🎬 מסך פתיחה */}
         {showIntro && (
