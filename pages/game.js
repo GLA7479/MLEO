@@ -19,11 +19,11 @@ export default function Games() {
       available: true,
     },
     {
-      title: "Mystery Game",
-      description: "🚀 A new adventure with Lio is coming soon!",
-      link: "#",
-      icon: "🎮",
-      available: false,
+      title: "Mleo Catcher",
+      description: "🎯 Catch coins and diamonds while avoiding bombs!",
+      link: "/mleo-catcher",
+      icon: "🎯",
+      available: true,
     },
   ];
 
@@ -83,9 +83,7 @@ export default function Games() {
               whileHover={{ scale: 1.05 }}
             >
               <div className="text-5xl mb-3">{game.icon}</div>
-              <h2 className="text-2xl font-bold text-yellow-400 mb-2">
-                {game.title}
-              </h2>
+              <h2 className="text-2xl font-bold text-yellow-400 mb-2">{game.title}</h2>
               <p className="text-gray-300 mb-4">{game.description}</p>
               {game.available ? (
                 <Link href={game.link}>
@@ -94,10 +92,7 @@ export default function Games() {
                   </button>
                 </Link>
               ) : (
-                <button
-                  className="bg-gray-600 text-gray-300 px-5 py-2 rounded-lg font-semibold cursor-not-allowed"
-                  disabled
-                >
+                <button className="bg-gray-600 text-gray-300 px-5 py-2 rounded-lg font-semibold cursor-not-allowed" disabled>
                   Coming Soon
                 </button>
               )}
