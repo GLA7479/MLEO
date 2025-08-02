@@ -25,6 +25,27 @@ export default function Games() {
       icon: "🎯",
       available: true,
     },
+    {
+      title: "Mleo Puzzle",
+      description: "🧩 Match 3 tiles and score points like Candy Crush!",
+      link: "/mleo-puzzle",
+      icon: "🧩",
+      available: true,
+    },
+    {
+      title: "Coming Soon 1",
+      description: "🚀 A new exciting Lio game is on the way!",
+      link: "#",
+      icon: "🚀",
+      available: false,
+    },
+    {
+      title: "Coming Soon 2",
+      description: "🔥 Another fun adventure with Lio is coming soon!",
+      link: "#",
+      icon: "🔥",
+      available: false,
+    },
   ];
 
   return (
