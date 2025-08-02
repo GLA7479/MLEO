@@ -114,7 +114,7 @@ let coins2 = [];
 };
 
 
-      gravity = 0.5;
+      gravity = 0.35;
       coins = [];
       diamonds = [];
       powerUps = [];
@@ -378,7 +378,7 @@ coins2.forEach((c, i) => {
           jumpSound.currentTime = 0;
           jumpSound.play().catch(() => {});
         }
-        leo.dy = -10;
+        leo.dy = -8.5;
         leo.jumping = true;
       }
     }
