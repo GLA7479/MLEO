@@ -26,7 +26,7 @@ export default function Header() {
     { key: "gallery", href: "/gallery" },
     { key: "whitepaper", href: "/whitepaper" },
     { key: "contact", href: "/contact" },
-    { key: "game", href: "/mleo-runner" }, // ✅ הוספנו קישור למשחק
+   { key: "games", href: "/game" }
   ];
 
   const languages = [

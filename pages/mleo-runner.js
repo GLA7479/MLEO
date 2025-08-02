@@ -291,7 +291,7 @@ coins2.forEach((c, i) => {
           x: o.x + o.width * 0.5,
           y: o.y - o.height * 0.55,
           width: o.width * 0.1,
-          height: o.height * 0.8,
+          height: o.height * 0.2,
         };
 
         if (showHitbox) {

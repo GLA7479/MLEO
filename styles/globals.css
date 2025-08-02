@@ -71,3 +71,10 @@ a {
 a:hover {
   color: #ffd700;
 }
+
+/* מניעת גלילה – לשימוש בעמודי משחק בלבד */
+.no-scroll {
+  overflow: hidden;
+  height: 100vh;
+}
+
