@@ -107,7 +107,7 @@ let coins2 = [];
    leo = {
   x: canvas.width / 2 - (100 * scale),
   y: canvas.height - 80 - (100 * scale), // ✅ יישור לקרקע
-  width: 100 * scale,  // ✅ הגדלה
+  width: 45 * scale,  // ✅ הגדלה
   height: 100 * scale, // ✅ הגדלה
   dy: 0,
   jumping: false,
