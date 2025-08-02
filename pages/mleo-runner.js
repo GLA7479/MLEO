@@ -104,14 +104,15 @@ let coins2 = [];
       const isMobile = window.innerWidth < 768;
       const scale = isMobile ? 1.8 : 1.5;
 
-      leo = {
-        x: canvas.width / 2 - (100 * scale),
-        y: 200,
-        width: 70 * scale,
-        height: 70 * scale,
-        dy: 0,
-        jumping: false,
-      };
+   leo = {
+  x: canvas.width / 2 - (100 * scale),
+  y: canvas.height - 80 - (100 * scale), // ✅ יישור לקרקע
+  width: 100 * scale,  // ✅ הגדלה
+  height: 100 * scale, // ✅ הגדלה
+  dy: 0,
+  jumping: false,
+};
+
 
       gravity = 0.5;
       coins = [];
@@ -165,7 +166,7 @@ let coins2 = [];
         ctx.drawImage(bgImg, bgX + canvas.width, 0, canvas.width, canvas.height);
       }
 
-      const ground = canvas.height - 80;
+      const ground = canvas.height - 40;
       leo.y += leo.dy;
       if (leo.y + leo.height < ground) leo.dy += gravity;
       else {
@@ -220,7 +221,7 @@ if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 +
         const scale = isMobile ? 1.8 : 1.5;
         obstacles.push({
           x: canvas.width,
-          y: ground + 30,
+          y: ground - 10,
           width: 60 * scale * 0.75,
           height: 60 * scale,
         });
@@ -288,8 +289,8 @@ coins2.forEach((c, i) => {
       obstacles.forEach((o, i) => {
         const reducedHitbox = {
           x: o.x + o.width * 0.5,
-          y: o.y - o.height * 0.75,
-          width: o.width * 0.4,
+          y: o.y - o.height * 0.55,
+          width: o.width * 0.1,
           height: o.height * 0.8,
         };
 
