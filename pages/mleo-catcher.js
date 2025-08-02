@@ -41,21 +41,64 @@ export default function MleoCatcher() {
 
   function initGame() {
     const canvas = canvasRef.current;
-    leoRef.current = { x: canvas.width / 2 - 50, y: canvas.height - 120, width: 90, height: 100, dx: 0 };
+    leoRef.current = {
+      x: canvas.width / 2 - 50,
+      y: canvas.height - 120,
+      width: 60,
+      height: 70,
+      dx: 0
+    };
     itemsRef.current = [];
     currentScoreRef.current = 0;
     setScore(0);
     setGameOver(false);
   }
 
-  function spawnItem() {
-    const types = ["coin", "diamond", "bomb"];
-    const type = types[Math.floor(Math.random() * types.length)];
-    itemsRef.current.push({ x: Math.random() * (canvasRef.current.width - 40), y: -40, size: 40, type });
-  }
+function spawnItem() {
+  const types = ["coin", "diamond", "bomb"];
+  const type = types[Math.floor(Math.random() * types.length)];
 
+  // 🔹 גודל ברירת מחדל
+  let size = 40;
+
+  // 🔹 נגדיל את המכשול פי 1.5 (תוכל לשנות את המספר)
+  if (type === "bomb") size = 70;
+if (type === "coin") size = 50;       // מטבע גדול יותר
+if (type === "diamond") size = 35;    // יהלום גדול יותר
+
+  itemsRef.current.push({
+    x: Math.random() * (canvasRef.current.width - size),
+    y: -size,
+    size,
+    type
+  });
+}
+
+
+  // ✅ Hitbox מתוקן
   function checkCollision(a, b) {
-    return a.x < b.x + b.size && a.x + a.width > b.x && a.y < b.y + b.size && a.y + a.height > b.y;
+    const leoHitbox = {
+      x: a.x + 10,
+      y: a.y + 10,
+      width: a.width - 20,
+      height: a.height - 35
+    };
+
+    const itemHitbox = {
+      x: b.x,
+      y: b.y,
+      size: b.size
+    };
+
+    const touchingFromAbove =
+      itemHitbox.y + itemHitbox.size >= leoHitbox.y &&
+      itemHitbox.y <= leoHitbox.y + leoHitbox.height;
+
+    return (
+      touchingFromAbove &&
+      leoHitbox.x < itemHitbox.x + itemHitbox.size &&
+      leoHitbox.x + leoHitbox.width > itemHitbox.x
+    );
   }
 
   function updateGame() {
@@ -64,8 +107,9 @@ export default function MleoCatcher() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
+    // ✅ תמונה קבועה לכלב
     const leoSprite = new window.Image();
-    leoSprite.src = "/images/dog-spritesheet.png";
+    leoSprite.src = "/images/leo.png"; // 🔹 שים כאן את שם הקובץ של התמונה הקבועה
 
     const coinImg = new window.Image();
     coinImg.src = "/images/leo-logo.png";
@@ -74,10 +118,10 @@ export default function MleoCatcher() {
     diamondImg.src = "/images/diamond.png";
 
     const bombImg = new window.Image();
-    bombImg.src = "/images/obstacle.png";
+    bombImg.src = "/images/obstacle1.png";
 
     const bgImg = new window.Image();
-    bgImg.src = "/images/game-day.png";
+    bgImg.src = "/images/game1.png";
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (bgImg.complete) ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
@@ -87,17 +131,19 @@ export default function MleoCatcher() {
     if (leo.x < 0) leo.x = 0;
     if (leo.x + leo.width > canvas.width) leo.x = canvas.width - leo.width;
 
+    // ✅ ציור הכלב עם תמונה אחת בלבד
     if (leoSprite.complete) {
-      const sw = leoSprite.width / 4;
-      const sh = leoSprite.height;
-      ctx.drawImage(leoSprite, 0, 0, sw, sh, leo.x, leo.y, leo.width, leo.height);
+      ctx.drawImage(leoSprite, leo.x, leo.y, leo.width, leo.height);
     }
 
     itemsRef.current.forEach((item, i) => {
       item.y += 3;
-      if (item.type === "coin" && coinImg.complete) ctx.drawImage(coinImg, item.x, item.y, item.size, item.size);
-      if (item.type === "diamond" && diamondImg.complete) ctx.drawImage(diamondImg, item.x, item.y, item.size, item.size);
-      if (item.type === "bomb" && bombImg.complete) ctx.drawImage(bombImg, item.x, item.y, item.size, item.size);
+      if (item.type === "coin" && coinImg.complete)
+        ctx.drawImage(coinImg, item.x, item.y, item.size, item.size);
+      if (item.type === "diamond" && diamondImg.complete)
+        ctx.drawImage(diamondImg, item.x, item.y, item.size, item.size);
+      if (item.type === "bomb" && bombImg.complete)
+        ctx.drawImage(bombImg, item.x, item.y, item.size, item.size);
 
       if (checkCollision(leo, item)) {
         if (item.type === "coin") currentScoreRef.current++;
@@ -174,7 +220,13 @@ export default function MleoCatcher() {
             <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🎯 LIO Catcher</h1>
             <p className="text-base sm:text-lg text-gray-200 mb-4">Move Leo to catch coins and avoid bombs!</p>
 
-            <input type="text" placeholder="Enter your name" value={playerName} onChange={(e) => setPlayerName(e.target.value)} className="mb-4 px-4 py-2 rounded text-black w-64 text-center" />
+            <input
+              type="text"
+              placeholder="Enter your name"
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
+            />
 
             <button
               onClick={() => {
@@ -184,7 +236,9 @@ export default function MleoCatcher() {
                 setGameRunning(true);
               }}
               disabled={!playerName.trim()}
-              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}
+              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${
+                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              }`}
             >
               ▶ Start Game
             </button>
