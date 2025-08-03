@@ -19,13 +19,8 @@ export default function MleoMemory() {
   const [startedPlaying, setStartedPlaying] = useState(false);
   const [didWin, setDidWin] = useState(false);
 
-  // ✅ כל הצלילים
   const flipSound = typeof Audio !== "undefined" ? new Audio("/sounds/flap.mp3") : null;
-  const correctSound = typeof Audio !== "undefined" ? new Audio("/sounds/correct.mp3") : null;
-  const wrongSound = typeof Audio !== "undefined" ? new Audio("/sounds/wrong.mp3") : null;
-  const startSound = typeof Audio !== "undefined" ? new Audio("/sounds/start.mp3") : null;
   const gameOverSound = typeof Audio !== "undefined" ? new Audio("/sounds/gameover.mp3") : null;
-  const winSound = typeof Audio !== "undefined" ? new Audio("/sounds/win.mp3") : null;
 
   const allImages = Array.from({ length: 30 }, (_, i) => `/images/shiba${i + 1}.png`);
 
@@ -37,7 +32,7 @@ export default function MleoMemory() {
     expert: { num: 28, score: 10000, time: 480, label: "💀 Expert", color: "bg-red-500", active: "bg-red-600" },
   };
 
-  // ✅ עדכון גודל חלון בזמן אמת
+  // ✅ עדכון גודל מסך בזמן אמת
   useEffect(() => {
     const updateSize = () => {
       setWindowWidth(window.innerWidth);
@@ -51,6 +46,37 @@ export default function MleoMemory() {
       window.removeEventListener("orientationchange", updateSize);
     };
   }, []);
+
+  // ✅ אוטומטי למסך מלא כשהופכים ל־Landscape
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      if (window.screen.orientation?.type?.startsWith("landscape")) {
+        enterFullscreen();
+      } else {
+        exitFullscreen();
+      }
+    };
+    window.addEventListener("orientationchange", handleOrientationChange);
+    return () => window.removeEventListener("orientationchange", handleOrientationChange);
+  }, []);
+
+  function enterFullscreen() {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) elem.requestFullscreen();
+    else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+    else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+  }
+
+  function exitFullscreen() {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    else if (document.msExitFullscreen) document.msExitFullscreen();
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) enterFullscreen();
+    else exitFullscreen();
+  }
 
   function getImagesByDifficulty() {
     const num = difficultySettings[difficulty].num;
@@ -74,11 +100,8 @@ export default function MleoMemory() {
     setTimerRunning(false);
     setStartedPlaying(false);
     setGameRunning(true);
-
-    startSound?.play().catch(() => {});
   }
 
-  // ✅ טיימר
   useEffect(() => {
     let interval;
     if (timerRunning) {
@@ -90,75 +113,58 @@ export default function MleoMemory() {
     return () => clearInterval(interval);
   }, [timerRunning]);
 
-  // ✅ בדיקת סיום
   useEffect(() => {
     const allMatched = matched.length > 0 && matched.length === cards.length;
-
     if ((score <= 0 || time <= 0 || allMatched) && gameRunning && !gameOver) {
       setGameOver(true);
       setGameRunning(false);
       setTimerRunning(false);
       setDidWin(allMatched);
-
-      if (allMatched) {
-        winSound?.play().catch(() => {});
-      } else {
-        gameOverSound?.play().catch(() => {});
+      if (gameOverSound) {
+        gameOverSound.currentTime = 0;
+        gameOverSound.play().catch(() => {});
       }
     }
   }, [score, time, matched, cards, gameRunning, gameOver]);
 
   function handleFlip(card) {
     flipSound?.play().catch(() => {});
-
     if (!startedPlaying) {
       setStartedPlaying(true);
       setTimerRunning(true);
     }
-
     if (flipped.length === 2 || flipped.includes(card.id) || matched.includes(card.id)) return;
-
     const newFlipped = [...flipped, card.id];
     setFlipped(newFlipped);
-
     if (newFlipped.length === 2) {
       const [first, second] = newFlipped;
       const card1 = cards.find((c) => c.id === first);
       const card2 = cards.find((c) => c.id === second);
-
       if (card1.src === card2.src) {
         setMatched((prev) => [...prev, first, second]);
-        correctSound?.play().catch(() => {});
       } else {
         setScore((s) => Math.max(0, s - 10));
-        wrongSound?.play().catch(() => {});
       }
-
       setTimeout(() => setFlipped([]), 800);
     }
   }
 
-  // ✅ התאמת גודל לפי רמת קושי
-  const difficultyScale = {
-    veryeasy: 1.3,
-    easy: 1.15,
-    medium: 1,
-    hard: 0.85,
-    expert: 0.75,
-  };
-
   const totalCards = cards.length;
   const columns = Math.ceil(Math.sqrt(totalCards));
 
-  let containerWidth = Math.min(windowWidth * 0.95, 1100);
-  if (windowWidth > 1600) containerWidth = 1300;
+  let containerWidth;
+  if (windowWidth < 500) {
+    containerWidth = windowWidth * 0.9;
+  } else if (windowWidth > 1600) {
+    containerWidth = 1300;
+  } else {
+    containerWidth = Math.min(windowWidth * 0.95, 1100);
+  }
 
-  const cardWidth = Math.max(
-    40,
-    Math.min(150, (containerWidth / columns - 6) * difficultyScale[difficulty])
-  );
-
-  const fontSize = `${Math.max(14 * difficultyScale[difficulty], 10)}px`;
+  const cardWidth =
+    windowWidth < 500
+      ? Math.max(40, containerWidth / columns - 4)
+      : Math.max(60, Math.min(150, containerWidth / columns - 6));
 
   return (
     <Layout>
@@ -170,7 +176,6 @@ export default function MleoMemory() {
           <div className="flex flex-col items-center justify-center w-full text-center p-4">
             <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-4" />
             <h1 className="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2">🧠 LIO Memory</h1>
-
             <input
               type="text"
               placeholder="Enter your name"
@@ -178,8 +183,6 @@ export default function MleoMemory() {
               onChange={(e) => setPlayerName(e.target.value)}
               className="mb-3 px-4 py-2 rounded text-black w-56 text-center text-sm sm:text-base"
             />
-
-            {/* כפתורי רמות */}
             <div className="flex flex-wrap justify-center gap-2 mb-3 max-w-sm">
               {Object.keys(difficultySettings).map((key) => (
                 <button
@@ -195,8 +198,6 @@ export default function MleoMemory() {
                 </button>
               ))}
             </div>
-
-            {/* כפתור START */}
             <button
               onClick={() => {
                 if (!playerName.trim()) return;
@@ -212,8 +213,6 @@ export default function MleoMemory() {
             >
               ▶ Start Game
             </button>
-
-            {/* טבלה */}
             <table className="border border-gray-500 text-sm mt-4 w-full max-w-md rounded-lg overflow-hidden">
               <thead>
                 <tr className="bg-gray-700 text-white">
@@ -239,7 +238,6 @@ export default function MleoMemory() {
 
         {!showIntro && (
           <>
-            {/* טיימר וניקוד */}
             <div className="flex justify-center items-center gap-3 mb-3">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
                 <div
@@ -253,15 +251,10 @@ export default function MleoMemory() {
                   style={{ width: `${(time / difficultySettings[difficulty].time) * 100}%` }}
                 ></div>
               </div>
-              <div className="bg-black/60 px-2 py-1 rounded-lg font-bold" style={{ fontSize }}>
-                ⏳ {time}s
-              </div>
-              <div className="bg-black/60 px-2 py-1 rounded-lg font-bold" style={{ fontSize }}>
-                ⭐ {score}
-              </div>
+              <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⏳ {time}s</div>
+              <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-            {/* Grid */}
             <div
               className="grid gap-2"
               style={{
@@ -269,6 +262,8 @@ export default function MleoMemory() {
                 justifyContent: "center",
                 width: "100%",
                 maxWidth: `${containerWidth}px`,
+                maxHeight: `${windowHeight * 0.7}px`,
+                overflowY: "auto",
               }}
             >
               {cards.map((card) => {
@@ -290,7 +285,15 @@ export default function MleoMemory() {
               })}
             </div>
 
-            {/* Exit */}
+            {/* ✅ כפתור מסך מלא */}
+            <button
+              onClick={toggleFullscreen}
+              className="fixed top-16 right-20 px-4 py-2 bg-blue-400 text-black font-bold rounded-md text-sm shadow-md transform transition duration-200 hover:scale-110"
+            >
+              ⛶ Fullscreen
+            </button>
+
+            {/* ✅ כפתור יציאה */}
             <button
               onClick={() => {
                 setGameRunning(false);
@@ -298,12 +301,11 @@ export default function MleoMemory() {
                 setShowIntro(true);
                 setTimerRunning(false);
               }}
-              className="fixed top-16 right-4 px-4 py-2 bg-yellow-400 text-black font-bold rounded-md shadow-md transform transition duration-200 hover:scale-110"
+              className="fixed top-16 right-4 px-4 py-2 bg-yellow-400 text-black font-bold rounded-md text-sm shadow-md transform transition duration-200 hover:scale-110"
             >
               Exit
             </button>
 
-            {/* מסך סיום */}
             {gameOver && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 z-[999]">
                 <h2 className="text-4xl sm:text-5xl font-bold mb-4 text-yellow-400">
