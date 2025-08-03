@@ -125,7 +125,7 @@ export default function MleoMemory() {
       if (card1.src === card2.src) setMatched((prev) => [...prev, first, second]);
       else setScore((s) => Math.max(0, s - 10));
 
-      setTimeout(() => setFlipped([]), 700);
+      setTimeout(() => setFlipped([]), 1200);
     }
   }
 
