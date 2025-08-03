@@ -3,7 +3,6 @@ import Layout from "../components/Layout";
 import Image from "next/image";
 
 export default function MleoMemory() {
-  // מניעת העתקה, תפריט קליק ימני ולחיצה ארוכה במובייל
   useEffect(() => {
     const preventMenu = (e) => e.preventDefault();
     const preventSelection = (e) => e.preventDefault();
@@ -19,9 +18,7 @@ export default function MleoMemory() {
       }, 500);
     };
 
-    const handleTouchEnd = () => {
-      clearTimeout(touchTimer);
-    };
+    const handleTouchEnd = () => clearTimeout(touchTimer);
 
     document.addEventListener("touchstart", handleTouchStart, { passive: false });
     document.addEventListener("touchend", handleTouchEnd);
@@ -65,13 +62,9 @@ export default function MleoMemory() {
     expert: { num: 28, score: 10000, time: 480, label: "💀 Expert", color: "bg-red-500", active: "bg-red-600" },
   };
 
-  // ✅ פונקציה חדשה שמתחילה משחק לפי רמה שנבחרה
   function initGameWithDifficulty(diffKey) {
     const { score, time, num } = difficultySettings[diffKey];
-
-    const cardImages = [...allImages]
-      .sort(() => Math.random() - 0.5)
-      .slice(0, num);
+    const cardImages = [...allImages].sort(() => Math.random() - 0.5).slice(0, num);
 
     const duplicated = [...cardImages, ...cardImages]
       .sort(() => Math.random() - 0.5)
@@ -87,6 +80,15 @@ export default function MleoMemory() {
     setTimerRunning(false);
     setStartedPlaying(false);
     setGameRunning(true);
+  }
+
+  function startGame(diffKey) {
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const wrapper = document.getElementById("game-wrapper");
+    if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
+    else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
+
+    initGameWithDifficulty(diffKey);
   }
 
   useEffect(() => {
@@ -128,15 +130,7 @@ export default function MleoMemory() {
   }
 
   const totalCards = cards.length;
-  let columns;
-  if (windowWidth < 600) {
-    columns = Math.min(6, totalCards);
-  } else if (windowWidth < 1024) {
-    columns = Math.min(10, totalCards);
-  } else {
-    columns = Math.min(10, totalCards);
-  }
-
+  let columns = windowWidth < 600 ? Math.min(6, totalCards) : Math.min(10, totalCards);
   const rows = Math.ceil(totalCards / columns);
   const containerWidth = windowWidth * 0.95;
   const containerHeight = windowHeight * 0.8;
@@ -159,6 +153,16 @@ export default function MleoMemory() {
       >
         {showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
+            
+            {/* ✅ כפתור Exit בפינה הימנית העליונה */}
+            <button
+              onClick={() => (window.location.href = "/game")}
+ className="fixed px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
+style={{ top: "70px", right: "40px" }}
+            >
+              Exit
+            </button>
+
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
             <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🧠 LIO Memory</h1>
 
@@ -178,7 +182,7 @@ export default function MleoMemory() {
                     if (!playerName.trim()) return;
                     setDifficulty(key);
                     setShowIntro(false);
-                    initGameWithDifficulty(key); // ✅ מתחיל לפי הרמה שנבחרה
+                    startGame(key);
                   }}
                   className={`text-black px-3 py-2 rounded font-bold text-sm shadow-md transition hover:scale-110 ${
                     difficulty === key
@@ -193,6 +197,7 @@ export default function MleoMemory() {
           </div>
         ) : (
           <>
+            {/* כפתור Exit במשחק נשאר כמו שהיה */}
             <button
               onClick={() => {
                 setGameRunning(false);
