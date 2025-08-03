@@ -206,33 +206,28 @@ const cardWidth = Math.max(
               className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
             />
 
-            <div className="flex flex-wrap justify-center gap-2 mb-3 max-w-sm">
-              {Object.keys(difficultySettings).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => setDifficulty(key)}
-                  className={`text-black px-3 py-2 rounded font-bold text-sm shadow-md transition hover:scale-110 ${
-                    difficulty === key ? `${difficultySettings[key].active} scale-110` : `${difficultySettings[key].color}`
-                  }`}
-                >
-                  {difficultySettings[key].label}
-                </button>
-              ))}
-            </div>
+ <div className="flex flex-wrap justify-center gap-2 mb-3 max-w-sm">
+  {Object.keys(difficultySettings).map((key) => (
+    <button
+      key={key}
+      onClick={() => {
+        if (!playerName.trim()) return; // אם לא הוזן שם, לא מתחיל
+        setDifficulty(key);
+        setShowIntro(false);
+        startGame(); // ⬅️ מתחיל את המשחק ישירות
+      }}
+      className={`text-black px-3 py-2 rounded font-bold text-sm shadow-md transition hover:scale-110 ${
+        difficulty === key
+          ? `${difficultySettings[key].active} scale-110`
+          : `${difficultySettings[key].color}`
+      }`}
+    >
+      {difficultySettings[key].label}
+    </button>
+  ))}
+</div>
 
-            <button
-              onClick={() => {
-                if (!playerName.trim()) return;
-                setShowIntro(false);
-                startGame();
-              }}
-              disabled={!playerName.trim()}
-              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${
-                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
-              }`}
-            >
-              ▶ Start Game
-            </button>
+
           </div>
         ) : (
           <>
@@ -248,7 +243,7 @@ const cardWidth = Math.max(
   style={{
     top:
       /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-        ? "-30px" // נייד
+        ? "-50px" // נייד
         : windowWidth < 1024
         ? "16px" // מסך קטן במחשב
         : "70px", // נייח עם מסך רחב – נמוך יותר
