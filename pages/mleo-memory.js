@@ -243,7 +243,7 @@ const cardWidth = Math.max(
   style={{
     top:
       /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-        ? "-50px" // נייד
+        ? "-10px" // נייד
         : windowWidth < 1024
         ? "16px" // מסך קטן במחשב
         : "70px", // נייח עם מסך רחב – נמוך יותר
