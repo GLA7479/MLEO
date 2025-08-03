@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
@@ -72,6 +71,15 @@ export default function MleoMemory() {
     setGameRunning(true);
   }
 
+  function startGame() {
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const wrapper = document.getElementById("game-wrapper");
+    if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
+    else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
+
+    initGame();
+  }
+
   useEffect(() => {
     let interval;
     if (timerRunning) {
@@ -116,97 +124,87 @@ export default function MleoMemory() {
       if (card1.src === card2.src) setMatched((prev) => [...prev, first, second]);
       else setScore((s) => Math.max(0, s - 10));
 
-      setTimeout(() => setFlipped([]), 800);
+      setTimeout(() => setFlipped([]), 700);
     }
   }
 
   const totalCards = cards.length;
   const columns = Math.ceil(Math.sqrt(totalCards));
   const rows = Math.ceil(totalCards / columns);
-  const containerWidth = Math.min(windowWidth * 0.95, 1100);
-  const containerHeight = windowHeight * 0.7;
+  const containerWidth = windowWidth * 0.95;
+  const containerHeight = windowHeight * 0.8;
   const cardWidth = Math.max(
     35,
     Math.min(
-      120,
-      Math.min(containerWidth / columns - 4, containerHeight / rows / 1.33 - 4)
+      windowWidth < 600 ? 80 : 120,
+      Math.min(containerWidth / columns - 6, containerHeight / rows / 1.4 - 6)
     )
   );
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-center bg-gray-900 text-white p-3 min-h-screen w-full relative">
-
-        {/* ✅ כפתורי Exit ו-Fullscreen */}
-
-
+      <div
+        id="game-wrapper"
+        className="flex flex-col items-center justify-center bg-gray-900 text-white min-h-screen w-full relative"
+      >
         {showIntro ? (
-          <div className="flex flex-col items-center justify-center w-full text-center p-4">
-            <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-4" />
-            <h1 className="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2">🧠 LIO Memory</h1>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
+            <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
+            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🧠 LIO Memory</h1>
+
             <input
               type="text"
               placeholder="Enter your name"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              className="mb-3 px-4 py-2 rounded text-black w-56 text-center text-sm sm:text-base"
+              className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
             />
+
             <div className="flex flex-wrap justify-center gap-2 mb-3 max-w-sm">
               {Object.keys(difficultySettings).map((key) => (
                 <button
                   key={key}
                   onClick={() => setDifficulty(key)}
-                  className={`text-black px-3 py-1.5 rounded font-bold text-xs sm:text-sm shadow-md transition hover:scale-110 ${
-                    difficulty === key
-                      ? `${difficultySettings[key].active} scale-110`
-                      : `${difficultySettings[key].color} scale-100`
+                  className={`text-black px-3 py-2 rounded font-bold text-sm shadow-md transition hover:scale-110 ${
+                    difficulty === key ? `${difficultySettings[key].active} scale-110` : `${difficultySettings[key].color}`
                   }`}
                 >
                   {difficultySettings[key].label}
                 </button>
               ))}
             </div>
+
             <button
               onClick={() => {
                 if (!playerName.trim()) return;
                 setShowIntro(false);
-                initGame();
+                startGame();
               }}
               disabled={!playerName.trim()}
-              className={`mb-3 px-6 py-3 font-bold rounded-lg text-base sm:text-lg shadow-lg transition hover:scale-110 ${
-                playerName.trim()
-                  ? "bg-yellow-400 text-black"
-                  : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${
+                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
               }`}
             >
               ▶ Start Game
             </button>
-
-            {/* ✅ טבלת רמות */}
-            <table className="border border-gray-500 text-sm mt-4 w-full max-w-md rounded-lg overflow-hidden">
-              <thead>
-                <tr className="bg-gray-700 text-white">
-                  <th className="px-3 py-2">Level</th>
-                  <th className="px-3 py-2">🃏 Cards</th>
-                  <th className="px-3 py-2">⏳ Time</th>
-                  <th className="px-3 py-2">⭐ Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(difficultySettings).map(([key, val]) => (
-                  <tr key={key} className={`${val.color} text-black`}>
-                    <td className="px-3 py-2 font-bold">{val.label}</td>
-                    <td className="px-3 py-2">{val.num * 2}</td>
-                    <td className="px-3 py-2">{val.time}</td>
-                    <td className="px-3 py-2">{val.score}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         ) : (
           <>
-            <div className="flex justify-center items-center gap-3 mb-3">
+            {/* ✅ כפתור EXIT קבוע */}
+            <button
+              onClick={() => {
+                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+                setGameRunning(false);
+                setGameOver(false);
+                setShowIntro(true);
+                setTimerRunning(false);
+              }}
+              className="fixed top-4 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
+            >
+              Exit
+            </button>
+
+            <div className="flex justify-center items-center gap-3 mb-3 mt-10">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
                 <div
                   className={`h-full ${
@@ -223,15 +221,13 @@ export default function MleoMemory() {
               <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-            {/* ✅ גריד הקלפים */}
             <div
-              className={`grid gap-3 sm:gap-4 ${gameOver ? "pointer-events-none opacity-50" : ""}`}
+              className={`grid gap-2 sm:gap-3 ${gameOver ? "pointer-events-none opacity-50" : ""}`}
               style={{
                 gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
                 justifyContent: "center",
                 maxWidth: `${containerWidth}px`,
                 maxHeight: `${containerHeight}px`,
-                overflowY: totalCards > rows * columns ? "auto" : "hidden",
               }}
             >
               {cards.map((card) => {
@@ -240,8 +236,8 @@ export default function MleoMemory() {
                   <div
                     key={card.id}
                     onClick={() => handleFlip(card)}
-                    className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-110"
-                    style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.33}px` }}
+                    className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-105"
+                    style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.4}px` }}
                   >
                     {isFlipped ? (
                       <img src={card.src} alt="card" className="w-[90%] h-[90%] object-cover rounded-md" />
@@ -253,11 +249,10 @@ export default function MleoMemory() {
               })}
             </div>
 
-            {/* ✅ מסך סיום */}
             {gameOver && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-[999]">
                 <div className="bg-gray-900 p-6 rounded-2xl shadow-lg text-center max-w-sm w-[90%]">
-                  <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-yellow-400">
+                  <h2 className="text-4xl font-bold mb-4 text-yellow-400">
                     {didWin ? "🎉 YOU WIN 🎉" : "💥 GAME OVER 💥"}
                   </h2>
                   <p className="text-lg mb-5">Final Score: {score}</p>
@@ -271,6 +266,7 @@ export default function MleoMemory() {
                     <button
                       className="px-5 py-3 bg-gray-400 text-black font-bold rounded-lg text-base hover:scale-105 transition"
                       onClick={() => {
+                        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
                         setGameRunning(false);
                         setGameOver(false);
                         setShowIntro(true);
