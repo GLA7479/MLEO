@@ -12,7 +12,6 @@ export default function MleoMemory() {
     document.addEventListener("selectstart", preventSelection);
     document.addEventListener("copy", preventSelection);
 
-    // ✅ חסימת לחיצה ארוכה במובייל
     let touchTimer;
     const handleTouchStart = (e) => {
       touchTimer = setTimeout(() => {
@@ -66,28 +65,14 @@ export default function MleoMemory() {
     expert: { num: 28, score: 10000, time: 480, label: "💀 Expert", color: "bg-red-500", active: "bg-red-600" },
   };
 
-  useEffect(() => {
-    const updateSize = () => {
-      setWindowWidth(window.innerWidth);
-      setWindowHeight(window.innerHeight);
-    };
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    window.addEventListener("orientationchange", updateSize);
-    return () => {
-      window.removeEventListener("resize", updateSize);
-      window.removeEventListener("orientationchange", updateSize);
-    };
-  }, []);
+  // ✅ פונקציה חדשה שמתחילה משחק לפי רמה שנבחרה
+  function initGameWithDifficulty(diffKey) {
+    const { score, time, num } = difficultySettings[diffKey];
 
-  function getImagesByDifficulty() {
-    const num = difficultySettings[difficulty].num;
-    return [...allImages].sort(() => Math.random() - 0.5).slice(0, num);
-  }
+    const cardImages = [...allImages]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, num);
 
-  function initGame() {
-    const { score, time } = difficultySettings[difficulty];
-    const cardImages = getImagesByDifficulty();
     const duplicated = [...cardImages, ...cardImages]
       .sort(() => Math.random() - 0.5)
       .map((src, i) => ({ id: i, src }));
@@ -104,38 +89,19 @@ export default function MleoMemory() {
     setGameRunning(true);
   }
 
-  function startGame() {
-    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const wrapper = document.getElementById("game-wrapper");
-    if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
-    else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
-
-    initGame();
-  }
-
   useEffect(() => {
-    let interval;
-    if (timerRunning) {
-      interval = setInterval(() => {
-        setTime((t) => Math.max(0, t - 1));
-        setScore((s) => Math.max(0, s - 5));
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [timerRunning]);
-
-  useEffect(() => {
-    const allMatched = matched.length > 0 && matched.length === cards.length;
-    if ((score <= 0 || time <= 0 || allMatched) && gameRunning && !gameOver) {
-      setGameOver(true);
-      setGameRunning(false);
-      setTimerRunning(false);
-      setDidWin(allMatched);
-
-      if (allMatched) winSound?.play().catch(() => {});
-      else loseSound?.play().catch(() => {});
-    }
-  }, [score, time, matched, cards, gameRunning, gameOver]);
+    const updateSize = () => {
+      setWindowWidth(window.innerWidth);
+      setWindowHeight(window.innerHeight);
+    };
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    window.addEventListener("orientationchange", updateSize);
+    return () => {
+      window.removeEventListener("resize", updateSize);
+      window.removeEventListener("orientationchange", updateSize);
+    };
+  }, []);
 
   function handleFlip(card) {
     if (gameOver || !gameRunning) return;
@@ -163,29 +129,27 @@ export default function MleoMemory() {
 
   const totalCards = cards.length;
   let columns;
-if (windowWidth < 600) {
-  columns = Math.min(6, totalCards);
-} else if (windowWidth < 1024) {
-  columns = Math.min(10, totalCards);
-} else {
-  columns = Math.min(10, totalCards);
-}
+  if (windowWidth < 600) {
+    columns = Math.min(6, totalCards);
+  } else if (windowWidth < 1024) {
+    columns = Math.min(10, totalCards);
+  } else {
+    columns = Math.min(10, totalCards);
+  }
 
   const rows = Math.ceil(totalCards / columns);
   const containerWidth = windowWidth * 0.95;
   const containerHeight = windowHeight * 0.8;
 
-const cardWidth = Math.max(
-  35,
-  Math.min(
-    windowWidth < 600 ? 80 : 120,
-    Math.min(containerWidth / columns - 6, containerHeight / rows / 1.4 - 6)
-  )
-);
+  const cardWidth = Math.max(
+    35,
+    Math.min(
+      windowWidth < 600 ? 80 : 120,
+      Math.min(containerWidth / columns - 6, containerHeight / rows / 1.4 - 6)
+    )
+  );
 
-  // ✅ הוספת חישוב פער דינמי בין הקלפים
-  const gapSize =
-    windowWidth < 600 ? 4 : windowWidth < 1024 ? 6 : 10;
+  const gapSize = windowWidth < 600 ? 4 : windowWidth < 1024 ? 6 : 10;
 
   return (
     <Layout>
@@ -206,57 +170,51 @@ const cardWidth = Math.max(
               className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
             />
 
- <div className="flex flex-wrap justify-center gap-2 mb-3 max-w-sm">
-  {Object.keys(difficultySettings).map((key) => (
-    <button
-      key={key}
-      onClick={() => {
-        if (!playerName.trim()) return; // אם לא הוזן שם, לא מתחיל
-        setDifficulty(key);
-        setShowIntro(false);
-        startGame(); // ⬅️ מתחיל את המשחק ישירות
-      }}
-      className={`text-black px-3 py-2 rounded font-bold text-sm shadow-md transition hover:scale-110 ${
-        difficulty === key
-          ? `${difficultySettings[key].active} scale-110`
-          : `${difficultySettings[key].color}`
-      }`}
-    >
-      {difficultySettings[key].label}
-    </button>
-  ))}
-</div>
-
-
+            <div className="flex flex-wrap justify-center gap-2 mb-3 max-w-sm">
+              {Object.keys(difficultySettings).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (!playerName.trim()) return;
+                    setDifficulty(key);
+                    setShowIntro(false);
+                    initGameWithDifficulty(key); // ✅ מתחיל לפי הרמה שנבחרה
+                  }}
+                  className={`text-black px-3 py-2 rounded font-bold text-sm shadow-md transition hover:scale-110 ${
+                    difficulty === key
+                      ? `${difficultySettings[key].active} scale-110`
+                      : `${difficultySettings[key].color}`
+                  }`}
+                >
+                  {difficultySettings[key].label}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <>
-<button
-  onClick={() => {
-    setGameRunning(false);
-    setGameOver(false);
-    setShowIntro(true);
-    setTimerRunning(false);
-  }}
-  className="fixed right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
-  style={{
-    top:
-      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-        ? "auto" // ביטול top בנייד
-        : windowWidth < 1024
-        ? "16px" // מסך קטן במחשב
-        : "70px", // נייח עם מסך רחב – נמוך יותר
-    bottom: /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-      ? "30px" // הכפתור ירד למטה בנייד
-      : "auto", // במחשב לא משתנה
-  }}
->
-  Exit
-</button>
-
-
-
-
+            <button
+              onClick={() => {
+                setGameRunning(false);
+                setGameOver(false);
+                setShowIntro(true);
+                setTimerRunning(false);
+              }}
+              className="fixed right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
+              style={{
+                top:
+                  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+                    ? "auto"
+                    : windowWidth < 1024
+                    ? "16px"
+                    : "70px",
+                bottom: /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+                  ? "30px"
+                  : "auto",
+              }}
+            >
+              Exit
+            </button>
 
             <div className="flex justify-center items-center gap-3 mb-3 mt-0">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
@@ -275,8 +233,7 @@ const cardWidth = Math.max(
               <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-          <div className="flex-1 flex items-center justify-center" style={{ marginTop: "-100px" }}>
-
+            <div className="flex-1 flex items-center justify-center" style={{ marginTop: "-100px" }}>
               <div
                 className={`${gameOver ? "pointer-events-none opacity-50" : ""}`}
                 style={{
@@ -318,7 +275,7 @@ const cardWidth = Math.max(
                   <div className="flex justify-center gap-4">
                     <button
                       className="px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base hover:scale-105 transition"
-                      onClick={() => initGame()}
+                      onClick={() => initGameWithDifficulty(difficulty)}
                     >
                       ▶ Play Again
                     </button>
