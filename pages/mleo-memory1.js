@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
@@ -21,8 +20,7 @@ export default function MleoMemory() {
   const [didWin, setDidWin] = useState(false);
 
   const flipSound = typeof Audio !== "undefined" ? new Audio("/sounds/flap.mp3") : null;
-  const winSound = typeof Audio !== "undefined" ? new Audio("/sounds/win.mp3") : null;
-  const loseSound = typeof Audio !== "undefined" ? new Audio("/sounds/lose.mp3") : null;
+  const gameOverSound = typeof Audio !== "undefined" ? new Audio("/sounds/gameover.mp3") : null;
 
   const allImages = Array.from({ length: 30 }, (_, i) => `/images/shiba${i + 1}.png`);
 
@@ -34,6 +32,7 @@ export default function MleoMemory() {
     expert: { num: 28, score: 10000, time: 480, label: "💀 Expert", color: "bg-red-500", active: "bg-red-600" },
   };
 
+  // ✅ עדכון גודל מסך בזמן אמת
   useEffect(() => {
     const updateSize = () => {
       setWindowWidth(window.innerWidth);
@@ -47,6 +46,37 @@ export default function MleoMemory() {
       window.removeEventListener("orientationchange", updateSize);
     };
   }, []);
+
+  // ✅ אוטומטי למסך מלא כשהופכים ל־Landscape
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      if (window.screen.orientation?.type?.startsWith("landscape")) {
+        enterFullscreen();
+      } else {
+        exitFullscreen();
+      }
+    };
+    window.addEventListener("orientationchange", handleOrientationChange);
+    return () => window.removeEventListener("orientationchange", handleOrientationChange);
+  }, []);
+
+  function enterFullscreen() {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) elem.requestFullscreen();
+    else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+    else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+  }
+
+  function exitFullscreen() {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    else if (document.msExitFullscreen) document.msExitFullscreen();
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) enterFullscreen();
+    else exitFullscreen();
+  }
 
   function getImagesByDifficulty() {
     const num = difficultySettings[difficulty].num;
@@ -90,57 +120,59 @@ export default function MleoMemory() {
       setGameRunning(false);
       setTimerRunning(false);
       setDidWin(allMatched);
-
-      if (allMatched) winSound?.play().catch(() => {});
-      else loseSound?.play().catch(() => {});
+      if (gameOverSound) {
+        gameOverSound.currentTime = 0;
+        gameOverSound.play().catch(() => {});
+      }
     }
   }, [score, time, matched, cards, gameRunning, gameOver]);
 
   function handleFlip(card) {
-    if (gameOver || !gameRunning) return;
+    flipSound?.play().catch(() => {});
     if (!startedPlaying) {
       setStartedPlaying(true);
       setTimerRunning(true);
     }
     if (flipped.length === 2 || flipped.includes(card.id) || matched.includes(card.id)) return;
-
-    flipSound?.play().catch(() => {});
     const newFlipped = [...flipped, card.id];
     setFlipped(newFlipped);
-
     if (newFlipped.length === 2) {
       const [first, second] = newFlipped;
       const card1 = cards.find((c) => c.id === first);
       const card2 = cards.find((c) => c.id === second);
-
-      if (card1.src === card2.src) setMatched((prev) => [...prev, first, second]);
-      else setScore((s) => Math.max(0, s - 10));
-
+      if (card1.src === card2.src) {
+        setMatched((prev) => [...prev, first, second]);
+      } else {
+        setScore((s) => Math.max(0, s - 10));
+      }
       setTimeout(() => setFlipped([]), 800);
     }
   }
 
   const totalCards = cards.length;
   const columns = Math.ceil(Math.sqrt(totalCards));
-  const rows = Math.ceil(totalCards / columns);
-  const containerWidth = Math.min(windowWidth * 0.95, 1100);
-  const containerHeight = windowHeight * 0.7;
-  const cardWidth = Math.max(
-    35,
-    Math.min(
-      120,
-      Math.min(containerWidth / columns - 4, containerHeight / rows / 1.33 - 4)
-    )
-  );
+
+  let containerWidth;
+  if (windowWidth < 500) {
+    containerWidth = windowWidth * 0.9;
+  } else if (windowWidth > 1600) {
+    containerWidth = 1300;
+  } else {
+    containerWidth = Math.min(windowWidth * 0.95, 1100);
+  }
+
+  const cardWidth =
+    windowWidth < 500
+      ? Math.max(40, containerWidth / columns - 4)
+      : Math.max(60, Math.min(150, containerWidth / columns - 6));
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-center bg-gray-900 text-white p-3 min-h-screen w-full relative">
-
-        {/* ✅ כפתורי Exit ו-Fullscreen */}
-
-
-        {showIntro ? (
+      <div
+        className="flex flex-col items-center justify-center bg-gray-900 text-white p-3"
+        style={{ minHeight: `${windowHeight}px`, width: "100%" }}
+      >
+        {showIntro && (
           <div className="flex flex-col items-center justify-center w-full text-center p-4">
             <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-4" />
             <h1 className="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2">🧠 LIO Memory</h1>
@@ -156,7 +188,7 @@ export default function MleoMemory() {
                 <button
                   key={key}
                   onClick={() => setDifficulty(key)}
-                  className={`text-black px-3 py-1.5 rounded font-bold text-xs sm:text-sm shadow-md transition hover:scale-110 ${
+                  className={`text-black px-3 py-1.5 rounded font-bold text-xs sm:text-sm shadow-md transform transition-all duration-200 hover:scale-110 ${
                     difficulty === key
                       ? `${difficultySettings[key].active} scale-110`
                       : `${difficultySettings[key].color} scale-100`
@@ -173,7 +205,7 @@ export default function MleoMemory() {
                 initGame();
               }}
               disabled={!playerName.trim()}
-              className={`mb-3 px-6 py-3 font-bold rounded-lg text-base sm:text-lg shadow-lg transition hover:scale-110 ${
+              className={`mb-3 px-6 py-3 font-bold rounded-lg text-base sm:text-lg shadow-lg transform transition duration-200 hover:scale-110 ${
                 playerName.trim()
                   ? "bg-yellow-400 text-black"
                   : "bg-gray-500 text-gray-300 cursor-not-allowed"
@@ -181,15 +213,13 @@ export default function MleoMemory() {
             >
               ▶ Start Game
             </button>
-
-            {/* ✅ טבלת רמות */}
             <table className="border border-gray-500 text-sm mt-4 w-full max-w-md rounded-lg overflow-hidden">
               <thead>
                 <tr className="bg-gray-700 text-white">
                   <th className="px-3 py-2">Level</th>
                   <th className="px-3 py-2">🃏 Cards</th>
-                  <th className="px-3 py-2">⏳ Time</th>
-                  <th className="px-3 py-2">⭐ Score</th>
+                  <th className="px-3 py-2">⏳ Time (s)</th>
+                  <th className="px-3 py-2">⭐ Start Score</th>
                 </tr>
               </thead>
               <tbody>
@@ -204,7 +234,9 @@ export default function MleoMemory() {
               </tbody>
             </table>
           </div>
-        ) : (
+        )}
+
+        {!showIntro && (
           <>
             <div className="flex justify-center items-center gap-3 mb-3">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
@@ -223,15 +255,15 @@ export default function MleoMemory() {
               <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-            {/* ✅ גריד הקלפים */}
             <div
-              className={`grid gap-3 sm:gap-4 ${gameOver ? "pointer-events-none opacity-50" : ""}`}
+              className="grid gap-2"
               style={{
                 gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
                 justifyContent: "center",
+                width: "100%",
                 maxWidth: `${containerWidth}px`,
-                maxHeight: `${containerHeight}px`,
-                overflowY: totalCards > rows * columns ? "auto" : "hidden",
+                maxHeight: `${windowHeight * 0.7}px`,
+                overflowY: "auto",
               }}
             >
               {cards.map((card) => {
@@ -240,7 +272,7 @@ export default function MleoMemory() {
                   <div
                     key={card.id}
                     onClick={() => handleFlip(card)}
-                    className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-110"
+                    className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transform transition duration-150 hover:scale-110"
                     style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.33}px` }}
                   >
                     {isFlipped ? (
@@ -253,34 +285,50 @@ export default function MleoMemory() {
               })}
             </div>
 
-            {/* ✅ מסך סיום */}
+            {/* ✅ כפתור מסך מלא */}
+            <button
+              onClick={toggleFullscreen}
+              className="fixed top-16 right-20 px-4 py-2 bg-blue-400 text-black font-bold rounded-md text-sm shadow-md transform transition duration-200 hover:scale-110"
+            >
+              ⛶ Fullscreen
+            </button>
+
+            {/* ✅ כפתור יציאה */}
+            <button
+              onClick={() => {
+                setGameRunning(false);
+                setGameOver(false);
+                setShowIntro(true);
+                setTimerRunning(false);
+              }}
+              className="fixed top-16 right-4 px-4 py-2 bg-yellow-400 text-black font-bold rounded-md text-sm shadow-md transform transition duration-200 hover:scale-110"
+            >
+              Exit
+            </button>
+
             {gameOver && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-[999]">
-                <div className="bg-gray-900 p-6 rounded-2xl shadow-lg text-center max-w-sm w-[90%]">
-                  <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-yellow-400">
-                    {didWin ? "🎉 YOU WIN 🎉" : "💥 GAME OVER 💥"}
-                  </h2>
-                  <p className="text-lg mb-5">Final Score: {score}</p>
-                  <div className="flex justify-center gap-4">
-                    <button
-                      className="px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base hover:scale-105 transition"
-                      onClick={() => initGame()}
-                    >
-                      ▶ Play Again
-                    </button>
-                    <button
-                      className="px-5 py-3 bg-gray-400 text-black font-bold rounded-lg text-base hover:scale-105 transition"
-                      onClick={() => {
-                        setGameRunning(false);
-                        setGameOver(false);
-                        setShowIntro(true);
-                        setTimerRunning(false);
-                      }}
-                    >
-                      ⬅ Exit
-                    </button>
-                  </div>
-                </div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 z-[999]">
+                <h2 className="text-4xl sm:text-5xl font-bold mb-4 text-yellow-400">
+                  {didWin ? "🎉 YOU WIN 🎉" : "💥 GAME OVER 💥"}
+                </h2>
+                <p className="text-xl mb-4">Final Score: {score}</p>
+                <button
+                  className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg mb-3"
+                  onClick={() => initGame()}
+                >
+                  Play Again
+                </button>
+                <button
+                  className="px-6 py-3 bg-gray-400 text-black font-bold rounded text-base sm:text-lg"
+                  onClick={() => {
+                    setGameRunning(false);
+                    setGameOver(false);
+                    setShowIntro(true);
+                    setTimerRunning(false);
+                  }}
+                >
+                  Exit
+                </button>
               </div>
             )}
           </>
