@@ -52,7 +52,7 @@ export default function MleoMemory() {
   const winSound = typeof Audio !== "undefined" ? new Audio("/sounds/win.mp3") : null;
   const loseSound = typeof Audio !== "undefined" ? new Audio("/sounds/game-over.mp3") : null;
 
-  const allImages = Array.from({ length: 30 }, (_, i) => `/images/shiba${i + 1}.png`);
+  const allImages = Array.from({ length: 50 }, (_, i) => `/images/card/shiba${i + 1}.png`);
 
   const difficultySettings = {
     veryeasy: { num: 3, score: 500, time: 60, label: "🐣 Very Easy", color: "bg-blue-400", active: "bg-blue-500" },
@@ -158,7 +158,7 @@ export default function MleoMemory() {
             <button
               onClick={() => (window.location.href = "/game")}
  className="fixed px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
-style={{ top: "70px", right: "40px" }}
+style={{ top: "70px", right: "10px" }}
             >
               Exit
             </button>
@@ -238,7 +238,7 @@ style={{ top: "70px", right: "40px" }}
               <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-            <div className="flex-1 flex items-center justify-center" style={{ marginTop: "-100px" }}>
+            <div className="flex-1 flex items-center justify-center" style={{ marginTop: "-60px" }}>
               <div
                 className={`${gameOver ? "pointer-events-none opacity-50" : ""}`}
                 style={{
