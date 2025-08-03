@@ -2,41 +2,39 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
 
-
 export default function MleoMemory() {
-// מניעת העתקה, תפריט קליק ימני ולחיצה ארוכה במובייל
-useEffect(() => {
-  const preventMenu = (e) => e.preventDefault();
-  const preventSelection = (e) => e.preventDefault();
+  // מניעת העתקה, תפריט קליק ימני ולחיצה ארוכה במובייל
+  useEffect(() => {
+    const preventMenu = (e) => e.preventDefault();
+    const preventSelection = (e) => e.preventDefault();
 
-  document.addEventListener("contextmenu", preventMenu);
-  document.addEventListener("selectstart", preventSelection);
-  document.addEventListener("copy", preventSelection);
+    document.addEventListener("contextmenu", preventMenu);
+    document.addEventListener("selectstart", preventSelection);
+    document.addEventListener("copy", preventSelection);
 
-  // ✅ חסימת לחיצה ארוכה במובייל
-  let touchTimer;
-  const handleTouchStart = (e) => {
-    touchTimer = setTimeout(() => {
-      e.preventDefault();
-    }, 500); // 500ms = לחיצה ארוכה
-  };
+    // ✅ חסימת לחיצה ארוכה במובייל
+    let touchTimer;
+    const handleTouchStart = (e) => {
+      touchTimer = setTimeout(() => {
+        e.preventDefault();
+      }, 500);
+    };
 
-  const handleTouchEnd = () => {
-    clearTimeout(touchTimer);
-  };
+    const handleTouchEnd = () => {
+      clearTimeout(touchTimer);
+    };
 
-  document.addEventListener("touchstart", handleTouchStart, { passive: false });
-  document.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("touchstart", handleTouchStart, { passive: false });
+    document.addEventListener("touchend", handleTouchEnd);
 
-  return () => {
-    document.removeEventListener("contextmenu", preventMenu);
-    document.removeEventListener("selectstart", preventSelection);
-    document.removeEventListener("copy", preventSelection);
-    document.removeEventListener("touchstart", handleTouchStart);
-    document.removeEventListener("touchend", handleTouchEnd);
-  };
-}, []);
-
+    return () => {
+      document.removeEventListener("contextmenu", preventMenu);
+      document.removeEventListener("selectstart", preventSelection);
+      document.removeEventListener("copy", preventSelection);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, []);
 
   const [gameRunning, setGameRunning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
@@ -164,26 +162,37 @@ useEffect(() => {
   }
 
   const totalCards = cards.length;
-  const columns = Math.ceil(Math.sqrt(totalCards));
+  let columns;
+if (windowWidth < 600) {
+  columns = Math.min(4, totalCards);
+} else if (windowWidth < 1024) {
+  columns = Math.min(6, totalCards);
+} else {
+  columns = Math.min(8, totalCards);
+}
+
   const rows = Math.ceil(totalCards / columns);
   const containerWidth = windowWidth * 0.95;
   const containerHeight = windowHeight * 0.8;
-  const cardWidth = Math.max(
-    35,
-    Math.min(
-      windowWidth < 600 ? 80 : 120,
-      Math.min(containerWidth / columns - 6, containerHeight / rows / 1.4 - 6)
-    )
-  );
+
+const cardWidth = Math.max(
+  35,
+  Math.min(
+    windowWidth < 600 ? 80 : 120,
+    Math.min(containerWidth / columns - 6, containerHeight / rows / 1.4 - 6)
+  )
+);
+
+  // ✅ הוספת חישוב פער דינמי בין הקלפים
+  const gapSize =
+    windowWidth < 600 ? 4 : windowWidth < 1024 ? 6 : 10;
 
   return (
     <Layout>
-<div
-  id="game-wrapper"
-  className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative pt-0"
->
-
-
+      <div
+        id="game-wrapper"
+        className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative pt-0"
+      >
         {showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -227,7 +236,6 @@ useEffect(() => {
           </div>
         ) : (
           <>
-            {/* ✅ כפתור EXIT קבוע */}
             <button
               onClick={() => {
                 if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -258,36 +266,38 @@ useEffect(() => {
               <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-<div className="flex-1 flex items-center justify-center">
-  <div
-    className={`grid gap-2 sm:gap-3 ${gameOver ? "pointer-events-none opacity-50" : ""}`}
-    style={{
-      gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
-      justifyContent: "center",
-      maxWidth: `${containerWidth}px`,
-      maxHeight: `${containerHeight}px`,
-    }}
-  >
-    {cards.map((card) => {
-      const isFlipped = flipped.includes(card.id) || matched.includes(card.id);
-      return (
-        <div
-          key={card.id}
-          onClick={() => handleFlip(card)}
-          className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-105"
-          style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.4}px` }}
-        >
-          {isFlipped ? (
-            <img src={card.src} alt="card" className="w-[90%] h-[90%] object-cover rounded-md" />
-          ) : (
-            <div className="w-[90%] h-[90%] bg-gray-300 rounded-md"></div>
-          )}
-        </div>
-      );
-    })}
-  </div>
-</div> {/* ✅ סגירה נוספת למרכז את הגריד */}
+          <div className="flex-1 flex items-center justify-center" style={{ marginTop: "-100px" }}>
 
+              <div
+                className={`${gameOver ? "pointer-events-none opacity-50" : ""}`}
+                style={{
+                  display: "grid",
+                  gap: `${gapSize}px`,
+                  gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
+                  justifyContent: "center",
+                  maxWidth: `${containerWidth}px`,
+                  maxHeight: `${containerHeight}px`,
+                }}
+              >
+                {cards.map((card) => {
+                  const isFlipped = flipped.includes(card.id) || matched.includes(card.id);
+                  return (
+                    <div
+                      key={card.id}
+                      onClick={() => handleFlip(card)}
+                      className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-105"
+                      style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.4}px` }}
+                    >
+                      {isFlipped ? (
+                        <img src={card.src} alt="card" className="w-[90%] h-[90%] object-cover rounded-md" />
+                      ) : (
+                        <div className="w-[90%] h-[90%] bg-gray-300 rounded-md"></div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             {gameOver && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-[999]">
