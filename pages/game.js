@@ -40,31 +40,38 @@ export default function Games() {
       available: true,
     },
     {
-      title: "Coming Soon 1",
+      title: "Coming Soon",
       description: "🚀 A new exciting Lio game is on the way!",
       link: "#",
       icon: "🚀",
       available: false,
     },
     {
-      title: "Coming Soon 2",
+      title: "Coming Soon",
       description: "🔥 Another fun adventure with Lio is coming soon!",
       link: "#",
       icon: "🔥",
       available: false,
     },
     {
-      title: "Coming Soon 3",
+      title: "Coming Soon",
       description: "🎮 Get ready for a brand new challenge with Lio!",
       link: "#",
       icon: "🎮",
       available: false,
     },
     {
-      title: "Coming Soon 4",
+      title: "Coming Soon",
       description: "⭐ More fun Lio games are coming soon!",
       link: "#",
       icon: "⭐",
+      available: false,
+    },
+    {
+      title: "Coming Soon",
+      description: "🎲 A surprise Lio game is coming soon!",
+      link: "#",
+      icon: "🎲",
       available: false,
     },
   ];
@@ -113,16 +120,25 @@ export default function Games() {
           Play and enjoy our exclusive Lio-themed games! Collect points, fly high, and have fun with the real Shiba Inu hero.
         </motion.p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl w-full">
+        <div
+          className="grid gap-4 w-full px-2"
+          style={{
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            maxWidth: "1000px",
+          }}
+        >
           {games.map((game, i) => (
             <motion.div
               key={i}
-              className="bg-gradient-to-br from-gray-900/80 to-gray-800/70 p-3 rounded-lg shadow-md border border-yellow-400/40 text-center hover:scale-105 transition w-full max-w-[220px] mx-auto"
+              className="bg-gradient-to-br from-gray-900/80 to-gray-800/70 p-3 rounded-lg shadow-md border border-yellow-400/40 text-center hover:scale-105 transition flex flex-col justify-between"
               initial={{ opacity: 0, y: 40 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6, delay: i * 0.1 }}
               whileHover={{ scale: 1.05 }}
+              style={{
+                minHeight: "160px",
+              }}
             >
               <div className="text-3xl mb-1">{game.icon}</div>
               <h2 className="text-lg font-bold text-yellow-400 mb-1">{game.title}</h2>
