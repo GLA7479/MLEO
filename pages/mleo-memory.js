@@ -2,7 +2,42 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
 
+
 export default function MleoMemory() {
+// מניעת העתקה, תפריט קליק ימני ולחיצה ארוכה במובייל
+useEffect(() => {
+  const preventMenu = (e) => e.preventDefault();
+  const preventSelection = (e) => e.preventDefault();
+
+  document.addEventListener("contextmenu", preventMenu);
+  document.addEventListener("selectstart", preventSelection);
+  document.addEventListener("copy", preventSelection);
+
+  // ✅ חסימת לחיצה ארוכה במובייל
+  let touchTimer;
+  const handleTouchStart = (e) => {
+    touchTimer = setTimeout(() => {
+      e.preventDefault();
+    }, 500); // 500ms = לחיצה ארוכה
+  };
+
+  const handleTouchEnd = () => {
+    clearTimeout(touchTimer);
+  };
+
+  document.addEventListener("touchstart", handleTouchStart, { passive: false });
+  document.addEventListener("touchend", handleTouchEnd);
+
+  return () => {
+    document.removeEventListener("contextmenu", preventMenu);
+    document.removeEventListener("selectstart", preventSelection);
+    document.removeEventListener("copy", preventSelection);
+    document.removeEventListener("touchstart", handleTouchStart);
+    document.removeEventListener("touchend", handleTouchEnd);
+  };
+}, []);
+
+
   const [gameRunning, setGameRunning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
