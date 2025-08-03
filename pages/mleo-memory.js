@@ -16,6 +16,15 @@ export default function MleoMemory() {
   const [difficulty, setDifficulty] = useState("medium");
   const [windowWidth, setWindowWidth] = useState(1200);
 
+  const [time, setTime] = useState(0);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timeUp, setTimeUp] = useState(false);
+
+  const [lastMinute, setLastMinute] = useState(null);
+  const [flash, setFlash] = useState(false);
+
+  const pingSound = typeof Audio !== "undefined" ? new Audio("/sounds/ping.mp3") : null;
+
   const allImages = [
     "/images/shiba1.png", "/images/shiba2.png", "/images/shiba3.png",
     "/images/shiba4.png", "/images/shiba5.png", "/images/shiba6.png",
@@ -28,6 +37,71 @@ export default function MleoMemory() {
     "/images/shiba25.png", "/images/shiba26.png", "/images/shiba27.png",
     "/images/shiba28.png"
   ];
+
+  function getMaxTime() {
+    if (difficulty === "easy") return 180;
+    if (difficulty === "medium") return 240;
+    return 300;
+  }
+
+  // ✅ טיימר רץ אחורה
+  useEffect(() => {
+    let interval;
+    if (timerRunning) {
+      interval = setInterval(() => {
+        setTime((t) => {
+          if (t <= 1) {
+            clearInterval(interval);
+            setTimerRunning(false);
+            setGameRunning(false);
+            setGameOver(true);
+            setTimeUp(true);
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timerRunning]);
+
+  // ✅ צליל כל דקה
+  useEffect(() => {
+    if (!timerRunning) return;
+    const minutesPassed = Math.floor((getMaxTime() - time) / 60);
+    if (minutesPassed !== lastMinute) {
+      setLastMinute(minutesPassed);
+      setFlash(true);
+      if (pingSound) {
+        pingSound.currentTime = 0;
+        pingSound.play().catch(() => {});
+      }
+      setTimeout(() => setFlash(false), 400);
+    }
+  }, [time]);
+
+  // ✅ מסך מלא אוטומטי בסיבוב לנייד
+  useEffect(() => {
+    function handleOrientation() {
+      if (window.innerWidth > window.innerHeight && gameRunning) {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      } else {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    }
+    window.addEventListener("resize", handleOrientation);
+    return () => window.removeEventListener("resize", handleOrientation);
+  }, [gameRunning]);
+
+  const progress = (time / getMaxTime()) * 100;
+  const barColor =
+    progress > 60 ? "bg-green-500" :
+    progress > 30 ? "bg-yellow-400" :
+    "bg-red-500";
 
   useEffect(() => {
     function updateWidth() {
@@ -59,9 +133,9 @@ export default function MleoMemory() {
   };
 
   function getImagesByDifficulty() {
-    if (difficulty === "easy") return allImages.slice(0, 6);   // 6 זוגות
-    if (difficulty === "medium") return allImages.slice(0, 12); // 12 זוגות
-    return allImages.slice(0, 28); // 28 זוגות
+    if (difficulty === "easy") return allImages.slice(0, 6);
+    if (difficulty === "medium") return allImages.slice(0, 12);
+    return allImages.slice(0, 28);
   }
 
   function initGame() {
@@ -74,7 +148,11 @@ export default function MleoMemory() {
     setFlipped([]);
     setMatched([]);
     setScore(0);
+    setTime(getMaxTime());
     setGameOver(false);
+    setTimeUp(false);
+    setTimerRunning(true);
+    setLastMinute(null);
   }
 
   function handleFlip(card) {
@@ -90,7 +168,6 @@ export default function MleoMemory() {
 
       if (card1.src === card2.src) {
         setMatched((prev) => [...prev, first, second]);
-        setScore((s) => s + 10);
       }
 
       setTimeout(() => setFlipped([]), 800);
@@ -98,27 +175,27 @@ export default function MleoMemory() {
   }
 
   useEffect(() => {
-    if (matched.length === cards.length && cards.length > 0) {
+    if (matched.length === cards.length && cards.length > 0 && !timeUp) {
       setGameOver(true);
       setGameRunning(false);
-      updateLeaderboard(playerName, score);
+      setTimerRunning(false);
+
+      const multiplier = difficulty === "easy" ? 1 : difficulty === "medium" ? 1.5 : 2;
+      const finalScore = Math.max(0, Math.round((1000 - (getMaxTime() - time) * 10) * multiplier));
+
+      setScore(finalScore);
+      updateLeaderboard(playerName, finalScore);
     }
   }, [matched]);
 
-  // ✅ חישוב דינמי של מספר העמודות
   const totalCards = cards.length;
   const columns = Math.ceil(Math.sqrt(totalCards));
-
-  // ✅ חישוב רוחב הקלף – לא קטן מדי ולא גדול מדי
   const containerWidth = Math.min(windowWidth * 0.9, 1000);
-  const cardWidth = Math.max(
-    60, // מינימום 60px
-    Math.min(120, containerWidth / columns - 8) // מקסימום 120px
-  );
+  const cardWidth = Math.max(60, Math.min(120, containerWidth / columns - 8));
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative p-4">
+      <div className={`flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative p-4 ${flash ? "animate-pulse" : ""}`}>
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -134,24 +211,9 @@ export default function MleoMemory() {
             />
 
             <div className="flex gap-3 mb-4">
-              <button
-                onClick={() => setDifficulty("easy")}
-                className={`px-4 py-2 rounded font-bold ${difficulty === "easy" ? "bg-green-400 text-black" : "bg-gray-500"}`}
-              >
-                קל
-              </button>
-              <button
-                onClick={() => setDifficulty("medium")}
-                className={`px-4 py-2 rounded font-bold ${difficulty === "medium" ? "bg-yellow-400 text-black" : "bg-gray-500"}`}
-              >
-                בינוני
-              </button>
-              <button
-                onClick={() => setDifficulty("hard")}
-                className={`px-4 py-2 rounded font-bold ${difficulty === "hard" ? "bg-red-400 text-black" : "bg-gray-500"}`}
-              >
-                קשה
-              </button>
+              <button onClick={() => setDifficulty("easy")} className={`px-4 py-2 rounded font-bold ${difficulty === "easy" ? "bg-green-400 text-black" : "bg-gray-500"}`}>קל</button>
+              <button onClick={() => setDifficulty("medium")} className={`px-4 py-2 rounded font-bold ${difficulty === "medium" ? "bg-yellow-400 text-black" : "bg-gray-500"}`}>בינוני</button>
+              <button onClick={() => setDifficulty("hard")} className={`px-4 py-2 rounded font-bold ${difficulty === "hard" ? "bg-red-400 text-black" : "bg-gray-500"}`}>קשה</button>
             </div>
 
             <button
@@ -174,12 +236,18 @@ export default function MleoMemory() {
 
         {!showIntro && (
           <>
-            <div className="absolute top-10 left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999]">
-              Score: {score} | High Score: {highScore}
+            {/* ✅ Progress Bar מעל הקלפים */}
+            <div className="flex justify-center mb-4">
+              <div className="w-64 h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${barColor} transition-all duration-500`}
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
             </div>
 
             <div
-              className="grid gap-2 mt-10"
+              className="grid gap-2"
               style={{
                 gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
                 justifyContent: "center",
@@ -194,10 +262,7 @@ export default function MleoMemory() {
                     key={card.id}
                     onClick={() => handleFlip(card)}
                     className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer"
-                    style={{
-                      width: `${cardWidth}px`,
-                      height: `${cardWidth * 1.33}px`, // יחס 3:4
-                    }}
+                    style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.33}px` }}
                   >
                     {isFlipped ? (
                       <img src={card.src} alt="card" className="w-[90%] h-[90%] object-cover rounded-md" />
@@ -211,7 +276,12 @@ export default function MleoMemory() {
 
             {gameOver && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-[999]">
-                <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">YOU WIN!</h2>
+                {timeUp ? (
+                  <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">⏰ Time's Up!</h2>
+                ) : (
+                  <h2 className="text-4xl sm:text-5xl font-bold text-green-400 mb-4">YOU WIN!</h2>
+                )}
+                {!timeUp && <p className="text-xl mb-4">Final Score: {score}</p>}
                 <button
                   className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
                   onClick={() => {
@@ -229,6 +299,7 @@ export default function MleoMemory() {
                 setGameRunning(false);
                 setGameOver(false);
                 setShowIntro(true);
+                setTimerRunning(false);
               }}
               className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
             >
