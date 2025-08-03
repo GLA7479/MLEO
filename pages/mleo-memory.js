@@ -164,9 +164,9 @@ export default function MleoMemory() {
   const totalCards = cards.length;
   let columns;
 if (windowWidth < 600) {
-  columns = Math.min(4, totalCards);
-} else if (windowWidth < 1024) {
   columns = Math.min(6, totalCards);
+} else if (windowWidth < 1024) {
+  columns = Math.min(8, totalCards);
 } else {
   columns = Math.min(8, totalCards);
 }
