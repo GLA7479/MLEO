@@ -166,9 +166,9 @@ export default function MleoMemory() {
 if (windowWidth < 600) {
   columns = Math.min(6, totalCards);
 } else if (windowWidth < 1024) {
-  columns = Math.min(8, totalCards);
+  columns = Math.min(10, totalCards);
 } else {
-  columns = Math.min(8, totalCards);
+  columns = Math.min(10, totalCards);
 }
 
   const rows = Math.ceil(totalCards / columns);
@@ -236,18 +236,29 @@ const cardWidth = Math.max(
           </div>
         ) : (
           <>
-            <button
-              onClick={() => {
-                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-                setGameRunning(false);
-                setGameOver(false);
-                setShowIntro(true);
-                setTimerRunning(false);
-              }}
-              className="fixed top-16 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
-            >
-              Exit
-            </button>
+<button
+  onClick={() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setGameRunning(false);
+    setGameOver(false);
+    setShowIntro(true);
+    setTimerRunning(false);
+  }}
+  className="fixed right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
+  style={{
+    top:
+      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        ? "-30px" // נייד
+        : windowWidth < 1024
+        ? "16px" // מסך קטן במחשב
+        : "70px", // נייח עם מסך רחב – נמוך יותר
+  }}
+>
+  Exit
+</button>
+
+
+
 
             <div className="flex justify-center items-center gap-3 mb-3 mt-0">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
