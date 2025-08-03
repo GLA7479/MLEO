@@ -233,7 +233,6 @@ const cardWidth = Math.max(
           <>
 <button
   onClick={() => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     setGameRunning(false);
     setGameOver(false);
     setShowIntro(true);
@@ -243,14 +242,18 @@ const cardWidth = Math.max(
   style={{
     top:
       /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-        ? "-10px" // נייד
+        ? "auto" // ביטול top בנייד
         : windowWidth < 1024
         ? "16px" // מסך קטן במחשב
         : "70px", // נייח עם מסך רחב – נמוך יותר
+    bottom: /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      ? "30px" // הכפתור ירד למטה בנייד
+      : "auto", // במחשב לא משתנה
   }}
 >
   Exit
 </button>
+
 
 
 
