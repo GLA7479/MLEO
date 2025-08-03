@@ -21,7 +21,7 @@ export default function MleoMemory() {
 
   const flipSound = typeof Audio !== "undefined" ? new Audio("/sounds/flap.mp3") : null;
   const winSound = typeof Audio !== "undefined" ? new Audio("/sounds/win.mp3") : null;
-  const loseSound = typeof Audio !== "undefined" ? new Audio("/sounds/lose.mp3") : null;
+  const loseSound = typeof Audio !== "undefined" ? new Audio("/sounds/game-over.mp3") : null;
 
   const allImages = Array.from({ length: 30 }, (_, i) => `/images/shiba${i + 1}.png`);
 
@@ -143,10 +143,12 @@ export default function MleoMemory() {
 
   return (
     <Layout>
-      <div
-        id="game-wrapper"
-        className="flex flex-col items-center justify-center bg-gray-900 text-white min-h-screen w-full relative"
-      >
+<div
+  id="game-wrapper"
+  className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative pt-0"
+>
+
+
         {showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -199,12 +201,12 @@ export default function MleoMemory() {
                 setShowIntro(true);
                 setTimerRunning(false);
               }}
-              className="fixed top-4 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
+              className="fixed top-16 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
             >
               Exit
             </button>
 
-            <div className="flex justify-center items-center gap-3 mb-3 mt-10">
+            <div className="flex justify-center items-center gap-3 mb-3 mt-2">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
                 <div
                   className={`h-full ${
