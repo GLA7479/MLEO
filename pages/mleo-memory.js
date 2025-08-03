@@ -241,7 +241,7 @@ useEffect(() => {
               Exit
             </button>
 
-            <div className="flex justify-center items-center gap-3 mb-3 mt-2">
+            <div className="flex justify-center items-center gap-3 mb-3 mt-16">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
                 <div
                   className={`h-full ${

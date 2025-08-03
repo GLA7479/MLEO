@@ -246,7 +246,11 @@ if (type === "diamond") size = 35;    // יהלום גדול יותר
 
   return (
     <Layout>
-      <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative">
+<div
+  id="game-wrapper"
+  className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative select-none"
+>
+
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -324,14 +328,14 @@ if (type === "diamond") size = 35;    // יהלום גדול יותר
                 <button
                   onTouchStart={moveLeft}
                   onTouchEnd={stopMove}
-                  className="fixed bottom-8 left-4 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg"
+                  className="fixed bottom-8 left-4 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
                 >
                   ◀ Left
                 </button>
                 <button
                   onTouchStart={moveRight}
                   onTouchEnd={stopMove}
-                  className="fixed bottom-8 right-4 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg"
+                  className="fixed bottom-8 right-4 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
                 >
                   Right ▶
                 </button>
