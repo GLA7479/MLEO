@@ -241,7 +241,7 @@ useEffect(() => {
               Exit
             </button>
 
-            <div className="flex justify-center items-center gap-3 mb-3 mt-16">
+            <div className="flex justify-center items-center gap-3 mb-3 mt-0">
               <div className="w-28 sm:w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
                 <div
                   className={`h-full ${
@@ -258,33 +258,36 @@ useEffect(() => {
               <div className="bg-black/60 px-2 py-1 rounded-lg text-sm font-bold">⭐ {score}</div>
             </div>
 
-            <div
-              className={`grid gap-2 sm:gap-3 ${gameOver ? "pointer-events-none opacity-50" : ""}`}
-              style={{
-                gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
-                justifyContent: "center",
-                maxWidth: `${containerWidth}px`,
-                maxHeight: `${containerHeight}px`,
-              }}
-            >
-              {cards.map((card) => {
-                const isFlipped = flipped.includes(card.id) || matched.includes(card.id);
-                return (
-                  <div
-                    key={card.id}
-                    onClick={() => handleFlip(card)}
-                    className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-105"
-                    style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.4}px` }}
-                  >
-                    {isFlipped ? (
-                      <img src={card.src} alt="card" className="w-[90%] h-[90%] object-cover rounded-md" />
-                    ) : (
-                      <div className="w-[90%] h-[90%] bg-gray-300 rounded-md"></div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+<div className="flex-1 flex items-center justify-center">
+  <div
+    className={`grid gap-2 sm:gap-3 ${gameOver ? "pointer-events-none opacity-50" : ""}`}
+    style={{
+      gridTemplateColumns: `repeat(${columns}, ${cardWidth}px)`,
+      justifyContent: "center",
+      maxWidth: `${containerWidth}px`,
+      maxHeight: `${containerHeight}px`,
+    }}
+  >
+    {cards.map((card) => {
+      const isFlipped = flipped.includes(card.id) || matched.includes(card.id);
+      return (
+        <div
+          key={card.id}
+          onClick={() => handleFlip(card)}
+          className="bg-yellow-500 rounded-lg flex items-center justify-center cursor-pointer transition hover:scale-105"
+          style={{ width: `${cardWidth}px`, height: `${cardWidth * 1.4}px` }}
+        >
+          {isFlipped ? (
+            <img src={card.src} alt="card" className="w-[90%] h-[90%] object-cover rounded-md" />
+          ) : (
+            <div className="w-[90%] h-[90%] bg-gray-300 rounded-md"></div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+</div> {/* ✅ סגירה נוספת למרכז את הגריד */}
+
 
             {gameOver && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-[999]">
