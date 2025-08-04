@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
+import confetti from "canvas-confetti"; // ✅ אפקט קונפטי
 
 export default function MleoMemory() {
   useEffect(() => {
@@ -91,6 +92,44 @@ export default function MleoMemory() {
     initGameWithDifficulty(diffKey);
   }
 
+  // ✅ ספירה לאחור
+  useEffect(() => {
+    if (!timerRunning) return;
+
+    const interval = setInterval(() => {
+      setTime((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setTimerRunning(false);
+          setGameOver(true);
+          setDidWin(false);
+          loseSound?.play().catch(() => {});
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timerRunning]);
+
+  // ✅ עצירה והכרזה על ניצחון + אפקט
+  useEffect(() => {
+    if (matched.length > 0 && matched.length === cards.length) {
+      setTimerRunning(false);
+      setDidWin(true);
+      setGameOver(true);
+      winSound?.play().catch(() => {});
+
+      // 🎉 אפקט קונפטי
+      confetti({
+        particleCount: 200,
+        spread: 120,
+        origin: { y: 0.6 },
+      });
+    }
+  }, [matched, cards]);
+
   useEffect(() => {
     const updateSize = () => {
       setWindowWidth(window.innerWidth);
@@ -128,7 +167,6 @@ export default function MleoMemory() {
       setTimeout(() => setFlipped([]), 1200);
     }
   }
-
   const totalCards = cards.length;
   let columns = windowWidth < 600 ? Math.min(6, totalCards) : Math.min(10, totalCards);
   const rows = Math.ceil(totalCards / columns);
