@@ -1,4 +1,6 @@
-// pages/mleo-match.js
+// ✅ גרסה מתוקנת עם תמיכה בהחלקת טאצ' + ביטול גלילה מיותרת בנייד
+// כולל הגבלות overflow ומניעת תזוזת מסך במגע
+
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
@@ -225,6 +227,21 @@ export default function MleoMatch() {
   return (
     <Layout>
       <div className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative overflow-hidden">
+        {!showIntro && (
+          <>
+            <div className="flex gap-5 my-4 text-lg font-bold z-[999]">
+              <div className="bg-black/60 px-3 py-1 rounded">⏳ {time}s</div>
+              <div className="bg-black/60 px-3 py-1 rounded">⭐ {score}</div>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="fixed top-20 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base z-[999] hover:scale-105 transition"
+            >
+              Exit
+            </button>
+          </>
+        )}
+
         {showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-6 animate-bounce" />
@@ -259,23 +276,15 @@ export default function MleoMatch() {
           </div>
         ) : (
           <>
-            <button
-              onClick={() => window.location.reload()}
-              className="fixed top-20 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base z-[999] hover:scale-105 transition"
-            >
-              Exit
-            </button>
-            <div className="flex gap-5 my-4 text-lg font-bold">
-              <div className="bg-black/60 px-3 py-1 rounded">⏳ {time}s</div>
-              <div className="bg-black/60 px-3 py-1 rounded">⭐ {score}</div>
-            </div>
-            <div
-              className="grid gap-1 touch-none"
-              style={{
-                gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
-                width: "min(95vw, 480px)",
-              }}
-            >
+         <div
+  className="grid gap-1 touch-none"
+  style={{
+    gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+    width: "min(95vw, 480px)",
+    marginTop: "6rem", // <--- מרווח של 4 רם מעל הלוח (אפשר להגדיל)
+  }}
+>
+
               {grid.map((shape, i) => (
                 <div
                   key={i}
