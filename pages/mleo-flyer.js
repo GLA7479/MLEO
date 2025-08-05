@@ -1,9 +1,10 @@
+// pages/mleo-flyer.js
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 
-// --- Asset paths (adjust if needed) ---
+// --- Assets ---
 const BG_IMAGES = ["/images/game1.png", "/images/game2.png", "/images/game3.png", "/images/game4.png"];
-const SPRITE_DOG = "/images/leo2.png";           // or "/images/dog-fly-sprite.png"
+const SPRITE_DOG = "/images/leo2.png";
 const IMG_COIN = "/images/coin.png";
 const IMG_DIAMOND = "/images/diamond.png";
 const IMG_OBSTACLE = "/images/obstacle1.png";
@@ -14,18 +15,10 @@ const SND_LOSE = "/sounds/game-over.mp3";
 const SND_COIN = "/sounds/coin.mp3";
 const SND_BOMB = "/sounds/bomb.mp3";
 
-// === Tunables ===
-// Overall chance each frame to spawn an item (0.0 - 1.0)
-export const spawnRate = 0.03;                // e.g., 0.03 = 3% per frame
-// Per-type probabilities (do not need to sum to 1.0; will be normalized)
-export const chanceCoin = 0.65;
-export const chanceDiamond = 0.25;
-export const chanceBomb = 0.10;
-
-// Optional: sizes per type (px)
-export const sizeCoin = 42;
-export const sizeDiamond = 34;
-export const sizeBomb = 50;
+// Sizes per type (px)
+const sizeCoin = 42;
+const sizeDiamond = 34;
+const sizeBomb = 50;
 
 export default function MleoFlyer() {
   const canvasRef = useRef(null);
@@ -37,7 +30,7 @@ export default function MleoFlyer() {
   const [gameOver, setGameOver] = useState(false);
   const [playerName, setPlayerName] = useState("");
   const [score, setScore] = useState(0);
-  const scoreRef = useRef(0); // keep an always-fresh score reference
+  const scoreRef = useRef(0);
   const [highScore, setHighScore] = useState(0);
   const [leaderboard, setLeaderboard] = useState([]);
 
@@ -47,6 +40,9 @@ export default function MleoFlyer() {
   const bgIndexRef = useRef(0);
   const gravityRef = useRef(0.35);
   const flapPowerRef = useRef(-4.2);
+
+  // difficulty timer
+  const diffTimerRef = useRef({ lastSpawn: 0 });
 
   // preloaded assets
   const assetsRef = useRef({
@@ -58,7 +54,8 @@ export default function MleoFlyer() {
     sounds: {},
   });
 
-  // --- block context menu / selection / long-press (like your other games) ---
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Block context/selection/long-press
   useEffect(() => {
     const preventMenu = (e) => e.preventDefault();
     const preventSelection = (e) => e.preventDefault();
@@ -87,11 +84,12 @@ export default function MleoFlyer() {
     };
   }, []);
 
-  // --- preload images & sounds ---
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Preload images & sounds + persisted data
   useEffect(() => {
     const loadImage = (src) =>
       new Promise((res) => {
-        const img = new Image();
+        const img = new window.Image();
         img.onload = () => res(img);
         img.src = src;
       });
@@ -110,9 +108,7 @@ export default function MleoFlyer() {
         coin: new Audio(SND_COIN),
         bomb: new Audio(SND_BOMB),
       };
-      Object.values(assetsRef.current.sounds).forEach((a) => {
-        a.volume = 1.0;
-      });
+      Object.values(assetsRef.current.sounds).forEach((a) => (a.volume = 1.0));
     }
 
     if (typeof window !== "undefined") {
@@ -142,64 +138,79 @@ export default function MleoFlyer() {
     }
   };
 
-  // --- init game ---
+  // ─────────────────────────────────────────────────────────────────────────────
+function getDifficulty() {
+  const s = scoreRef.current;
+  const level = Math.floor(s / 10);
+  const spawnInterval = Math.max(1200 - level * 120, 250);
+  const itemSpeed = Math.min(3.3 + level * 0.5, 9);
+  const bombBias = Math.min(0.1 + level * 0.05, 0.6);
+
+  // ✨ אפקט מעוף: משיכה איטית, קפיצה רכה
+  const gravity = Math.min(0.12 + level * 0.008, 0.28);
+  const flapPower = Math.max(-1.8 - level * 0.03, -3.0);
+
+
+  return { level, spawnInterval, itemSpeed, bombBias, gravity, flapPower };
+}
+
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Init
   function initGame() {
     const canvas = canvasRef.current;
-    if (!canvas) return; // guard against null
-    const W = canvas.clientWidth || window.innerWidth * 0.95;
+    if (!canvas) return;
+    const W = Math.min(window.innerWidth * 0.95, 960);
     const H = Math.min(Math.round(W * 0.52), window.innerHeight * 0.8);
     canvas.width = W;
     canvas.height = H;
 
-    dogRef.current = {
-      x: canvas.width / 3,
-      y: H / 2,
-      w: 70,
-      h: 60,
-      vy: 0,
-    };
+    dogRef.current = { x: canvas.width / 3, y: H / 2, w: 60, h: 50, vy: 0 };
     itemsRef.current = [];
     bgIndexRef.current = Math.floor(Math.random() * BG_IMAGES.length);
-    gravityRef.current = 0.05;
-    flapPowerRef.current = -2;
+
+    // reset difficulty & score
+    const d = getDifficulty();
+    gravityRef.current = d.gravity;
+    flapPowerRef.current = d.flapPower;
     scoreRef.current = 0;
     setScore(0);
     setGameOver(false);
+    diffTimerRef.current.lastSpawn = performance.now();
   }
 
-  // --- spawn items with tunable probabilities ---
-  function spawnItem() {
-    // normalize chances (so they don't have to sum to 1)
-    const total = chanceCoin + chanceDiamond + chanceBomb;
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Spawn item with dynamic weights/speed
+  function spawnItem(diff) {
+    // type by weights: bombBias, diamond ~25%, otherwise coin
+    const r = Math.random();
     let type = "coin";
-    if (total > 0) {
-      const r = Math.random() * total;
-      if (r < chanceCoin) type = "coin";
-      else if (r < chanceCoin + chanceDiamond) type = "diamond";
-      else type = "bomb";
-    }
+    if (r < diff.bombBias) type = "bomb";
+    else if (r < diff.bombBias + 0.25) type = "diamond";
 
-    // sizes per type
     let size = type === "diamond" ? sizeDiamond : type === "coin" ? sizeCoin : sizeBomb;
+    const canvas = canvasRef.current || { width: 800, height: 420 };
 
-    const canvas = canvasRef.current;
     itemsRef.current.push({
       type,
-      x: (canvas?.width || 800) + size,
-      y: Math.random() * ((canvas?.height || 400) - size - 30) + 15,
+      x: canvas.width + size,
+      y: Math.random() * (canvas.height - size - 30) + 15,
       size,
-      vx: -3.3,
+      vx: -(diff.itemSpeed + Math.random() * 0.6), // שמאלה מהר יותר ככל שהרמה עולה
     });
   }
 
-  // --- simple AABB collision ---
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Collision
   function isHit(dog, it) {
     const a = { x: dog.x + 10, y: dog.y + 8, w: dog.w - 20, h: dog.h - 16 };
     const b = { x: it.x, y: it.y, w: it.size, h: it.size };
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
-  // --- main loop ---
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Main loop
   function loop() {
     if (!runningRef.current) return;
     const canvas = canvasRef.current;
@@ -212,21 +223,30 @@ export default function MleoFlyer() {
     const bg = A.bgs[bgIndexRef.current];
     if (bg) ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
 
+    // difficulty per-frame (adapts with score)
+    const d = getDifficulty();
+    gravityRef.current = d.gravity;
+    flapPowerRef.current = d.flapPower;
+
     // update dog
     const dog = dogRef.current;
-    dog.vy += gravityRef.current;
+    dog.vy = dog.vy * 0.96 + gravityRef.current * 0.4;
     dog.y += dog.vy;
     const floor = canvas.height - dog.h - 12;
-    if (dog.y < 8) dog.y = 8;
-    if (dog.y > floor) dog.y = floor;
+    if (dog.y < 8) { dog.y = 8; dog.vy = Math.max(dog.vy, 0); }
+    if (dog.y > floor) { dog.y = floor; dog.vy = Math.min(dog.vy, 0); }
 
     // draw dog
     if (A.dog) ctx.drawImage(A.dog, dog.x, dog.y, dog.w, dog.h);
 
-    // spawn by overall rate
-    if (Math.random() < spawnRate) spawnItem();
+    // timed spawn (instead of per-frame random)
+    const now = performance.now();
+    if (now - diffTimerRef.current.lastSpawn >= d.spawnInterval) {
+      spawnItem(d);
+      diffTimerRef.current.lastSpawn = now;
+    }
 
-    // items move & draw & collide
+    // items move/draw/collide
     for (let i = itemsRef.current.length - 1; i >= 0; i--) {
       const it = itemsRef.current[i];
       it.x += it.vx;
@@ -235,28 +255,18 @@ export default function MleoFlyer() {
       if (it.type === "diamond" && A.diamond) ctx.drawImage(A.diamond, it.x, it.y, it.size, it.size);
       if (it.type === "bomb" && A.obstacle) ctx.drawImage(A.obstacle, it.x, it.y, it.size, it.size);
 
-      if (it.x < -it.size) {
-        itemsRef.current.splice(i, 1);
-        continue;
-      }
+      if (it.x < -it.size) { itemsRef.current.splice(i, 1); continue; }
 
       if (isHit(dog, it)) {
         if (it.type === "coin") {
-          setScore((s) => {
-            const ns = s + 1;
-            scoreRef.current = ns;
-            A.sounds.coin?.play().catch(() => {});
-            return ns;
-          });
+          const ns = scoreRef.current + 1;
+          scoreRef.current = ns; setScore(ns);
+          A.sounds.coin?.play().catch(() => {});
         } else if (it.type === "diamond") {
-          setScore((s) => {
-            const ns = s + 5;
-            scoreRef.current = ns;
-            A.sounds.coin?.play().catch(() => {});
-            return ns;
-          });
+          const ns = scoreRef.current + 5;
+          scoreRef.current = ns; setScore(ns);
+          A.sounds.coin?.play().catch(() => {});
         } else {
-          // hit obstacle -> Game Over
           A.sounds.bomb?.play().catch(() => {});
           runningRef.current = false;
           setGameOver(true);
@@ -268,10 +278,16 @@ export default function MleoFlyer() {
       }
     }
 
+    // HUD: level
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillText(`Level: ${d.level}`, 16, 28);
+
     rafRef.current = requestAnimationFrame(loop);
   }
 
-  // --- controls ---
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Controls
   useEffect(() => {
     const onKeyDown = (e) => {
       if (!runningRef.current) return;
@@ -294,7 +310,8 @@ export default function MleoFlyer() {
     };
   }, []);
 
-  // --- responsive canvas sizing ---
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Responsive canvas
   useEffect(() => {
     const onResize = () => {
       const canvas = canvasRef.current;
@@ -313,18 +330,15 @@ export default function MleoFlyer() {
     };
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────────
   function startGame() {
-    // request fullscreen on mobile (user gesture)
+    // request fullscreen on mobile
     const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const wrapper = document.getElementById("game-wrapper");
     if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
-    else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
+    else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen?.();
 
-    // ensure canvas exists; if not, retry on next frame (or fallback to short timeout)
-    if (!canvasRef.current) {
-      requestAnimationFrame(startGame);
-      return;
-    }
+    if (!canvasRef.current) { requestAnimationFrame(startGame); return; }
 
     initGame();
     runningRef.current = true;
@@ -344,6 +358,7 @@ export default function MleoFlyer() {
     };
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <Layout>
       <div
@@ -368,9 +383,10 @@ export default function MleoFlyer() {
               onClick={() => {
                 if (!playerName.trim()) return;
                 setShowIntro(false);
-                // unlock sounds on user gesture
-                Object.values(assetsRef.current.sounds || {}).forEach((a) => { try { a.play().then(()=>a.pause()); } catch(_) {} });
-                // start after next tick to ensure canvas mounted
+                // unlock sounds on gesture
+                Object.values(assetsRef.current.sounds || {}).forEach((a) => {
+                  try { a.play().then(()=>a.pause()); } catch(_) {}
+                });
                 setTimeout(() => startGame(), 0);
               }}
               disabled={!playerName.trim()}
@@ -416,7 +432,6 @@ export default function MleoFlyer() {
 
             <button
               onClick={() => {
-                // exit fullscreen & back to intro
                 if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
                 else if (document.webkitFullscreenElement) document.webkitExitFullscreen?.();
                 updateLeaderboard(playerName || "Player", scoreRef.current);
@@ -430,7 +445,7 @@ export default function MleoFlyer() {
               Exit
             </button>
 
-            {/* Mobile fly button (touch anywhere also works) */}
+            {/* Mobile fly button */}
             <button
               onTouchStart={(e) => {
                 e.preventDefault();
