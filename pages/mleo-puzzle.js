@@ -32,6 +32,8 @@ export default function MleoMatch() {
 
   const size = DIFFICULTY_SETTINGS[difficulty].grid;
 
+  
+
   useEffect(() => {
     if (!gameRunning) return;
     if (time <= 0) {
@@ -92,7 +94,6 @@ export default function MleoMatch() {
   const clearMatches = (g) => {
     const toClear = Array(size * size).fill(false);
 
-    // אופקית
     for (let r = 0; r < size; r++) {
       for (let c = 0; c < size - 2; c++) {
         const i = getIndex(r, c);
@@ -103,7 +104,6 @@ export default function MleoMatch() {
       }
     }
 
-    // אנכית
     for (let c = 0; c < size; c++) {
       for (let r = 0; r < size - 2; r++) {
         const i = getIndex(r, c);
@@ -145,16 +145,6 @@ export default function MleoMatch() {
     setTimeout(() => clearMatches(g), 300);
   };
 
-  const startGame = () => {
-    setShowIntro(false);
-    setGameRunning(true);
-    setGameOver(false);
-    setDidWin(false);
-    setScore(0);
-    setTime(DIFFICULTY_SETTINGS[difficulty].time);
-    generateGrid();
-  };
-
   const handleClick = (index) => {
     if (selected === null) {
       setSelected(index);
@@ -165,6 +155,23 @@ export default function MleoMatch() {
       setSelected(null);
     } else {
       setSelected(index);
+    }
+  };
+
+  const startGame = () => {
+    setShowIntro(false);
+    setGameRunning(true);
+    setGameOver(false);
+    setDidWin(false);
+    setScore(0);
+    setTime(DIFFICULTY_SETTINGS[difficulty].time);
+    generateGrid();
+
+    if (typeof window !== "undefined") {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.msRequestFullscreen) el.msRequestFullscreen();
     }
   };
 
