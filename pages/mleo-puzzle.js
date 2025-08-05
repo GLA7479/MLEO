@@ -1,353 +1,180 @@
-import { useEffect, useRef, useState } from "react";
+// pages/mleo-match.js
+import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
 
-export default function MleoPuzzle() {
-  const canvasRef = useRef(null);
-  const [gameRunning, setGameRunning] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
-  const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState(0);
+const SHAPES = [
+  "heart.png",
+  "circle.png",
+  "square.png",
+  "drop.png",
+  "diamond.png",
+  "star.png",
+];
+
+const DIFFICULTY_SETTINGS = {
+  easy: { grid: 6, scoreToWin: 300, time: 60 },
+  medium: { grid: 7, scoreToWin: 600, time: 90 },
+  hard: { grid: 8, scoreToWin: 1000, time: 120 },
+};
+
+export default function MleoMatch() {
   const [playerName, setPlayerName] = useState("");
-  const [leaderboard, setLeaderboard] = useState([]);
+  const [difficulty, setDifficulty] = useState("easy");
+  const [grid, setGrid] = useState([]);
+  const [score, setScore] = useState(0);
+  const [time, setTime] = useState(60);
+  const [gameRunning, setGameRunning] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [didWin, setDidWin] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
+  const [selected, setSelected] = useState(null);
 
-  const [windowWidth, setWindowWidth] = useState(800);
-  const [tileSize, setTileSize] = useState(50);
-  const gridSize = 8;
-
-  const board = useRef([]);
-  const animPositions = useRef([]);
-  const selectedTile = useRef(null);
-  const swappingTiles = useRef(null);
-  const comboRef = useRef(0);
-  const idleTimer = useRef(null);
-  const hintTile = useRef(null);
-  const matchEffects = useRef([]);
-
-  const tileTypes = ["coin", "diamond", "bone"];
-  const images = useRef({});
-  const sounds = useRef({});
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setHighScore(Number(localStorage.getItem("mleoPuzzleHighScore") || 0));
-      setLeaderboard(JSON.parse(localStorage.getItem("mleoPuzzleLeaderboard") || "[]"));
-
-      images.current.coin = new window.Image();
-      images.current.coin.src = "/images/leo-logo.png";
-
-      images.current.diamond = new window.Image();
-      images.current.diamond.src = "/images/diamond.png";
-
-      images.current.bone = new window.Image();
-      images.current.bone.src = "/images/bone.png";
-
-      sounds.current.swap = new Audio("/sounds/swap.mp3");
-      sounds.current.match = new Audio("/sounds/match.mp3");
-      sounds.current.clear = new Audio("/sounds/clear.mp3");
-    }
-  }, []);
-
-  useEffect(() => {
-    const resizeHandler = () => {
-      const width = window.innerWidth;
-      setWindowWidth(width);
-      setTileSize(width < 500 ? 35 : width < 800 ? 45 : 50);
-    };
-    resizeHandler();
-    window.addEventListener("resize", resizeHandler);
-    return () => window.removeEventListener("resize", resizeHandler);
-  }, []);
-
-  const updateLeaderboard = (name, score) => {
-    let stored = JSON.parse(localStorage.getItem("mleoPuzzleLeaderboard") || "[]");
-    const idx = stored.findIndex((p) => p.name === name);
-    if (idx >= 0) {
-      if (score > stored[idx].score) stored[idx].score = score;
-    } else {
-      stored.push({ name, score });
-    }
-    stored = stored.sort((a, b) => b.score - a.score).slice(0, 20);
-    localStorage.setItem("mleoPuzzleLeaderboard", JSON.stringify(stored));
-    setLeaderboard(stored);
-  };
-
-  function initBoard() {
-    board.current = Array.from({ length: gridSize }, () =>
-      Array.from({ length: gridSize }, () => tileTypes[Math.floor(Math.random() * tileTypes.length)])
-    );
-    animPositions.current = board.current.map((row, r) =>
-      row.map((_, c) => ({ x: c * tileSize, y: r * tileSize }))
-    );
-    removeMatches();
-    setScore(0);
-  }
-
-  function draw(ctx) {
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const tile = board.current[r][c];
-        if (!tile) continue;
-
-        const pos = animPositions.current[r][c];
-        ctx.fillStyle = "#222";
-        ctx.fillRect(pos.x, pos.y, tileSize, tileSize);
-
-        if (images.current[tile]?.complete) {
-          ctx.drawImage(images.current[tile], pos.x + 5, pos.y + 5, tileSize - 10, tileSize - 10);
-        }
-
-        if (hintTile.current && hintTile.current.r === r && hintTile.current.c === c) {
-          ctx.strokeStyle = "yellow";
-          ctx.lineWidth = 3;
-          ctx.strokeRect(pos.x + 2, pos.y + 2, tileSize - 4, tileSize - 4);
-        } else {
-          ctx.strokeStyle = "#444";
-          ctx.lineWidth = 1;
-          ctx.strokeRect(pos.x, pos.y, tileSize, tileSize);
-        }
-      }
-    }
-
-    matchEffects.current.forEach((effect) => {
-      const ctxAlpha = 1 - effect.progress;
-      ctx.save();
-      ctx.globalAlpha = ctxAlpha;
-      ctx.beginPath();
-      ctx.arc(effect.x + tileSize / 2, effect.y + tileSize / 2, tileSize * effect.progress, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(255,255,0,0.8)";
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.restore();
-      effect.progress += 0.05;
-    });
-
-    matchEffects.current = matchEffects.current.filter((e) => e.progress < 1);
-  }
-
-  function animatePositions() {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const targetX = c * tileSize;
-        const targetY = r * tileSize;
-        const pos = animPositions.current[r][c];
-
-        pos.x += (targetX - pos.x) * 0.3;
-        pos.y += (targetY - pos.y) * 0.3;
-      }
-    }
-  }
-
-  function swapTiles(r1, c1, r2, c2) {
-    const temp = board.current[r1][c1];
-    board.current[r1][c1] = board.current[r2][c2];
-    board.current[r2][c2] = temp;
-  }
-
-  function animateSwap(r1, c1, r2, c2, callback) {
-    if (
-      !animPositions.current[r1] ||
-      !animPositions.current[r1][c1] ||
-      !animPositions.current[r2] ||
-      !animPositions.current[r2][c2]
-    ) {
-      callback();
-      return;
-    }
-
-    const startPos1 = { ...animPositions.current[r1][c1] };
-    const startPos2 = { ...animPositions.current[r2][c2] };
-
-    swappingTiles.current = { r1, c1, r2, c2, progress: 0 };
-
-    const animate = () => {
-      if (!swappingTiles.current) return;
-      swappingTiles.current.progress += 0.1;
-
-      const p = swappingTiles.current.progress;
-
-      if (
-        animPositions.current[r1] &&
-        animPositions.current[r1][c1] &&
-        animPositions.current[r2] &&
-        animPositions.current[r2][c2]
-      ) {
-        animPositions.current[r1][c1].x = startPos1.x + (c2 - c1) * tileSize * p;
-        animPositions.current[r1][c1].y = startPos1.y + (r2 - r1) * tileSize * p;
-
-        animPositions.current[r2][c2].x = startPos2.x + (c1 - c2) * tileSize * p;
-        animPositions.current[r2][c2].y = startPos2.y + (r1 - r2) * tileSize * p;
-      }
-
-      if (p < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        swappingTiles.current = null;
-        callback();
-      }
-    };
-
-    animate();
-  }
-
-  function checkMatches() {
-    const matches = [];
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize - 2; c++) {
-        const t = board.current[r][c];
-        if (t && t === board.current[r][c + 1] && t === board.current[r][c + 2]) {
-          matches.push([r, c], [r, c + 1], [r, c + 2]);
-        }
-      }
-    }
-    for (let c = 0; c < gridSize; c++) {
-      for (let r = 0; r < gridSize - 2; r++) {
-        const t = board.current[r][c];
-        if (t && t === board.current[r + 1][c] && t === board.current[r + 2][c]) {
-          matches.push([r, c], [r + 1, c], [r + 2, c]);
-        }
-      }
-    }
-    return matches;
-  }
-
-  function handleMatches() {
-    let matches = checkMatches();
-    if (matches.length === 0) {
-      comboRef.current = 0;
-      return;
-    }
-
-    comboRef.current += 1;
-    const bonus = comboRef.current > 1 ? comboRef.current * 5 : 0;
-    setScore((s) => s + matches.length * 10 + bonus);
-
-    matches.forEach(([r, c]) => {
-      board.current[r][c] = null;
-      matchEffects.current.push({ x: c * tileSize, y: r * tileSize, progress: 0 });
-    });
-
-    if (sounds.current.match) sounds.current.match.play();
-
-    dropTiles();
-    setTimeout(handleMatches, 300);
-  }
-
-  function dropTiles() {
-    for (let c = 0; c < gridSize; c++) {
-      for (let r = gridSize - 1; r >= 0; r--) {
-        if (!board.current[r][c]) {
-          for (let k = r - 1; k >= 0; k--) {
-            if (board.current[k][c]) {
-              board.current[r][c] = board.current[k][c];
-              board.current[k][c] = null;
-              break;
-            }
-          }
-        }
-      }
-      for (let r = 0; r < gridSize; r++) {
-        if (!board.current[r][c]) {
-          board.current[r][c] = tileTypes[Math.floor(Math.random() * tileTypes.length)];
-        }
-      }
-    }
-  }
-
-  function removeMatches() {
-    while (checkMatches().length > 0) {
-      handleMatches();
-    }
-  }
-
-  function findHint() {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const dirs = [
-          [0, 1],
-          [1, 0],
-        ];
-        for (let [dr, dc] of dirs) {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr < gridSize && nc < gridSize) {
-            swapTiles(r, c, nr, nc);
-            if (checkMatches().length > 0) {
-              swapTiles(r, c, nr, nc);
-              return { r, c };
-            }
-            swapTiles(r, c, nr, nc);
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  function resetIdleTimer() {
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => {
-      hintTile.current = findHint();
-    }, 4000);
-  }
-
-  function handleClick(e) {
-    resetIdleTimer();
-    hintTile.current = null;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const c = Math.floor(x / tileSize);
-    const r = Math.floor(y / tileSize);
-
-    if (!selectedTile.current) {
-      selectedTile.current = { r, c };
-    } else {
-      const { r: r1, c: c1 } = selectedTile.current;
-      if ((Math.abs(r1 - r) === 1 && c1 === c) || (Math.abs(c1 - c) === 1 && r1 === r)) {
-        animateSwap(r1, c1, r, c, () => {
-          swapTiles(r1, c1, r, c);
-          if (checkMatches().length > 0) {
-            if (sounds.current.swap) sounds.current.swap.play();
-            handleMatches();
-          } else {
-            swapTiles(r1, c1, r, c);
-          }
-        });
-      }
-      selectedTile.current = null;
-    }
-  }
+  const size = DIFFICULTY_SETTINGS[difficulty].grid;
 
   useEffect(() => {
     if (!gameRunning) return;
+    if (time <= 0) {
+      setGameOver(true);
+      setDidWin(score >= DIFFICULTY_SETTINGS[difficulty].scoreToWin);
+      setGameRunning(false);
+    }
+    const interval = setInterval(() => setTime((t) => t - 1), 1000);
+    return () => clearInterval(interval);
+  }, [gameRunning, time]);
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+  const generateGrid = () => {
+    const newGrid = [];
+    for (let i = 0; i < size * size; i++) {
+      const rand = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+      newGrid.push(rand);
+    }
+    setGrid(newGrid);
+  };
 
-    const loop = () => {
-      animatePositions();
-      draw(ctx);
-      requestAnimationFrame(loop);
-    };
+  const getIndex = (row, col) => row * size + col;
+  const getCoords = (index) => [Math.floor(index / size), index % size];
 
-    initBoard();
-    resetIdleTimer();
-    requestAnimationFrame(loop);
-  }, [gameRunning]);
+  const areAdjacent = (i1, i2) => {
+    const [r1, c1] = getCoords(i1);
+    const [r2, c2] = getCoords(i2);
+    return (
+      (r1 === r2 && Math.abs(c1 - c2) === 1) ||
+      (c1 === c2 && Math.abs(r1 - r2) === 1)
+    );
+  };
+
+  const swapAndCheck = (i1, i2) => {
+    const newGrid = [...grid];
+    [newGrid[i1], newGrid[i2]] = [newGrid[i2], newGrid[i1]];
+    if (hasMatch(newGrid)) {
+      setGrid(newGrid);
+      clearMatches(newGrid);
+    }
+  };
+
+  const hasMatch = (g) => {
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size - 2; c++) {
+        const i = getIndex(r, c);
+        if (g[i] && g[i] === g[i + 1] && g[i] === g[i + 2]) return true;
+      }
+    }
+    for (let c = 0; c < size; c++) {
+      for (let r = 0; r < size - 2; r++) {
+        const i = getIndex(r, c);
+        if (g[i] && g[i] === g[i + size] && g[i] === g[i + 2 * size]) return true;
+      }
+    }
+    return false;
+  };
+
+  const clearMatches = (g) => {
+    const toClear = Array(size * size).fill(false);
+
+    // אופקית
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size - 2; c++) {
+        const i = getIndex(r, c);
+        const val = g[i];
+        if (val && val === g[i + 1] && val === g[i + 2]) {
+          toClear[i] = toClear[i + 1] = toClear[i + 2] = true;
+        }
+      }
+    }
+
+    // אנכית
+    for (let c = 0; c < size; c++) {
+      for (let r = 0; r < size - 2; r++) {
+        const i = getIndex(r, c);
+        const val = g[i];
+        if (val && val === g[i + size] && val === g[i + 2 * size]) {
+          toClear[i] = toClear[i + size] = toClear[i + 2 * size] = true;
+        }
+      }
+    }
+
+    let cleared = 0;
+    for (let i = 0; i < toClear.length; i++) {
+      if (toClear[i]) {
+        g[i] = null;
+        cleared++;
+      }
+    }
+    if (cleared > 0) {
+      setScore((s) => s + cleared * 10);
+      fallDown(g);
+    }
+  };
+
+  const fallDown = (g) => {
+    for (let c = 0; c < size; c++) {
+      let col = [];
+      for (let r = 0; r < size; r++) {
+        const i = getIndex(r, c);
+        if (g[i]) col.push(g[i]);
+      }
+      while (col.length < size) {
+        col.unshift(SHAPES[Math.floor(Math.random() * SHAPES.length)]);
+      }
+      for (let r = 0; r < size; r++) {
+        g[getIndex(r, c)] = col[r];
+      }
+    }
+    setGrid([...g]);
+    setTimeout(() => clearMatches(g), 300);
+  };
+
+  const startGame = () => {
+    setShowIntro(false);
+    setGameRunning(true);
+    setGameOver(false);
+    setDidWin(false);
+    setScore(0);
+    setTime(DIFFICULTY_SETTINGS[difficulty].time);
+    generateGrid();
+  };
+
+  const handleClick = (index) => {
+    if (selected === null) {
+      setSelected(index);
+    } else if (selected === index) {
+      setSelected(null);
+    } else if (areAdjacent(selected, index)) {
+      swapAndCheck(selected, index);
+      setSelected(null);
+    } else {
+      setSelected(index);
+    }
+  };
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative">
-        {showIntro && (
+      <div className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative">
+        {showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
-            <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
-            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🧩 LIO Puzzle</h1>
-            <p className="text-base sm:text-lg text-gray-200 mb-4">Swap tiles to match 3 and score points!</p>
-
+            <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-6 animate-bounce" />
+            <h1 className="text-4xl font-bold text-yellow-400 mb-4">🍬 LIO Match</h1>
             <input
               type="text"
               placeholder="Enter your name"
@@ -355,39 +182,74 @@ export default function MleoPuzzle() {
               onChange={(e) => setPlayerName(e.target.value)}
               className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
             />
-
+            <div className="flex gap-3 mb-6">
+              {Object.keys(DIFFICULTY_SETTINGS).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setDifficulty(key)}
+                  className={`px-4 py-2 rounded font-bold text-sm ${
+                    difficulty === key ? "bg-yellow-500" : "bg-yellow-300"
+                  }`}
+                >
+                  {key.toUpperCase()}
+                </button>
+              ))}
+            </div>
             <button
-              onClick={() => {
-                if (!playerName.trim()) return;
-                updateLeaderboard(playerName, 0);
-                setShowIntro(false);
-                setGameRunning(true);
-              }}
+              onClick={startGame}
               disabled={!playerName.trim()}
-              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${
-                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
-              }`}
+              className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-lg hover:scale-105 transition"
             >
               ▶ Start Game
             </button>
           </div>
-        )}
-
-        {!showIntro && (
+        ) : (
           <>
-            <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
-              Score: {score} | High Score: {highScore}
+            <button
+              onClick={() => window.location.reload()}
+              className="fixed top-20 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base z-[999] hover:scale-105 transition"
+            >
+              Exit
+            </button>
+            <div className="flex gap-5 my-4 text-lg font-bold">
+              <div className="bg-black/60 px-3 py-1 rounded">⏳ {time}s</div>
+              <div className="bg-black/60 px-3 py-1 rounded">⭐ {score}</div>
             </div>
-
-            <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
-              <canvas
-                ref={canvasRef}
-                width={gridSize * tileSize}
-                height={gridSize * tileSize}
-                onClick={handleClick}
-                className="border-4 border-yellow-400 rounded-lg w-full max-h-[80vh]"
-              />
+            <div
+              className="grid gap-1"
+              style={{
+                gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+                width: "min(95vw, 480px)",
+              }}
+            >
+              {grid.map((shape, i) => (
+                <div
+                  key={i}
+                  onClick={() => handleClick(i)}
+                  className={`bg-gray-700 rounded p-1 hover:scale-105 transition cursor-pointer ${selected === i ? "ring-4 ring-yellow-400" : ""}`}
+                >
+                  <img
+                    src={`/images/candy/${shape}`}
+                    alt="candy"
+                    className="w-full h-auto object-contain"
+                  />
+                </div>
+              ))}
             </div>
+            {gameOver && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-[999] text-center">
+                <h2 className="text-4xl font-bold text-yellow-400 mb-4">
+                  {didWin ? "🎉 YOU WIN 🎉" : "💥 GAME OVER 💥"}
+                </h2>
+                <p className="text-lg mb-4">Final Score: {score}</p>
+                <button
+                  className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-lg hover:scale-105"
+                  onClick={startGame}
+                >
+                  ▶ Play Again
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -147,9 +147,9 @@ let coins2 = [];
     function update() {
       if (!running) return;
 
-      speedMultiplier = 1 + Math.floor(currentScore / 10) * 0.1;
+      speedMultiplier = 0.6 + Math.floor(currentScore / 20) * 0.05;
 
-      if (currentScore >= level * 30) {
+      if (!showLevelUp && currentScore >= level * 30) {
         level++;
         showLevelUp = true;
         levelUpTimer = Date.now();
@@ -177,23 +177,40 @@ let coins2 = [];
 
       drawLeo();
 
-      coins.forEach((c) => {
-        if (coinImg.complete && coinImg.naturalWidth > 0) {
-          c.x -= 3 * speedMultiplier;
-          ctx.drawImage(coinImg, c.x, c.y, c.size, c.size);
+      coins.forEach((c, i) => {
+    c.x -= 3 * speedMultiplier;
+    if (coinImg.complete && coinImg.naturalWidth > 0) {
+        ctx.drawImage(coinImg, c.x, c.y, c.size, c.size);
+    }
+    if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive) {
+        coins.splice(i, 1);
+        currentScore++;
+        setScore(currentScore);
+        if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
         }
-      });
+    }
+    if (c.x + c.size < 0) coins.splice(i, 1);
+});
 
-      diamonds.forEach((d) => {
-        if (diamondImg.complete) {
-          d.x -= 3 * speedMultiplier;
-          ctx.drawImage(diamondImg, d.x, d.y, d.size, d.size);
-        }
-      });
+      diamonds.forEach((d, i) => {
+    d.x -= 3 * speedMultiplier;
+    if (diamondImg.complete) {
+        ctx.drawImage(diamondImg, d.x, d.y, d.size, d.size);
+    }
+    if (checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) || magnetActive) {
+        diamonds.splice(i, 1);
+        currentScore += 5;
+        setScore(currentScore);
+        if (coinSound) coinSound.play().catch(() => {});
+    }
+    if (d.x + d.size < 0) diamonds.splice(i, 1);
+});
 
       // ✅ ציור מגנט
       powerUps.forEach((p) => {
-        p.x -= 3 * speedMultiplier;
+        p.x -= 1.5 * speedMultiplier;
         if (p.type === "magnet" && magnetImg.complete) {
           ctx.drawImage(magnetImg, p.x, p.y, p.size, p.size);
         }
@@ -201,7 +218,7 @@ let coins2 = [];
 
       obstacles.forEach((o) => {
         if (obstacleImg.complete && obstacleImg.naturalWidth > 0) {
-          o.x -= 4 * speedMultiplier;
+          o.x -= 2.5 * speedMultiplier;
           ctx.drawImage(obstacleImg, o.x, o.y - o.height, o.width, o.height);
         }
       });
@@ -244,7 +261,7 @@ if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 +
 
 coins2.forEach((c) => {
   if (coin2Img.complete && coin2Img.naturalWidth > 0) {
-    c.x -= 3 * speedMultiplier;
+    c.x -= 1.5 * speedMultiplier;
     ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
   }
 });
