@@ -154,7 +154,7 @@ if (type === "diamond") size = 35;    // יהלום גדול יותר
     bombImg.src = "/images/obstacle1.png";
 
     const bgImg = new window.Image();
-    bgImg.src = "/images/game1.png";
+    bgImg.src = "/images/game10.png";
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (bgImg.complete) ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
