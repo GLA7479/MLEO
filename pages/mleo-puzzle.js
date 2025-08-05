@@ -1,4 +1,3 @@
-
 // pages/mleo-match.js
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
@@ -30,6 +29,7 @@ export default function MleoMatch() {
   const [didWin, setDidWin] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [touchStart, setTouchStart] = useState(null);
 
   const size = DIFFICULTY_SETTINGS[difficulty].grid;
 
@@ -45,9 +45,15 @@ export default function MleoMatch() {
   }, [gameRunning, time]);
 
   useEffect(() => {
+    const preventTouchScroll = (e) => {
+      if (e.target.closest(".grid")) e.preventDefault();
+    };
     document.body.style.overflow = "hidden";
+    document.addEventListener("touchmove", preventTouchScroll, { passive: false });
+
     return () => {
       document.body.style.overflow = "auto";
+      document.removeEventListener("touchmove", preventTouchScroll);
     };
   }, []);
 
@@ -164,6 +170,41 @@ export default function MleoMatch() {
     }
   };
 
+  const handleTouchStart = (index, e) => {
+    const touch = e.touches[0];
+    setTouchStart({ index, x: touch.clientX, y: touch.clientY });
+  };
+
+  const handleTouchEnd = (index, e) => {
+    if (!touchStart) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStart.x;
+    const dy = touch.clientY - touchStart.y;
+    const threshold = 30;
+    let targetIndex = null;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx > threshold && getCoords(touchStart.index)[1] < size - 1) {
+        targetIndex = touchStart.index + 1;
+      } else if (dx < -threshold && getCoords(touchStart.index)[1] > 0) {
+        targetIndex = touchStart.index - 1;
+      }
+    } else {
+      if (dy > threshold && getCoords(touchStart.index)[0] < size - 1) {
+        targetIndex = touchStart.index + size;
+      } else if (dy < -threshold && getCoords(touchStart.index)[0] > 0) {
+        targetIndex = touchStart.index - size;
+      }
+    }
+
+    if (targetIndex !== null && areAdjacent(touchStart.index, targetIndex)) {
+      swapAndCheck(touchStart.index, targetIndex);
+      setSelected(null);
+    }
+
+    setTouchStart(null);
+  };
+
   const startGame = () => {
     setShowIntro(false);
     setGameRunning(true);
@@ -183,7 +224,7 @@ export default function MleoMatch() {
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative">
+      <div className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative overflow-hidden">
         {showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-6 animate-bounce" />
@@ -229,24 +270,27 @@ export default function MleoMatch() {
               <div className="bg-black/60 px-3 py-1 rounded">⭐ {score}</div>
             </div>
             <div
-              className="grid gap-1"
+              className="grid gap-1 touch-none"
               style={{
                 gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
                 width: "min(95vw, 480px)",
-                maxHeight: "calc(100dvh - 220px)",
-                overflow: "hidden",
               }}
             >
               {grid.map((shape, i) => (
                 <div
                   key={i}
                   onClick={() => handleClick(i)}
-                  className={`bg-gray-700 rounded p-1 hover:scale-105 transition cursor-pointer ${selected === i ? "ring-4 ring-yellow-400" : ""}`}
+                  onTouchStart={(e) => handleTouchStart(i, e)}
+                  onTouchEnd={(e) => handleTouchEnd(i, e)}
+                  className={`bg-gray-700 rounded p-1 transition cursor-pointer select-none ${
+                    selected === i ? "ring-4 ring-yellow-400" : ""
+                  }`}
                 >
                   <img
                     src={`/images/candy/${shape}`}
                     alt="candy"
                     className="w-full h-auto object-contain"
+                    draggable={false}
                   />
                 </div>
               ))}
