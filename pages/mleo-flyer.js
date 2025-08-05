@@ -230,7 +230,7 @@ function getDifficulty() {
 
     // update dog
     const dog = dogRef.current;
-    dog.vy = dog.vy * 0.96 + gravityRef.current * 0.4;
+    dog.vy = dog.vy * 0.96 + gravityRef.current * 0.7;
     dog.y += dog.vy;
     const floor = canvas.height - dog.h - 12;
     if (dog.y < 8) { dog.y = 8; dog.vy = Math.max(dog.vy, 0); }
