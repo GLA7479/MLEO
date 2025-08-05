@@ -32,8 +32,6 @@ export default function MleoMatch() {
 
   const size = DIFFICULTY_SETTINGS[difficulty].grid;
 
-  
-
   useEffect(() => {
     if (!gameRunning) return;
     if (time <= 0) {
