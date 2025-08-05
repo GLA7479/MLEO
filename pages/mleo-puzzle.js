@@ -14,9 +14,9 @@ const SHAPES = [
 ];
 
 const DIFFICULTY_SETTINGS = {
-  easy: { grid: 6, scoreToWin: 300, time: 60 },
-  medium: { grid: 7, scoreToWin: 600, time: 90 },
-  hard: { grid: 8, scoreToWin: 1000, time: 120 },
+  easy: { grid: 6, scoreToWin: 500, time: 60 },
+  medium: { grid: 7, scoreToWin: 800, time: 90 },
+  hard: { grid: 8, scoreToWin: 1400, time: 120 },
 };
 
 export default function MleoMatch() {
@@ -32,24 +32,20 @@ export default function MleoMatch() {
   const [selected, setSelected] = useState(null);
   const [touchStart, setTouchStart] = useState(null);
   const [isLandscape, setIsLandscape] = useState(false);
-const [showOrientationWarning, setShowOrientationWarning] = useState(false);
-
 
   const size = DIFFICULTY_SETTINGS[difficulty].grid;
 
-useEffect(() => {
-  const checkOrientation = () => {
-    const isMobile = window.innerWidth < 1024;
-    const isLandscape = window.innerWidth > window.innerHeight;
-    setShowOrientationWarning(isMobile && isLandscape);
-  };
+  useEffect(() => {
+    const checkOrientation = () => {
+      const isMobile = window.innerWidth < 1024;
+      const isLandscape = window.innerWidth > window.innerHeight;
+      setIsLandscape(isMobile && isLandscape);
+    };
 
-  checkOrientation();
-  window.addEventListener("resize", checkOrientation);
-  return () => window.removeEventListener("resize", checkOrientation);
-}, []);
-
-
+    checkOrientation();
+    window.addEventListener("resize", checkOrientation);
+    return () => window.removeEventListener("resize", checkOrientation);
+  }, []);
 
   useEffect(() => {
     if (!gameRunning) return;
@@ -231,13 +227,6 @@ useEffect(() => {
     setScore(0);
     setTime(DIFFICULTY_SETTINGS[difficulty].time);
     generateGrid();
-
-    if (typeof window !== "undefined") {
-      const el = document.documentElement;
-      if (el.requestFullscreen) el.requestFullscreen();
-      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      else if (el.msRequestFullscreen) el.msRequestFullscreen();
-    }
   };
 
   return (
@@ -245,7 +234,7 @@ useEffect(() => {
       <div className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative overflow-hidden">
         {isLandscape && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 text-white text-center p-6">
-            <h2 className="text-xl font-bold">אנא סובב את המסך למצב אנכי (Portrait) כדי לשחק</h2>
+            <h2 className="text-xl font-bold">Please rotate the screen to portrait mode.</h2>
           </div>
         )}
 
@@ -305,7 +294,7 @@ useEffect(() => {
               style={{
                 gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
                 width: "min(95vw, 480px)",
-                marginTop: "6rem",
+                marginTop: "2rem",
               }}
             >
               {grid.map((shape, i) => (
