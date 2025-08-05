@@ -30,7 +30,6 @@ export default function MleoMatch() {
   const [didWin, setDidWin] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [selected, setSelected] = useState(null);
-  const [touchStart, setTouchStart] = useState(null);
 
   const size = DIFFICULTY_SETTINGS[difficulty].grid;
 
@@ -44,6 +43,13 @@ export default function MleoMatch() {
     const interval = setInterval(() => setTime((t) => t - 1), 1000);
     return () => clearInterval(interval);
   }, [gameRunning, time]);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "auto";
+    };
+  }, []);
 
   const generateGrid = () => {
     const newGrid = [];
@@ -158,41 +164,6 @@ export default function MleoMatch() {
     }
   };
 
-  const handleTouchStart = (index, e) => {
-    const touch = e.touches[0];
-    setTouchStart({ index, x: touch.clientX, y: touch.clientY });
-  };
-
-  const handleTouchEnd = (index, e) => {
-    if (!touchStart) return;
-    const touch = e.changedTouches[0];
-    const dx = touch.clientX - touchStart.x;
-    const dy = touch.clientY - touchStart.y;
-    const threshold = 30;
-    let targetIndex = null;
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      if (dx > threshold && getCoords(touchStart.index)[1] < size - 1) {
-        targetIndex = touchStart.index + 1;
-      } else if (dx < -threshold && getCoords(touchStart.index)[1] > 0) {
-        targetIndex = touchStart.index - 1;
-      }
-    } else {
-      if (dy > threshold && getCoords(touchStart.index)[0] < size - 1) {
-        targetIndex = touchStart.index + size;
-      } else if (dy < -threshold && getCoords(touchStart.index)[0] > 0) {
-        targetIndex = touchStart.index - size;
-      }
-    }
-
-    if (targetIndex !== null && areAdjacent(touchStart.index, targetIndex)) {
-      swapAndCheck(touchStart.index, targetIndex);
-      setSelected(null);
-    }
-
-    setTouchStart(null);
-  };
-
   const startGame = () => {
     setShowIntro(false);
     setGameRunning(true);
@@ -262,14 +233,14 @@ export default function MleoMatch() {
               style={{
                 gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
                 width: "min(95vw, 480px)",
+                maxHeight: "calc(100dvh - 220px)",
+                overflow: "hidden",
               }}
             >
               {grid.map((shape, i) => (
                 <div
                   key={i}
                   onClick={() => handleClick(i)}
-                  onTouchStart={(e) => handleTouchStart(i, e)}
-                  onTouchEnd={(e) => handleTouchEnd(i, e)}
                   className={`bg-gray-700 rounded p-1 hover:scale-105 transition cursor-pointer ${selected === i ? "ring-4 ring-yellow-400" : ""}`}
                 >
                   <img
