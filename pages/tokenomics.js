@@ -130,7 +130,7 @@ export default function Tokenomics() {
 
 <div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
 
-<div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-[-60px] md:mt-[-50px] md:translate-x-[-150px]">
+<div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-[-50px] md:mt-[-50px] md:translate-x-[-150px]">
 
 
 
