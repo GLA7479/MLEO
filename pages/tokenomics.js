@@ -130,7 +130,8 @@ export default function Tokenomics() {
 
 <div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
 
-<div className="relative w-[320px] md:w-[500px] lg:w-[450px]" style={{ transform: "translateX(-150px)", marginTop: "-40px" }}>
+<div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-4 md:mt-[-40px] md:translate-x-[-150px]">
+
 
             <Pie data={data} options={options} />
           </div>
