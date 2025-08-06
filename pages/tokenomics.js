@@ -71,7 +71,7 @@ export default function Tokenomics() {
       title: "Locks & Community",
       value: 15,
       icon: <FaUsers />,
-      color: "#34D399",
+      color: "#F87171",
       desc: "15% allocated for token locks, competitions, and community incentives.",
       details: "Used for competitions, token locks, governance bonuses, or loyalty programs that reward engagement."
     },
@@ -130,7 +130,7 @@ export default function Tokenomics() {
 
 <div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
 
-<div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-[-50px] md:mt-[-50px] md:translate-x-[-150px]">
+<div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-[-40px] md:mt-[-50px] md:translate-x-[-150px]">
 
 
 
