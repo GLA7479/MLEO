@@ -210,7 +210,7 @@ let coins2 = [];
 
       // ✅ ציור מגנט
       powerUps.forEach((p) => {
-        p.x -= 2.5 * speedMultiplier;
+        p.x -= 1.5 * speedMultiplier;
         if (p.type === "magnet" && magnetImg.complete) {
           ctx.drawImage(magnetImg, p.x, p.y, p.size, p.size);
         }
@@ -233,7 +233,7 @@ if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 +
         powerUps.push({ type: "magnet", x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
       }
 
-      if (Math.random() < 0.007) {
+      if (Math.random() < 0.012) {
         const isMobile = window.innerWidth < 768;
         const scale = isMobile ? 1.8 : 1.5;
         obstacles.push({
@@ -244,51 +244,25 @@ if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 +
         });
       }
 
-   coins.forEach((c, i) => {
-  if (magnetActive) {
-    const dx = leo.x - c.x;
-    const dy = leo.y - c.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 5) {
-      c.x += dx / dist * 3; // מהירות משיכה
-      c.y += dy / dist * 3;
-    }
-  } else {
-    c.x -= 2.5 * speedMultiplier;
-  }
-
-  if (coinImg.complete && coinImg.naturalWidth > 0) {
-    ctx.drawImage(coinImg, c.x, c.y, c.size, c.size);
-  }
-
-  if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size })) {
-    coins.splice(i, 1);
-    currentScore++;
-    setScore(currentScore);
-    if (coinSound) {
-      coinSound.currentTime = 0;
-      coinSound.play().catch(() => {});
-    }
-  }
-
-  if (c.x + c.size < 0) coins.splice(i, 1);
-});
-
+      coins.forEach((c, i) => {
+        if (
+          checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive
+        ) {
+          coins.splice(i, 1);
+          currentScore++;
+          setScore(currentScore);
+          if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
+        if (c.x + c.size < 0) coins.splice(i, 1);
+      });
 
 coins2.forEach((c) => {
   if (coin2Img.complete && coin2Img.naturalWidth > 0) {
     c.x -= 1.5 * speedMultiplier;
     ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
-if (magnetActive) {
-  const dx = leo.x - c.x;
-  const dy = leo.y - c.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > 5) {
-    c.x += dx / dist * 3;  // מהירות המשיכה
-    c.y += dy / dist * 3;
-  }
-}
-
   }
 });
 
@@ -301,25 +275,10 @@ if (magnetActive) {
           currentScore += 5;
           setScore(currentScore);
           if (coinSound) coinSound.play().catch(() => {});
-if (magnetActive) {
-  const dx = leo.x - c.x;
-  const dy = leo.y - c.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > 5) {
-    c.x += dx / dist * 3;  // מהירות המשיכה
-    c.y += dy / dist * 3;
-  }
-}
-
         }
       });
 
 coins2.forEach((c, i) => {
-  c.x -= 2.5 * speedMultiplier;
-  if (coin2Img.complete && coin2Img.naturalWidth > 0) {
-    ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
-  }
-
   if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive) {
     coins2.splice(i, 1);
     currentScore += 2;
@@ -329,10 +288,8 @@ coins2.forEach((c, i) => {
       coinSound.play().catch(() => {});
     }
   }
-
   if (c.x + c.size < 0) coins2.splice(i, 1);
 });
-
 
 
       // ✅ איסוף מגנט
