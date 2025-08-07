@@ -283,7 +283,7 @@ if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 +
         const scale = isMobile ? 1.8 : 1.5;
         obstacles.push({
           x: canvas.width,
-          y: ground - 10,
+          y: ground - 25,
           width: 60 * scale * 0.75,
           height: 60 * scale,
         });
