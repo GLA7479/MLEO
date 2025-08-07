@@ -1,4 +1,3 @@
-// גרסה משופרת של MleoRunner עם תיקונים למגנט, coin2, קפיצה, סאונד ו־LevelUp
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
@@ -10,162 +9,391 @@ export default function MleoRunner() {
   const [showIntro, setShowIntro] = useState(true);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
+
   const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setHighScore(Number(localStorage.getItem("mleoHighScore") || 0));
-      setLeaderboard(JSON.parse(localStorage.getItem("leaderboard") || "[]"));
+      const savedHighScore = localStorage.getItem("mleoHighScore") || 0;
+      setHighScore(Number(savedHighScore));
+
+      const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
+      setLeaderboard(stored);
     }
   }, []);
 
   useEffect(() => {
     if (!gameRunning) return;
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    const leoSprite = new window.Image(); leoSprite.src = "/images/dog-spritesheet.png";
-    const coinImg = new window.Image(); coinImg.src = "/images/leo-logo.png";
-    const coin2Img = new window.Image(); coin2Img.src = "/images/coin2.png";
-    const diamondImg = new window.Image(); diamondImg.src = "/images/diamond.png";
-    const magnetImg = new window.Image(); magnetImg.src = "/images/magnet.png";
-    const obstacleImg = new window.Image(); obstacleImg.src = "/images/obstacle.png";
+    const leoSprite = new window.Image();
+    leoSprite.src = "/images/dog-spritesheet.png";
 
-    const backgrounds = ["/images/game-day.png","/images/game-evening.png","/images/game-night.png","/images/game-space.png","/images/game-park.png"];
-    let bgImg = new window.Image(); bgImg.src = backgrounds[0];
+    const coinImg = new window.Image();
+    coinImg.src = "/images/leo-logo.png";
 
-    let bgMusic = new Audio("/sounds/bg-music.mp3");
-    let jumpSound = new Audio("/sounds/jump.mp3");
-    let coinSound = new Audio("/sounds/coin.mp3");
-    let coin2Sound = new Audio("/sounds/coin2.mp3");
-    let diamondSound = new Audio("/sounds/diamond.mp3");
-    let gameOverSound = new Audio("/sounds/game-over.mp3");
+    const diamondImg = new window.Image();
+    diamondImg.src = "/images/diamond.png";
+
+    // ✅ תמונת מגנט
+    const magnetImg = new window.Image();
+    magnetImg.src = "/images/magnet.png";
+
+const coin2Img = new window.Image();
+coin2Img.src = "/images/coin2.png";
+
+
+    const obstacleImg = new window.Image();
+    obstacleImg.src = "/images/obstacle.png";
+
+    const backgrounds = [
+      "/images/game-day.png",
+      "/images/game-evening.png",
+      "/images/game-night.png",
+      "/images/game-space.png",
+      "/images/game-park.png",
+    ];
+    let bgImg = new window.Image();
+    bgImg.src = backgrounds[0];
+
+    let bgMusic, jumpSound, coinSound, gameOverSound;
+
+    if (typeof window !== "undefined") {
+      const createSafeAudio = (path) => {
+        try {
+          return new Audio(path);
+        } catch {
+          return null;
+        }
+      };
+
+      bgMusic = createSafeAudio("/sounds/bg-music.mp3");
+      jumpSound = createSafeAudio("/sounds/jump.mp3");
+      coinSound = createSafeAudio("/sounds/coin.mp3");
+      gameOverSound = createSafeAudio("/sounds/game-over.mp3");
+
+      if (bgMusic) {
+        bgMusic.loop = true;
+        bgMusic.volume = 0.4;
+      }
+      if (jumpSound) jumpSound.volume = 0.6;
+      if (coinSound) coinSound.volume = 0.6;
+      if (gameOverSound) gameOverSound.volume = 0.7;
+    }
 
     let leo, gravity, coins, diamonds, obstacles, frame = 0, frameCount = 0;
-    let level = 1, showLevelUp = false, levelUpTimer = 0, bgX = 0, running = true;
-    let currentScore = 0, speedMultiplier = 1, showHitbox = false;
-    let powerUps = [], magnetActive = false;
+let coins2 = [];
+
+    let level = 1;
+    let showLevelUp = false;
+    let levelUpTimer = 0;
+    let bgX = 0;
+    let running = true;
+    let currentScore = 0;
+    let speedMultiplier = 1;
+    let showHitbox = false;
+
+    // ✅ משתנים למגנט
+    let powerUps = [];
+    let magnetActive = false;
 
     function initGame() {
-      const scale = window.innerWidth < 768 ? 1.8 : 1.5;
-      leo = { x: canvas.width/2 - (100*scale), y: canvas.height - 80 - (100*scale), width: 45*scale, height: 100*scale, dy: 0, jumping: false };
+      const isMobile = window.innerWidth < 768;
+      const scale = isMobile ? 1.8 : 1.5;
+
+   leo = {
+  x: canvas.width / 2 - (100 * scale),
+  y: canvas.height - 80 - (100 * scale), // ✅ יישור לקרקע
+  width: 45 * scale,  // ✅ הגדלה
+  height: 100 * scale, // ✅ הגדלה
+  dy: 0,
+  jumping: false,
+};
+
+
       gravity = 0.35;
-      coins = []; diamonds = []; obstacles = []; powerUps = [];
-      frame = 0; frameCount = 0; currentScore = 0;
-      setScore(0); setGameOver(false);
+      coins = [];
+      diamonds = [];
+      powerUps = [];
+      obstacles = [];
+      frame = 0;
+      frameCount = 0;
+      currentScore = 0;
+      setScore(0);
+      setGameOver(false);
     }
 
     function checkCollision(r1, r2) {
-      return r1.x < r2.x + r2.width && r1.x + r1.width > r2.x && r1.y < r2.y + r2.height && r1.y + r1.height > r2.y;
+      return (
+        r1.x < r2.x + r2.width &&
+        r1.x + r1.width > r2.x &&
+        r1.y < r2.y + r2.height &&
+        r1.y + r1.height > r2.y
+      );
     }
 
     function drawLeo() {
-      if (!leoSprite.complete) return;
+      if (!leoSprite.complete || leoSprite.naturalWidth === 0) return;
       const sw = leoSprite.width / 4;
-      ctx.drawImage(leoSprite, frame * sw, 0, sw, leoSprite.height, leo.x, leo.y, leo.width, leo.height);
-      if (++frameCount % 6 === 0) frame = (frame + 1) % 4;
+      const sh = leoSprite.height;
+      ctx.drawImage(leoSprite, frame * sw, 0, sw, sh, leo.x, leo.y, leo.width, leo.height);
+      frameCount++;
+      if (frameCount % 6 === 0) frame = (frame + 1) % 4;
     }
 
     function update() {
       if (!running) return;
+
       speedMultiplier = 0.6 + Math.floor(currentScore / 20) * 0.05;
 
       if (!showLevelUp && currentScore >= level * 30) {
-        level++; showLevelUp = true; levelUpTimer = Date.now();
-        bgImg.src = backgrounds[(level - 1) % backgrounds.length];
+        level++;
+        showLevelUp = true;
+        levelUpTimer = Date.now();
+        const newBgIndex = (level - 1) % backgrounds.length;
+        bgImg.src = backgrounds[newBgIndex];
       }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      bgX -= 1.5 * speedMultiplier;
-      if (bgX <= -canvas.width) bgX = 0;
-      ctx.drawImage(bgImg, bgX, 0, canvas.width, canvas.height);
-      ctx.drawImage(bgImg, bgX + canvas.width, 0, canvas.width, canvas.height);
+
+      if (bgImg.complete && bgImg.naturalWidth > 0) {
+        bgX -= 1.5 * speedMultiplier;
+        if (bgX <= -canvas.width) bgX = 0;
+        ctx.drawImage(bgImg, bgX, 0, canvas.width, canvas.height);
+        ctx.drawImage(bgImg, bgX + canvas.width, 0, canvas.width, canvas.height);
+      }
 
       const ground = canvas.height - 40;
       leo.y += leo.dy;
       if (leo.y + leo.height < ground) leo.dy += gravity;
-      else { leo.dy = 0; leo.jumping = false; leo.y = ground - leo.height; }
+      else {
+        leo.dy = 0;
+        leo.jumping = false;
+        leo.y = ground - leo.height;
+      }
 
       drawLeo();
 
-      // משיכת מגנט
-      if (magnetActive) {
-        [...coins, ...diamonds].forEach(obj => {
-          const dx = leo.x - obj.x, dy = leo.y - obj.y, dist = Math.hypot(dx, dy);
-          if (dist < 200) { obj.x += dx * 0.08; obj.y += dy * 0.08; }
+      coins.forEach((c, i) => {
+    c.x -= 3 * speedMultiplier;
+    if (coinImg.complete && coinImg.naturalWidth > 0) {
+        ctx.drawImage(coinImg, c.x, c.y, c.size, c.size);
+    }
+    if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive) {
+        coins.splice(i, 1);
+        currentScore++;
+        setScore(currentScore);
+        if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+        }
+    }
+    if (c.x + c.size < 0) coins.splice(i, 1);
+});
+
+      diamonds.forEach((d, i) => {
+    d.x -= 3 * speedMultiplier;
+    if (diamondImg.complete) {
+        ctx.drawImage(diamondImg, d.x, d.y, d.size, d.size);
+    }
+    if (checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) || magnetActive) {
+        diamonds.splice(i, 1);
+        currentScore += 5;
+        setScore(currentScore);
+        if (coinSound) coinSound.play().catch(() => {});
+    }
+    if (d.x + d.size < 0) diamonds.splice(i, 1);
+});
+
+      // ✅ ציור מגנט
+      powerUps.forEach((p) => {
+        p.x -= 2.5 * speedMultiplier;
+        if (p.type === "magnet" && magnetImg.complete) {
+          ctx.drawImage(magnetImg, p.x, p.y, p.size, p.size);
+        }
+      });
+
+      obstacles.forEach((o) => {
+        if (obstacleImg.complete && obstacleImg.naturalWidth > 0) {
+          o.x -= 2.5 * speedMultiplier;
+          ctx.drawImage(obstacleImg, o.x, o.y - o.height, o.width, o.height);
+        }
+      });
+
+      if (Math.random() < 0.022) coins.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 38 });
+if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
+
+      if (Math.random() < 0.002) diamonds.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 42 });
+
+      // ✅ יצירת מגנט
+      if (Math.random() < 0.0015) {
+        powerUps.push({ type: "magnet", x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
+      }
+
+      if (Math.random() < 0.007) {
+        const isMobile = window.innerWidth < 768;
+        const scale = isMobile ? 1.8 : 1.5;
+        obstacles.push({
+          x: canvas.width,
+          y: ground - 10,
+          width: 60 * scale * 0.75,
+          height: 60 * scale,
         });
       }
 
-      // יצירת פריטים
-      if (Math.random() < 0.02) coins.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 38, type: 'coin' });
-      if (Math.random() < 0.01) coins.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 40, type: 'coin2' });
-      if (Math.random() < 0.003) diamonds.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 42 });
-      if (Math.random() < 0.0015) powerUps.push({ type: "magnet", x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
-      if (Math.random() < 0.012) {
-        const scale = window.innerWidth < 768 ? 1.8 : 1.5;
-        obstacles.push({ x: canvas.width, y: ground - 10, width: 60 * scale * 0.75, height: 60 * scale });
-      }
+   coins.forEach((c, i) => {
+  if (magnetActive) {
+    const dx = leo.x - c.x;
+    const dy = leo.y - c.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 5) {
+      c.x += dx / dist * 3; // מהירות משיכה
+      c.y += dy / dist * 3;
+    }
+  } else {
+    c.x -= 2.5 * speedMultiplier;
+  }
 
-      // ציור ואיסוף פריטים
-      coins.forEach((c, i) => {
-        c.x -= 3 * speedMultiplier;
-        const img = c.type === 'coin2' ? coin2Img : coinImg;
-        ctx.drawImage(img, c.x, c.y, c.size, c.size);
-        if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size })) {
-          coins.splice(i, 1);
-          currentScore += c.type === 'coin2' ? 2 : 1;
-          setScore(currentScore);
-          (c.type === 'coin2' ? coin2Sound : coinSound).play().catch(() => {});
-        }
-        if (c.x + c.size < 0) coins.splice(i, 1);
-      });
+  if (coinImg.complete && coinImg.naturalWidth > 0) {
+    ctx.drawImage(coinImg, c.x, c.y, c.size, c.size);
+  }
+
+  if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size })) {
+    coins.splice(i, 1);
+    currentScore++;
+    setScore(currentScore);
+    if (coinSound) {
+      coinSound.currentTime = 0;
+      coinSound.play().catch(() => {});
+    }
+  }
+
+  if (c.x + c.size < 0) coins.splice(i, 1);
+});
+
+
+coins2.forEach((c) => {
+  if (coin2Img.complete && coin2Img.naturalWidth > 0) {
+    c.x -= 1.5 * speedMultiplier;
+    ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
+if (magnetActive) {
+  const dx = leo.x - c.x;
+  const dy = leo.y - c.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > 5) {
+    c.x += dx / dist * 3;  // מהירות המשיכה
+    c.y += dy / dist * 3;
+  }
+}
+
+  }
+});
+
 
       diamonds.forEach((d, i) => {
-        d.x -= 3 * speedMultiplier;
-        ctx.drawImage(diamondImg, d.x, d.y, d.size, d.size);
-        if (checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size })) {
+        if (
+          checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) || magnetActive
+        ) {
           diamonds.splice(i, 1);
           currentScore += 5;
           setScore(currentScore);
-          diamondSound.play().catch(() => {});
+          if (coinSound) coinSound.play().catch(() => {});
+if (magnetActive) {
+  const dx = leo.x - c.x;
+  const dy = leo.y - c.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > 5) {
+    c.x += dx / dist * 3;  // מהירות המשיכה
+    c.y += dy / dist * 3;
+  }
+}
+
         }
-        if (d.x + d.size < 0) diamonds.splice(i, 1);
       });
 
+coins2.forEach((c, i) => {
+  c.x -= 2.5 * speedMultiplier;
+  if (coin2Img.complete && coin2Img.naturalWidth > 0) {
+    ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
+  }
+
+  if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || magnetActive) {
+    coins2.splice(i, 1);
+    currentScore += 2;
+    setScore(currentScore);
+    if (coinSound) {
+      coinSound.currentTime = 0;
+      coinSound.play().catch(() => {});
+    }
+  }
+
+  if (c.x + c.size < 0) coins2.splice(i, 1);
+});
+
+
+
+      // ✅ איסוף מגנט
       powerUps.forEach((p, i) => {
-        p.x -= 1.5 * speedMultiplier;
-        if (p.type === "magnet") ctx.drawImage(magnetImg, p.x, p.y, p.size, p.size);
         if (checkCollision(leo, { x: p.x, y: p.y, width: p.size, height: p.size })) {
           powerUps.splice(i, 1);
-          magnetActive = true;
-          setTimeout(() => magnetActive = false, 5000);
+          if (p.type === "magnet") {
+            magnetActive = true;
+            setTimeout(() => (magnetActive = false), 5000);
+          }
         }
       });
 
       obstacles.forEach((o, i) => {
-        o.x -= 2.5 * speedMultiplier;
-        ctx.drawImage(obstacleImg, o.x, o.y - o.height, o.width, o.height);
-        const hitbox = { x: o.x + o.width * 0.5, y: o.y - o.height * 0.55, width: o.width * 0.1, height: o.height * 0.2 };
-        if (checkCollision(leo, hitbox)) {
-          if (leo.y + leo.height - 15 <= hitbox.y) {
-            jumpSound.play().catch(() => {});
-            leo.dy = -10; leo.jumping = true;
+        const reducedHitbox = {
+          x: o.x + o.width * 0.5,
+          y: o.y - o.height * 0.55,
+          width: o.width * 0.1,
+          height: o.height * 0.2,
+        };
+
+        if (showHitbox) {
+          ctx.save();
+          ctx.strokeStyle = "rgba(255,0,0,0.7)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(reducedHitbox.x, reducedHitbox.y, reducedHitbox.width, reducedHitbox.height);
+          ctx.restore();
+        }
+
+        if (checkCollision(leo, reducedHitbox)) {
+          if (leo.y + leo.height - 15 <= reducedHitbox.y) {
+            if (jumpSound) {
+              jumpSound.currentTime = 0;
+              jumpSound.play().catch(() => {});
+            }
+            leo.dy = -10;
+            leo.jumping = true;
           } else {
             running = false;
             setGameRunning(false);
-            bgMusic.pause();
-            gameOverSound.play().catch(() => {});
+            if (bgMusic) bgMusic.pause();
+            if (gameOverSound) {
+              gameOverSound.currentTime = 0;
+              gameOverSound.play().catch(() => {});
+            }
+
             setGameOver(true);
+
             if (currentScore > highScore) {
               setHighScore(currentScore);
               localStorage.setItem("mleoHighScore", currentScore);
             }
+
             const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
             let updated = [...stored];
-            const idx = updated.findIndex(p => p.name === playerName);
-            if (idx >= 0) updated[idx].score = Math.max(currentScore, updated[idx].score);
-            else updated.push({ name: playerName, score: currentScore });
+            const playerIndex = updated.findIndex((p) => p.name === playerName);
+            if (playerIndex >= 0) {
+              if (currentScore > updated[playerIndex].score) updated[playerIndex].score = currentScore;
+            } else {
+              updated.push({ name: playerName, score: currentScore });
+            }
             updated = updated.sort((a, b) => b.score - a.score).slice(0, 20);
             localStorage.setItem("leaderboard", JSON.stringify(updated));
             setLeaderboard(updated);
@@ -176,39 +404,58 @@ export default function MleoRunner() {
 
       if (showLevelUp && Date.now() - levelUpTimer < 2000) {
         ctx.save();
-        ctx.globalAlpha = Math.max(0, 1 - (Date.now() - levelUpTimer) / 2000);
-        ctx.font = 'bold 60px Arial';
-        ctx.fillStyle = 'gold';
+        ctx.font = 'bold 48px Arial';
+        ctx.fillStyle = 'yellow';
         ctx.textAlign = 'center';
-        ctx.fillText('LEVEL ' + level, canvas.width / 2, 100);
+        ctx.fillText('LEVEL ' + level + '!', canvas.width / 2, 100);
         ctx.restore();
-      } else if (Date.now() - levelUpTimer >= 2000) showLevelUp = false;
+      } else if (Date.now() - levelUpTimer >= 2000) {
+        showLevelUp = false;
+      }
 
       requestAnimationFrame(update);
     }
 
     function startGame() {
+      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const wrapper = document.getElementById("game-wrapper");
+      if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
+      else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
+
+      if (bgMusic) {
+        bgMusic.currentTime = 0;
+        bgMusic.play().catch(() => {});
+      }
+
       initGame();
-      bgMusic.currentTime = 0;
-      bgMusic.play().catch(() => {});
       running = true;
       update();
     }
 
     function jump() {
       if (leo && !leo.jumping) {
-        jumpSound.play().catch(() => {});
-        leo.dy = -8.5; leo.jumping = true;
+        if (jumpSound) {
+          jumpSound.currentTime = 0;
+          jumpSound.play().catch(() => {});
+        }
+        leo.dy = -8.5;
+        leo.jumping = true;
       }
     }
 
     function handleKey(e) {
-      if (e.code === "Space") jump();
-      if (e.code === "KeyH") showHitbox = !showHitbox;
+      if (e.code === "Space") {
+        e.preventDefault();
+        jump();
+      }
+      if (e.code === "KeyH") {
+        showHitbox = !showHitbox;
+      }
     }
 
     document.addEventListener("keydown", handleKey);
     startGame();
+
     return () => {
       document.removeEventListener("keydown", handleKey);
       running = false;
