@@ -141,18 +141,19 @@ export default function MleoFlyer() {
   // ─────────────────────────────────────────────────────────────────────────────
 function getDifficulty() {
   const s = scoreRef.current;
-  const level = Math.floor(s / 10);
-  const spawnInterval = Math.max(1200 - level * 120, 250);
-  const itemSpeed = Math.min(3.3 + level * 0.5, 9);
-  const bombBias = Math.min(0.1 + level * 0.05, 0.6);
+  const level = Math.floor(s / 12);
 
-  // ✨ אפקט מעוף: משיכה איטית, קפיצה רכה
-  const gravity = Math.min(0.12 + level * 0.008, 0.28);
-  const flapPower = Math.max(-1.8 - level * 0.03, -3.0);
+  const spawnInterval = Math.max(1200 - level * 110, 300);
+  const itemSpeed     = Math.min(3.0 + level * 0.45, 8.5);
+  const bombBias      = Math.min(0.08 + level * 0.05, 0.55);
 
+  // ↓↓ נפילה רכה יותר ↓↓
+  const gravity    = Math.min(0.08 + level * 0.006, 0.16);
+  const flapPower  = Math.max(-2.4 - level * 0.035, -3.4);
 
   return { level, spawnInterval, itemSpeed, bombBias, gravity, flapPower };
 }
+
 
 
 
@@ -229,9 +230,13 @@ function getDifficulty() {
     flapPowerRef.current = d.flapPower;
 
     // update dog
-    const dog = dogRef.current;
-    dog.vy = dog.vy * 0.96 + gravityRef.current * 0.7;
-    dog.y += dog.vy;
+const dog = dogRef.current;
+dog.vy += gravityRef.current;   // גרביטציה
+dog.vy *= 0.96;                // חיכוך עדין/החלקה
+dog.y  += dog.vy;               // ⬅️ חסר אצלך — חייבים להזיז את הדמות בפועל!
+
+// (לא חובה אבל מומלץ) הגבלת מהירות כדי למנוע קפיצות קיצוניות
+dog.vy = Math.max(Math.min(dog.vy, 6), -4);
     const floor = canvas.height - dog.h - 12;
     if (dog.y < 8) { dog.y = 8; dog.vy = Math.max(dog.vy, 0); }
     if (dog.y > floor) { dog.y = floor; dog.vy = Math.min(dog.vy, 0); }
@@ -287,28 +292,37 @@ function getDifficulty() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Controls
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (!runningRef.current) return;
-      if (e.code === "Space" || e.code === "ArrowUp") {
-        dogRef.current.vy = flapPowerRef.current;
-        assetsRef.current.sounds.flap?.play().catch(() => {});
-      }
-    };
-    const onTouch = (e) => {
-      if (!runningRef.current) return;
-      e.preventDefault();
-      dogRef.current.vy = flapPowerRef.current;
-      assetsRef.current.sounds.flap?.play().catch(() => {});
-    };
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("touchstart", onTouch, { passive: false });
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("touchstart", onTouch);
-    };
-  }, []);
+// CSS על הקנבס (מונע דיליי של הדפדפן במחוות):
+<canvas
+  ref={canvasRef}
+  className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none"
+/>
+
+// Controls
+useEffect(() => {
+  const flap = () => {
+    if (!runningRef.current) return;
+    // קודם מעדכן תנועה, ואז מפעיל סאונד (כדי שלא יעכב)
+    dogRef.current.vy += flapPowerRef.current * 0.6;
+    const s = assetsRef.current.sounds.flap;
+    if (s) { try { s.currentTime = 0; s.play(); } catch(_) {} }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.code === "Space" || e.code === "ArrowUp") flap();
+  };
+
+  // pointerdown מהיר יותר מ-touchstart ברוב המכשירים
+  const onPointerDown = (e) => { e.preventDefault(); flap(); };
+
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("pointerdown", onPointerDown, { passive: false });
+
+  return () => {
+    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("pointerdown", onPointerDown);
+  };
+}, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Responsive canvas
