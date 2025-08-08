@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 
+// --- Assets ---
 const BG_IMAGES = ["/images/game1.png", "/images/game2.png", "/images/game3.png", "/images/game4.png"];
 const SPRITE_DOG = "/images/leo2.png";
 const IMG_COIN = "/images/coin.png";
@@ -14,6 +15,7 @@ const SND_LOSE = "/sounds/game-over.mp3";
 const SND_COIN = "/sounds/coin.mp3";
 const SND_BOMB = "/sounds/bomb.mp3";
 
+// Sizes per type (px)
 const sizeCoin = 42;
 const sizeDiamond = 34;
 const sizeBomb = 50;
@@ -23,6 +25,7 @@ export default function MleoFlyer() {
   const rafRef = useRef(null);
   const runningRef = useRef(false);
 
+  // UI / general state
   const [showIntro, setShowIntro] = useState(true);
   const [gameOver, setGameOver] = useState(false);
   const [playerName, setPlayerName] = useState("");
@@ -31,32 +34,49 @@ export default function MleoFlyer() {
   const [highScore, setHighScore] = useState(0);
   const [leaderboard, setLeaderboard] = useState([]);
 
+  // world
   const dogRef = useRef(null);
   const itemsRef = useRef([]);
   const bgIndexRef = useRef(0);
-  const gravityRef = useRef(0.3);
-  const flapPowerRef = useRef(-3.8);
+  const gravityRef = useRef(0.08);        // עדין
+  const flapPowerRef = useRef(-2.2);      // עדין
 
-  // לחיצה ממושכת
-  const pressedRef = useRef(false);
+  // press-and-hold (mobile) – בלי בוסט חד
+  const isFlyingRef = useRef(false);
 
-  // זמן
+  // timing (dt)
   const lastTimeRef = useRef(performance.now());
 
-  // ספאון
+  // difficulty timer
   const diffTimerRef = useRef({ lastSpawn: 0 });
 
-  const assetsRef = useRef({ bgs: [], dog: null, coin: null, diamond: null, obstacle: null, sounds: {} });
+  // preloaded assets
+  const assetsRef = useRef({
+    bgs: [],
+    dog: null,
+    coin: null,
+    diamond: null,
+    obstacle: null,
+    sounds: {},
+  });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Block context/selection/long-press (scoped; לא חוסם UI)
   useEffect(() => {
     const wrapper = document.getElementById("game-wrapper");
     if (!wrapper) return;
-    const isUI = (el) => el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+
+    const isUI = (el) =>
+      el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+
     const preventMenu = (e) => { if (!isUI(e.target)) e.preventDefault(); };
     const preventSelection = (e) => { if (!isUI(e.target)) e.preventDefault(); };
+
     let touchTimer;
-    const handleTouchStart = (e) => { if (isUI(e.target)) return; touchTimer = setTimeout(() => { e.preventDefault(); }, 500); };
+    const handleTouchStart = (e) => {
+      if (isUI(e.target)) return;
+      touchTimer = setTimeout(() => { e.preventDefault(); }, 500);
+    };
     const handleTouchEnd = () => clearTimeout(touchTimer);
 
     wrapper.addEventListener("contextmenu", preventMenu);
@@ -64,6 +84,7 @@ export default function MleoFlyer() {
     wrapper.addEventListener("copy", preventSelection);
     wrapper.addEventListener("touchstart", handleTouchStart, { passive: false });
     wrapper.addEventListener("touchend", handleTouchEnd);
+
     return () => {
       wrapper.removeEventListener("contextmenu", preventMenu);
       wrapper.removeEventListener("selectstart", preventSelection);
@@ -74,8 +95,16 @@ export default function MleoFlyer() {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Preload images & sounds + persisted data
   useEffect(() => {
-    const loadImage = (src) => new Promise((res) => { const img = new window.Image(); img.onload = () => res(img); img.src = src; if (img.complete) res(img); });
+    const loadImage = (src) =>
+      new Promise((res) => {
+        const img = new window.Image();
+        img.onload = () => res(img);
+        img.src = src;
+        if (img.complete) res(img);
+      });
+
     Promise.all(BG_IMAGES.map(loadImage)).then((imgs) => (assetsRef.current.bgs = imgs));
     loadImage(SPRITE_DOG).then((img) => (assetsRef.current.dog = img));
     loadImage(IMG_COIN).then((img) => (assetsRef.current.coin = img));
@@ -94,43 +123,57 @@ export default function MleoFlyer() {
     }
 
     if (typeof window !== "undefined") {
-      setHighScore(Number(localStorage.getItem("mleoFlyerHighScore") || 0));
-      setLeaderboard(JSON.parse(localStorage.getItem("mleoFlyerLeaderboard") || "[]"));
+      const hs = Number(localStorage.getItem("mleoFlyerHighScore") || 0);
+      setHighScore(hs);
+      const lb = JSON.parse(localStorage.getItem("mleoFlyerLeaderboard") || "[]");
+      setLeaderboard(lb);
     }
   }, []);
 
   const updateLeaderboard = (name, sc) => {
     let lb = JSON.parse(localStorage.getItem("mleoFlyerLeaderboard") || "[]");
     const i = lb.findIndex((p) => p.name === name);
-    if (i >= 0) { if (sc > lb[i].score) lb[i].score = sc; } else { lb.push({ name, score: sc }); }
+    if (i >= 0) {
+      if (sc > lb[i].score) lb[i].score = sc;
+    } else {
+      lb.push({ name, score: sc });
+    }
     lb = lb.sort((a, b) => b.score - a.score).slice(0, 20);
     localStorage.setItem("mleoFlyerLeaderboard", JSON.stringify(lb));
     setLeaderboard(lb);
+
     const hs = Number(localStorage.getItem("mleoFlyerHighScore") || 0);
-    if (sc > hs) { localStorage.setItem("mleoFlyerHighScore", String(sc)); setHighScore(sc); }
+    if (sc > hs) {
+      localStorage.setItem("mleoFlyerHighScore", String(sc));
+      setHighScore(sc);
+    }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   function getDifficulty() {
     const s = scoreRef.current;
     const level = Math.floor(s / 12);
 
     const spawnInterval = Math.max(1200 - level * 110, 300);
-    const itemSpeed     = Math.min(2.6 + level * 0.4, 7.8);   // ⬅ הורדתי מעט
+    const itemSpeed     = Math.min(2.6 + level * 0.4, 7.8);
     const bombBias      = Math.min(0.08 + level * 0.05, 0.55);
 
-    // עדין יותר (גם קפיצה וגם נפילה חלשות יותר)
-    const gravity    = Math.min(0.06 + level * 0.004, 0.12);  // היה 0.08–0.16
-    const flapPower  = Math.max(-1.8 - level * 0.03, -2.8);   // היה -2.4..-3.4
+    // עדין יותר (קפיצה/נפילה איטיים)
+    const gravity    = Math.min(0.06 + level * 0.004, 0.12);
+    const flapPower  = Math.max(-1.8 - level * 0.03, -2.8);
 
     return { level, spawnInterval, itemSpeed, bombBias, gravity, flapPower };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Init
   function initGame() {
-    const canvas = canvasRef.current; if (!canvas) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const W = Math.min(window.innerWidth * 0.95, 960);
     const H = Math.min(Math.round(W * 0.52), window.innerHeight * 0.8);
-    canvas.width = W; canvas.height = H;
+    canvas.width = W;
+    canvas.height = H;
 
     dogRef.current = { x: canvas.width / 3, y: H / 2, w: 60, h: 50, vy: 0 };
     itemsRef.current = [];
@@ -140,25 +183,34 @@ export default function MleoFlyer() {
     gravityRef.current = d.gravity;
     flapPowerRef.current = d.flapPower;
 
-    scoreRef.current = 0; setScore(0); setGameOver(false);
+    scoreRef.current = 0;
+    setScore(0);
+    setGameOver(false);
     diffTimerRef.current.lastSpawn = performance.now();
     lastTimeRef.current = performance.now();
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Spawn item with dynamic weights/speed
   function spawnItem(diff) {
     const r = Math.random();
     let type = "coin";
     if (r < diff.bombBias) type = "bomb";
     else if (r < diff.bombBias + 0.25) type = "diamond";
+
     const size = type === "diamond" ? sizeDiamond : type === "coin" ? sizeCoin : sizeBomb;
     const canvas = canvasRef.current || { width: 800, height: 420 };
+
     itemsRef.current.push({
-      type, x: canvas.width + size,
+      type,
+      x: canvas.width + size,
       y: Math.random() * (canvas.height - size - 30) + 15,
-      size, vx: -(diff.itemSpeed + Math.random() * 0.6),
+      size,
+      vx: -(diff.itemSpeed + Math.random() * 0.6),
     });
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
   function isHit(dog, it) {
     const a = { x: dog.x + 10, y: dog.y + 8, w: dog.w - 20, h: dog.h - 16 };
     const b = { x: it.x, y: it.y, w: it.size, h: it.size };
@@ -166,55 +218,60 @@ export default function MleoFlyer() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Main loop – time based (dt) + press-and-hold thrust (no burst)
   function loop() {
     if (!runningRef.current) return;
 
     const now = performance.now();
-    let dt = (now - lastTimeRef.current) / 1000;
+    let dt = (now - lastTimeRef.current) / 1000; // seconds
     lastTimeRef.current = now;
-    if (dt > 0.05) dt = 0.05; // cap
-    const scale = dt * 60;
+    if (dt > 0.05) dt = 0.05; // cap long frames
+    const scale = dt * 60;    // נרמול ל־60FPS
 
     const canvas = canvasRef.current;
     if (!canvas) { rafRef.current = requestAnimationFrame(loop); return; }
     const ctx = canvas.getContext("2d");
     const A = assetsRef.current;
 
-    // BG
+    // background
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const bg = A.bgs[bgIndexRef.current];
     if (bg) ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
 
-    // Difficulty
+    // difficulty per-frame
     const d = getDifficulty();
     gravityRef.current = d.gravity;
     flapPowerRef.current = d.flapPower;
 
-    // Physics
+    // update dog
     const dog = dogRef.current;
+
+    // גרביטציה עדינה
     dog.vy += gravityRef.current * scale;
 
-    // לחיצה רציפה – חלש יותר
-    if (pressedRef.current) {
-      dog.vy += (flapPowerRef.current * 0.5) * scale; // היה 0.7
+    // press-and-hold – דחיפה רציפה ועדינה בלבד
+    if (isFlyingRef.current) {
+      dog.vy += (flapPowerRef.current * 0.42) * scale; // 0.38–0.5 לפי טעם
     }
 
-    // חיכוך קצת חזק יותר ⇒ נפילה איטית וחלקה יותר
-    dog.vy *= Math.pow(0.989, scale);   // היה 0.985
-    dog.y  += dog.vy * scale;
+    // חיכוך/החלקה
+    dog.vy *= Math.pow(0.99, scale);
 
-    // קלמפ איטי יותר
-    dog.vy = Math.max(Math.min(dog.vy, 2.6), -3.6);   // היה 3.2 / -4.2
+    // הגבלת מהירות (נפילה ועלייה איטיות)
+    dog.vy = Math.max(Math.min(dog.vy, 2.4), -3.2);
+
+    // עדכון מיקום
+    dog.y  += dog.vy * scale;
 
     // גבולות
     const floor = canvas.height - dog.h - 12;
-    if (dog.y < 8)    { dog.y = 8;    dog.vy = Math.max(dog.vy, 0); }
-    if (dog.y > floor){ dog.y = floor;dog.vy = Math.min(dog.vy, 0); }
+    if (dog.y < 8) { dog.y = 8; dog.vy = Math.max(dog.vy, 0); }
+    if (dog.y > floor) { dog.y = floor; dog.vy = Math.min(dog.vy, 0); }
 
     // draw dog
     if (A.dog) ctx.drawImage(A.dog, dog.x, dog.y, dog.w, dog.h);
 
-    // spawn
+    // timed spawn
     if (now - diffTimerRef.current.lastSpawn >= d.spawnInterval) {
       spawnItem(d);
       diffTimerRef.current.lastSpawn = now;
@@ -233,16 +290,20 @@ export default function MleoFlyer() {
 
       if (isHit(dog, it)) {
         if (it.type === "coin") {
-          const ns = scoreRef.current + 1; scoreRef.current = ns; setScore(ns);
+          const ns = scoreRef.current + 1;
+          scoreRef.current = ns; setScore(ns);
           assetsRef.current.sounds.coin?.play().catch(() => {});
         } else if (it.type === "diamond") {
-          const ns = scoreRef.current + 5; scoreRef.current = ns; setScore(ns);
+          const ns = scoreRef.current + 5;
+          scoreRef.current = ns; setScore(ns);
           assetsRef.current.sounds.coin?.play().catch(() => {});
         } else {
           assetsRef.current.sounds.bomb?.play().catch(() => {});
-          runningRef.current = false; setGameOver(true);
+          runningRef.current = false;
+          setGameOver(true);
           updateLeaderboard(playerName || "Player", scoreRef.current);
-          cancelAnimationFrame(rafRef.current); return;
+          cancelAnimationFrame(rafRef.current);
+          return;
         }
         itemsRef.current.splice(i, 1);
       }
@@ -257,24 +318,44 @@ export default function MleoFlyer() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Controls – press-and-hold (no burst) + keyboard (בוסט עדין לנייח בלבד)
   useEffect(() => {
-    const isUI = (el) => el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+    const isUI = (el) =>
+      el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+
+    // מקלדת: בוסט עדין. אם תרצה לבטל – תגיד ואסיר.
     const flapOnce = () => {
       if (!runningRef.current) return;
-      dogRef.current.vy += flapPowerRef.current * 0.45; // היה 0.6
-      const s = assetsRef.current.sounds.flap; if (s) { try { s.currentTime = 0; s.play(); } catch(_) {} }
+      dogRef.current.vy += flapPowerRef.current * 0.35;
+      const s = assetsRef.current.sounds.flap;
+      if (s) { try { s.currentTime = 0; s.play(); } catch(_) {} }
     };
-    const onKeyDown = (e) => { if (isUI(e.target)) return; if (e.code === "Space" || e.code === "ArrowUp") flapOnce(); };
+
+    const onKeyDown = (e) => {
+      if (isUI(e.target)) return;
+      if (e.code === "Space" || e.code === "ArrowUp") flapOnce();
+    };
 
     const canvas = canvasRef.current;
-    const onPointerDown = (e) => { if (isUI(e.target)) return; e.preventDefault(); pressedRef.current = true; canvas?.setPointerCapture?.(e.pointerId); flapOnce(); };
-    const onPointerUp = (e) => { pressedRef.current = false; canvas?.releasePointerCapture?.(e.pointerId); };
+
+    // מובייל: בלי בוסט חד – רק מצב לחוץ
+    const onPointerDown = (e) => {
+      if (isUI(e.target)) return;
+      e.preventDefault();
+      isFlyingRef.current = true;
+      canvas?.setPointerCapture?.(e.pointerId);
+    };
+    const onPointerUp = (e) => {
+      isFlyingRef.current = false;
+      canvas?.releasePointerCapture?.(e.pointerId);
+    };
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("pointerdown", onPointerDown, { passive: false });
     document.addEventListener("pointerup", onPointerUp);
     document.addEventListener("pointercancel", onPointerUp);
     document.addEventListener("pointerleave", onPointerUp);
+
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
@@ -285,12 +366,15 @@ export default function MleoFlyer() {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Responsive canvas
   useEffect(() => {
     const onResize = () => {
-      const canvas = canvasRef.current; if (!canvas) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
       const W = Math.min(window.innerWidth * 0.95, 960);
       const H = Math.min(Math.round(W * 0.52), window.innerHeight * 0.8);
-      canvas.width = W; canvas.height = H;
+      canvas.width = W;
+      canvas.height = H;
     };
     onResize();
     window.addEventListener("resize", onResize);
@@ -301,42 +385,69 @@ export default function MleoFlyer() {
     };
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────────
   function startGame() {
+    // request fullscreen on mobile
     const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const wrapper = document.getElementById("game-wrapper");
     if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
     else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen?.();
+
     if (!canvasRef.current) { requestAnimationFrame(startGame); return; }
+
     initGame();
     runningRef.current = true;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(loop);
   }
 
-  function restartGame() { setGameOver(false); startGame(); }
+  function restartGame() {
+    setGameOver(false);
+    startGame();
+  }
 
-  useEffect(() => () => { runningRef.current = false; if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+  useEffect(() => {
+    return () => {
+      runningRef.current = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <Layout>
-      <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative select-none">
+      <div
+        id="game-wrapper"
+        className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative select-none"
+      >
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <img src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
             <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🛩️ LIO Flyer</h1>
             <p className="text-base sm:text-lg text-gray-200 mb-4">Hold to fly. Collect coins, avoid obstacles.</p>
 
-            <input type="text" placeholder="Enter your name" value={playerName} onChange={(e) => setPlayerName(e.target.value)} className="mb-4 px-4 py-2 rounded text-black w-64 text-center" />
+            <input
+              type="text"
+              placeholder="Enter your name"
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
+            />
 
             <button
               onClick={() => {
                 if (!playerName.trim()) return;
                 setShowIntro(false);
-                Object.values(assetsRef.current.sounds || {}).forEach((a) => { try { a.play().then(()=>a.pause()); } catch(_) {} });
+                // unlock sounds on gesture
+                Object.values(assetsRef.current.sounds || {}).forEach((a) => {
+                  try { a.play().then(()=>a.pause()); } catch(_) {}
+                });
                 startGame();
               }}
               disabled={!playerName.trim()}
-              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}
+              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${
+                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              }`}
             >
               ▶ Start Game
             </button>
@@ -345,6 +456,7 @@ export default function MleoFlyer() {
 
         {!showIntro && (
           <>
+            {/* HUD */}
             <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
               Score: {score} | High Score: {highScore}
             </div>
@@ -353,13 +465,19 @@ export default function MleoFlyer() {
             </div>
 
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
-              <canvas ref={canvasRef} className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none" />
+              <canvas
+                ref={canvasRef}
+                className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none"
+              />
               {gameOver && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-[999]">
                   <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">GAME OVER</h2>
                   <button
                     className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
-                    onClick={() => { updateLeaderboard(playerName || "Player", scoreRef.current); restartGame(); }}
+                    onClick={() => {
+                      updateLeaderboard(playerName || "Player", scoreRef.current);
+                      restartGame();
+                    }}
                   >
                     Start Again
                   </button>
@@ -372,7 +490,9 @@ export default function MleoFlyer() {
                 if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
                 else if (document.webkitFullscreenElement) document.webkitExitFullscreen?.();
                 updateLeaderboard(playerName || "Player", scoreRef.current);
-                setShowIntro(true); setGameOver(false); runningRef.current = false;
+                setShowIntro(true);
+                setGameOver(false);
+                runningRef.current = false;
                 if (rafRef.current) cancelAnimationFrame(rafRef.current);
               }}
               className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
@@ -380,7 +500,7 @@ export default function MleoFlyer() {
               Exit
             </button>
 
-            {/* Mobile fly button – המאזין הגלובלי מטפל */}
+            {/* Mobile fly button – המאזין הגלובלי מטפל (בלי בוסט חד) */}
             <button
               onPointerDown={(e) => { e.preventDefault(); }}
               className="sm:hidden fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
