@@ -9,7 +9,7 @@ const IMG_COIN = "/images/coin.png";
 const IMG_DIAMOND = "/images/diamond.png";
 const IMG_OBSTACLE = "/images/obstacle1.png";
 
-const SND_FLAP = "/sounds/flap.mp3";
+const SND_FLAP = "/sounds/flap2.mp3";
 const SND_WIN = "/sounds/win.mp3";
 const SND_LOSE = "/sounds/game-over.mp3";
 const SND_COIN = "/sounds/coin.mp3";
