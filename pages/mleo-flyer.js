@@ -9,7 +9,7 @@ const IMG_COIN = "/images/coin.png";
 const IMG_DIAMOND = "/images/diamond.png";
 const IMG_OBSTACLE = "/images/obstacle1.png";
 
-const SND_FLAP = "/sounds/flap2.mp3";
+const SND_FLAP = "/sounds/flap3.mp3";
 const SND_WIN = "/sounds/win.mp3";
 const SND_LOSE = "/sounds/game-over.mp3";
 const SND_COIN = "/sounds/coin.mp3";
@@ -41,6 +41,9 @@ export default function MleoFlyer() {
   const gravityRef = useRef(0.35);
   const flapPowerRef = useRef(-4.2);
 
+  // input (press-and-hold)
+  const pressedRef = useRef(false);
+
   // difficulty timer
   const diffTimerRef = useRef({ lastSpawn: 0 });
 
@@ -55,39 +58,38 @@ export default function MleoFlyer() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Block context/selection/long-press
-useEffect(() => {
-  const wrapper = document.getElementById("game-wrapper");
-  if (!wrapper) return;
+  // Block context/selection/long-press (לא חוסם UI)
+  useEffect(() => {
+    const wrapper = document.getElementById("game-wrapper");
+    if (!wrapper) return;
 
-  const isUI = (el) =>
-    el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+    const isUI = (el) =>
+      el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
 
-  const preventMenu = (e) => { if (!isUI(e.target)) e.preventDefault(); };
-  const preventSelection = (e) => { if (!isUI(e.target)) e.preventDefault(); };
+    const preventMenu = (e) => { if (!isUI(e.target)) e.preventDefault(); };
+    const preventSelection = (e) => { if (!isUI(e.target)) e.preventDefault(); };
 
-  let touchTimer;
-  const handleTouchStart = (e) => {
-    if (isUI(e.target)) return;
-    touchTimer = setTimeout(() => { e.preventDefault(); }, 500);
-  };
-  const handleTouchEnd = () => clearTimeout(touchTimer);
+    let touchTimer;
+    const handleTouchStart = (e) => {
+      if (isUI(e.target)) return;
+      touchTimer = setTimeout(() => { e.preventDefault(); }, 500);
+    };
+    const handleTouchEnd = () => clearTimeout(touchTimer);
 
-  wrapper.addEventListener("contextmenu", preventMenu);
-  wrapper.addEventListener("selectstart", preventSelection);
-  wrapper.addEventListener("copy", preventSelection);
-  wrapper.addEventListener("touchstart", handleTouchStart, { passive: false });
-  wrapper.addEventListener("touchend", handleTouchEnd);
+    wrapper.addEventListener("contextmenu", preventMenu);
+    wrapper.addEventListener("selectstart", preventSelection);
+    wrapper.addEventListener("copy", preventSelection);
+    wrapper.addEventListener("touchstart", handleTouchStart, { passive: false });
+    wrapper.addEventListener("touchend", handleTouchEnd);
 
-  return () => {
-    wrapper.removeEventListener("contextmenu", preventMenu);
-    wrapper.removeEventListener("selectstart", preventSelection);
-    wrapper.removeEventListener("copy", preventSelection);
-    wrapper.removeEventListener("touchstart", handleTouchStart);
-    wrapper.removeEventListener("touchend", handleTouchEnd);
-  };
-}, []);
-
+    return () => {
+      wrapper.removeEventListener("contextmenu", preventMenu);
+      wrapper.removeEventListener("selectstart", preventSelection);
+      wrapper.removeEventListener("copy", preventSelection);
+      wrapper.removeEventListener("touchstart", handleTouchStart);
+      wrapper.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Preload images & sounds + persisted data
@@ -97,6 +99,8 @@ useEffect(() => {
         const img = new window.Image();
         img.onload = () => res(img);
         img.src = src;
+        // תמיכה בקאש של iOS: אם נטען מהקאש, onload כבר קרה
+        if (img.complete) res(img);
       });
 
     Promise.all(BG_IMAGES.map(loadImage)).then((imgs) => (assetsRef.current.bgs = imgs));
@@ -144,23 +148,20 @@ useEffect(() => {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-function getDifficulty() {
-  const s = scoreRef.current;
-  const level = Math.floor(s / 12);
+  function getDifficulty() {
+    const s = scoreRef.current;
+    const level = Math.floor(s / 12);
 
-  const spawnInterval = Math.max(1200 - level * 110, 300);
-  const itemSpeed     = Math.min(3.0 + level * 0.45, 8.5);
-  const bombBias      = Math.min(0.08 + level * 0.05, 0.55);
+    const spawnInterval = Math.max(1200 - level * 110, 300);
+    const itemSpeed     = Math.min(3.0 + level * 0.45, 8.5);
+    const bombBias      = Math.min(0.08 + level * 0.05, 0.55);
 
-  // ↓↓ נפילה רכה יותר ↓↓
-  const gravity    = Math.min(0.08 + level * 0.006, 0.16);
-  const flapPower  = Math.max(-2.4 - level * 0.035, -3.4);
+    // ↓↓ נפילה רכה יותר ↓↓
+    const gravity    = Math.min(0.08 + level * 0.006, 0.16);
+    const flapPower  = Math.max(-2.4 - level * 0.035, -3.4);
 
-  return { level, spawnInterval, itemSpeed, bombBias, gravity, flapPower };
-}
-
-
-
+    return { level, spawnInterval, itemSpeed, bombBias, gravity, flapPower };
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Init
@@ -189,13 +190,12 @@ function getDifficulty() {
   // ─────────────────────────────────────────────────────────────────────────────
   // Spawn item with dynamic weights/speed
   function spawnItem(diff) {
-    // type by weights: bombBias, diamond ~25%, otherwise coin
     const r = Math.random();
     let type = "coin";
     if (r < diff.bombBias) type = "bomb";
     else if (r < diff.bombBias + 0.25) type = "diamond";
 
-    let size = type === "diamond" ? sizeDiamond : type === "coin" ? sizeCoin : sizeBomb;
+    const size = type === "diamond" ? sizeDiamond : type === "coin" ? sizeCoin : sizeBomb;
     const canvas = canvasRef.current || { width: 800, height: 420 };
 
     itemsRef.current.push({
@@ -203,7 +203,7 @@ function getDifficulty() {
       x: canvas.width + size,
       y: Math.random() * (canvas.height - size - 30) + 15,
       size,
-      vx: -(diff.itemSpeed + Math.random() * 0.6), // שמאלה מהר יותר ככל שהרמה עולה
+      vx: -(diff.itemSpeed + Math.random() * 0.6),
     });
   }
 
@@ -235,13 +235,21 @@ function getDifficulty() {
     flapPowerRef.current = d.flapPower;
 
     // update dog
-const dog = dogRef.current;
-dog.vy += gravityRef.current;   // גרביטציה
-dog.vy *= 0.96;                // חיכוך עדין/החלקה
-dog.y  += dog.vy;               // ⬅️ חסר אצלך — חייבים להזיז את הדמות בפועל!
+    const dog = dogRef.current;
+    dog.vy += gravityRef.current;
 
-// (לא חובה אבל מומלץ) הגבלת מהירות כדי למנוע קפיצות קיצוניות
-dog.vy = Math.max(Math.min(dog.vy, 6), -4);
+    // אם אצבע לחוצה – הזרקה עדינה בכל פריים (מעוף רציף)
+    if (pressedRef.current) {
+      dog.vy += flapPowerRef.current * 0.025; // 0.02–0.035 לפי טעם
+    }
+
+    dog.vy *= 0.985;        // החלקה עדינה
+    dog.y  += dog.vy;
+
+    // Clamp מהירות
+    dog.vy = Math.max(Math.min(dog.vy, 2), -4);
+
+    // גבולות מסך
     const floor = canvas.height - dog.h - 12;
     if (dog.y < 8) { dog.y = 8; dog.vy = Math.max(dog.vy, 0); }
     if (dog.y > floor) { dog.y = floor; dog.vy = Math.min(dog.vy, 0); }
@@ -249,7 +257,7 @@ dog.vy = Math.max(Math.min(dog.vy, 6), -4);
     // draw dog
     if (A.dog) ctx.drawImage(A.dog, dog.x, dog.y, dog.w, dog.h);
 
-    // timed spawn (instead of per-frame random)
+    // timed spawn
     const now = performance.now();
     if (now - diffTimerRef.current.lastSpawn >= d.spawnInterval) {
       spawnItem(d);
@@ -297,46 +305,45 @@ dog.vy = Math.max(Math.min(dog.vy, 6), -4);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-// CSS על הקנבס (מונע דיליי של הדפדפן במחוות):
-<canvas
-  ref={canvasRef}
-  className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none"
-/>
+  // Controls (Pointer + Keyboard) עם סינון UI ו־press-and-hold
+  useEffect(() => {
+    const isUI = (el) =>
+      el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
 
+    const flap = () => {
+      if (!runningRef.current) return;
+      dogRef.current.vy += flapPowerRef.current * 0.6; // בוסט התחלה
+      const s = assetsRef.current.sounds.flap;
+      if (s) { try { s.currentTime = 0; s.play(); } catch(_) {} }
+    };
 
+    const onKeyDown = (e) => {
+      if (isUI(e.target)) return;
+      if (e.code === "Space" || e.code === "ArrowUp") flap();
+    };
 
-// Controls
-useEffect(() => {
-  const isUI = (el) =>
-    el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+    const onPointerDown = (e) => {
+      if (isUI(e.target)) return;
+      e.preventDefault();
+      pressedRef.current = true;
+      flap();
+    };
+    const onPointerUp = () => { pressedRef.current = false; };
 
-  const flap = () => {
-    if (!runningRef.current) return;
-    dogRef.current.vy += flapPowerRef.current * 0.6;
-    const s = assetsRef.current.sounds.flap;
-    if (s) { try { s.currentTime = 0; s.play(); } catch(_) {} }
-  };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown, { passive: false });
+    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointercancel", onPointerUp);
+    document.addEventListener("pointerleave", onPointerUp);
 
-  const onKeyDown = (e) => {
-    if (isUI(e.target)) return;
-    if (e.code === "Space" || e.code === "ArrowUp") flap();
-  };
-
-  const onPointerDown = (e) => {
-    if (isUI(e.target)) return;
-    e.preventDefault();
-    flap();
-  };
-
-  document.addEventListener("keydown", onKeyDown);
-  document.addEventListener("pointerdown", onPointerDown, { passive: false });
-
-  return () => {
-    document.removeEventListener("keydown", onKeyDown);
-    document.removeEventListener("pointerdown", onPointerDown);
-  };
-}, []);
-
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointercancel", onPointerUp);
+      document.removeEventListener("pointerleave", onPointerUp);
+    };
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Responsive canvas
@@ -440,7 +447,7 @@ useEffect(() => {
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
               <canvas
                 ref={canvasRef}
-                className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20"
+                className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none"
               />
               {gameOver && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-[999]">
@@ -473,14 +480,13 @@ useEffect(() => {
               Exit
             </button>
 
-            {/* Mobile fly button */}
-       <button
-  onPointerDown={(e) => { e.preventDefault(); /* המאזין הגלובלי כבר מפיל flap() */ }}
-  className="sm:hidden fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
->
-  FLY
-</button>
-
+            {/* Mobile fly button – משתמש במאזין הגלובלי */}
+            <button
+              onPointerDown={(e) => { e.preventDefault(); /* הגלובלי כבר עושה flap+press */ }}
+              className="sm:hidden fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
+            >
+              FLY
+            </button>
           </>
         )}
       </div>
