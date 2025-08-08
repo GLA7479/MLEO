@@ -56,33 +56,38 @@ export default function MleoFlyer() {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Block context/selection/long-press
-  useEffect(() => {
-    const preventMenu = (e) => e.preventDefault();
-    const preventSelection = (e) => e.preventDefault();
+useEffect(() => {
+  const wrapper = document.getElementById("game-wrapper");
+  if (!wrapper) return;
 
-    document.addEventListener("contextmenu", preventMenu);
-    document.addEventListener("selectstart", preventSelection);
-    document.addEventListener("copy", preventSelection);
+  const isUI = (el) =>
+    el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
 
-    let touchTimer;
-    const handleTouchStart = (e) => {
-      touchTimer = setTimeout(() => {
-        e.preventDefault();
-      }, 500);
-    };
-    const handleTouchEnd = () => clearTimeout(touchTimer);
+  const preventMenu = (e) => { if (!isUI(e.target)) e.preventDefault(); };
+  const preventSelection = (e) => { if (!isUI(e.target)) e.preventDefault(); };
 
-    document.addEventListener("touchstart", handleTouchStart, { passive: false });
-    document.addEventListener("touchend", handleTouchEnd);
+  let touchTimer;
+  const handleTouchStart = (e) => {
+    if (isUI(e.target)) return;
+    touchTimer = setTimeout(() => { e.preventDefault(); }, 500);
+  };
+  const handleTouchEnd = () => clearTimeout(touchTimer);
 
-    return () => {
-      document.removeEventListener("contextmenu", preventMenu);
-      document.removeEventListener("selectstart", preventSelection);
-      document.removeEventListener("copy", preventSelection);
-      document.removeEventListener("touchstart", handleTouchStart);
-      document.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, []);
+  wrapper.addEventListener("contextmenu", preventMenu);
+  wrapper.addEventListener("selectstart", preventSelection);
+  wrapper.addEventListener("copy", preventSelection);
+  wrapper.addEventListener("touchstart", handleTouchStart, { passive: false });
+  wrapper.addEventListener("touchend", handleTouchEnd);
+
+  return () => {
+    wrapper.removeEventListener("contextmenu", preventMenu);
+    wrapper.removeEventListener("selectstart", preventSelection);
+    wrapper.removeEventListener("copy", preventSelection);
+    wrapper.removeEventListener("touchstart", handleTouchStart);
+    wrapper.removeEventListener("touchend", handleTouchEnd);
+  };
+}, []);
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Preload images & sounds + persisted data
@@ -298,22 +303,30 @@ dog.vy = Math.max(Math.min(dog.vy, 6), -4);
   className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none"
 />
 
+
+
 // Controls
 useEffect(() => {
+  const isUI = (el) =>
+    el.closest?.("input, textarea, select, button, [role='textbox'], [contenteditable='true']");
+
   const flap = () => {
     if (!runningRef.current) return;
-    // קודם מעדכן תנועה, ואז מפעיל סאונד (כדי שלא יעכב)
     dogRef.current.vy += flapPowerRef.current * 0.6;
     const s = assetsRef.current.sounds.flap;
     if (s) { try { s.currentTime = 0; s.play(); } catch(_) {} }
   };
 
   const onKeyDown = (e) => {
+    if (isUI(e.target)) return;
     if (e.code === "Space" || e.code === "ArrowUp") flap();
   };
 
-  // pointerdown מהיר יותר מ-touchstart ברוב המכשירים
-  const onPointerDown = (e) => { e.preventDefault(); flap(); };
+  const onPointerDown = (e) => {
+    if (isUI(e.target)) return;
+    e.preventDefault();
+    flap();
+  };
 
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("pointerdown", onPointerDown, { passive: false });
@@ -323,6 +336,7 @@ useEffect(() => {
     document.removeEventListener("pointerdown", onPointerDown);
   };
 }, []);
+
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Responsive canvas
@@ -401,7 +415,7 @@ useEffect(() => {
                 Object.values(assetsRef.current.sounds || {}).forEach((a) => {
                   try { a.play().then(()=>a.pause()); } catch(_) {}
                 });
-                setTimeout(() => startGame(), 0);
+                startGame();
               }}
               disabled={!playerName.trim()}
               className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition animate-pulse ${
@@ -460,16 +474,13 @@ useEffect(() => {
             </button>
 
             {/* Mobile fly button */}
-            <button
-              onTouchStart={(e) => {
-                e.preventDefault();
-                dogRef.current.vy = flapPowerRef.current;
-                assetsRef.current.sounds.flap?.play().catch(() => {});
-              }}
-              className="sm:hidden fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
-            >
-              FLY
-            </button>
+       <button
+  onPointerDown={(e) => { e.preventDefault(); /* המאזין הגלובלי כבר מפיל flap() */ }}
+  className="sm:hidden fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg select-none"
+>
+  FLY
+</button>
+
           </>
         )}
       </div>
