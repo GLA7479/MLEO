@@ -29,8 +29,9 @@ export default function MleoRunner() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
+    // 🐶 תמונה בודדת של הכלב (לא ספרייט)
     const leoSprite = new window.Image();
-    leoSprite.src = "/images/dog-spritesheet.png";
+    leoSprite.src = "/images/dog.png"; // ← שים פה את התמונה הבודדת
 
     const coinImg = new window.Image();
     coinImg.src = "/images/leo-logo.png";
@@ -82,7 +83,7 @@ export default function MleoRunner() {
       if (gameOverSound) gameOverSound.volume = 0.7;
     }
 
-    let leo, gravity, coins, diamonds, obstacles, frame = 0, frameCount = 0;
+    let leo, gravity, coins, diamonds, obstacles;
     let coins2 = [];
 
     let level = 1;
@@ -97,6 +98,25 @@ export default function MleoRunner() {
     let powerUps = [];
     let magnetActive = false;
 
+    // === DPR setup (חדות) ===
+    function setupCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      const displayWidth = canvas.clientWidth || 960;
+      const displayHeight = canvas.clientHeight || 480;
+
+      canvas.width = Math.round(displayWidth * dpr);
+      canvas.height = Math.round(displayHeight * dpr);
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+    }
+    setupCanvas();
+    window.addEventListener("resize", setupCanvas);
+
+    const DPR = window.devicePixelRatio || 1;
+    const CW = () => canvas.width / DPR;
+    const CH = () => canvas.height / DPR;
+
     function isWithinMagnetRange(obj) {
       const dx = Math.abs(leo.x - obj.x);
       const dy = Math.abs(leo.y - obj.y);
@@ -105,13 +125,16 @@ export default function MleoRunner() {
 
     function initGame() {
       const isMobile = window.innerWidth < 768;
-      const scale = isMobile ? 1.8 : 1.5;
+
+      // גודל קבוע לדמות (ללא Scale משתנה)
+      const LEO_W = isMobile ? 90 : 85;
+      const LEO_H = isMobile ? 110 : 100;
 
       leo = {
-        x: canvas.width / 2 - (100 * scale),
-        y: canvas.height - 80 - (100 * scale),
-        width: 45 * scale,
-        height: 100 * scale,
+        x: CW() * 0.18,
+        y: 0, // נקבע בהמשך לפי הקרקע
+        width: LEO_W,
+        height: LEO_H,
         dy: 0,
         jumping: false,
       };
@@ -121,11 +144,12 @@ export default function MleoRunner() {
       diamonds = [];
       powerUps = [];
       obstacles = [];
-      frame = 0;
-      frameCount = 0;
       currentScore = 0;
       setScore(0);
       setGameOver(false);
+
+      const ground = CH() - 40;
+      leo.y = ground - leo.height;
     }
 
     function checkCollision(r1, r2) {
@@ -137,13 +161,12 @@ export default function MleoRunner() {
       );
     }
 
+    // ✅ ציור תמונה בודדת ללא אנימציה + Pixel snapping
     function drawLeo() {
       if (!leoSprite.complete || leoSprite.naturalWidth === 0) return;
-      const sw = leoSprite.width / 4;
-      const sh = leoSprite.height;
-      ctx.drawImage(leoSprite, frame * sw, 0, sw, sh, leo.x, leo.y, leo.width, leo.height);
-      frameCount++;
-      if (frameCount % 6 === 0) frame = (frame + 1) % 4;
+      const x = Math.round(leo.x);
+      const y = Math.round(leo.y);
+      ctx.drawImage(leoSprite, x, y, leo.width, leo.height);
     }
 
     function update() {
@@ -159,16 +182,18 @@ export default function MleoRunner() {
         bgImg.src = backgrounds[newBgIndex];
       }
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, CW(), CH());
 
       if (bgImg.complete && bgImg.naturalWidth > 0) {
         bgX -= 1.5 * speedMultiplier;
-        if (bgX <= -canvas.width) bgX = 0;
-        ctx.drawImage(bgImg, bgX, 0, canvas.width, canvas.height);
-        ctx.drawImage(bgImg, bgX + canvas.width, 0, canvas.width, canvas.height);
+        if (bgX <= -CW()) bgX = 0;
+        ctx.drawImage(bgImg, Math.round(bgX), 0, CW(), CH());
+        ctx.drawImage(bgImg, Math.round(bgX + CW()), 0, CW(), CH());
       }
 
-      const ground = canvas.height - 40;
+      const ground = CH() - 40;
+
+      // כבידה/קפיצה – גובה קבוע, ללא שינוי גודל הדמות
       leo.y += leo.dy;
       if (leo.y + leo.height < ground) leo.dy += gravity;
       else {
@@ -179,155 +204,148 @@ export default function MleoRunner() {
 
       drawLeo();
 
-coins.forEach((c, i) => {
-  c.x -= 3 * speedMultiplier;
+      // Coins
+      coins.forEach((c, i) => {
+        c.x -= 3 * speedMultiplier;
 
-  // 🧲 משיכה אם מגנט פעיל
-  if (magnetActive && isWithinMagnetRange(c)) {
-    const dx = leo.x - c.x;
-    const dy = leo.y - c.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const pullStrength = 4;
-    if (dist > 1) {
-      c.x += (dx / dist) * pullStrength;
-      c.y += (dy / dist) * pullStrength;
-    }
-  }
+        if (magnetActive && isWithinMagnetRange(c)) {
+          const dx = leo.x - c.x;
+          const dy = leo.y - c.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const pullStrength = 4;
+          if (dist > 1) {
+            c.x += (dx / dist) * pullStrength;
+            c.y += (dy / dist) * pullStrength;
+          }
+        }
 
-  if (coinImg.complete) {
-    ctx.drawImage(coinImg, c.x, c.y, c.size, c.size);
-  }
+        if (coinImg.complete) {
+          ctx.drawImage(coinImg, Math.round(c.x), Math.round(c.y), c.size, c.size);
+        }
 
-  if (
-    checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) ||
-    (magnetActive && isWithinMagnetRange(c))
-  ) {
-    coins.splice(i, 1);
-    currentScore++;
-    setScore(currentScore);
-    if (coinSound) {
-      coinSound.currentTime = 0;
-      coinSound.play().catch(() => {});
-    }
-  }
+        if (
+          checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) ||
+          (magnetActive && isWithinMagnetRange(c))
+        ) {
+          coins.splice(i, 1);
+          currentScore++;
+          setScore(currentScore);
+          if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
 
-  if (c.x + c.size < 0) coins.splice(i, 1);
-});
+        if (c.x + c.size < 0) coins.splice(i, 1);
+      });
 
+      // Diamonds
+      diamonds.forEach((d, i) => {
+        d.x -= 3 * speedMultiplier;
 
+        if (magnetActive && isWithinMagnetRange(d)) {
+          const dx = leo.x - d.x;
+          const dy = leo.y - d.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const pullStrength = 4;
+          if (dist > 1) {
+            d.x += (dx / dist) * pullStrength;
+            d.y += (dy / dist) * pullStrength;
+          }
+        }
 
-diamonds.forEach((d, i) => {
-  d.x -= 3 * speedMultiplier;
+        if (diamondImg.complete) {
+          ctx.drawImage(diamondImg, Math.round(d.x), Math.round(d.y), d.size, d.size);
+        }
 
-  // 🧲 משיכה אם מגנט פעיל
-  if (magnetActive && isWithinMagnetRange(d)) {
-    const dx = leo.x - d.x;
-    const dy = leo.y - d.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const pullStrength = 4;
-    if (dist > 1) {
-      d.x += (dx / dist) * pullStrength;
-      d.y += (dy / dist) * pullStrength;
-    }
-  }
+        if (
+          checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) ||
+          (magnetActive && isWithinMagnetRange(d))
+        ) {
+          diamonds.splice(i, 1);
+          currentScore += 5;
+          setScore(currentScore);
+          if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
 
-  if (diamondImg.complete) {
-    ctx.drawImage(diamondImg, d.x, d.y, d.size, d.size);
-  }
+        if (d.x + d.size < 0) diamonds.splice(i, 1);
+      });
 
-  if (
-    checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) ||
-    (magnetActive && isWithinMagnetRange(d))
-  ) {
-    diamonds.splice(i, 1);
-    currentScore += 5;
-    setScore(currentScore);
-    if (coinSound) {
-      coinSound.currentTime = 0;
-      coinSound.play().catch(() => {});
-    }
-  }
-
-  if (d.x + d.size < 0) diamonds.splice(i, 1);
-});
-
-
-
-      // ✅ ציור מגנט
+      // PowerUps (magnet)
       powerUps.forEach((p) => {
         p.x -= 3 * speedMultiplier;
         if (p.type === "magnet" && magnetImg.complete) {
-          ctx.drawImage(magnetImg, p.x, p.y, p.size, p.size);
+          ctx.drawImage(magnetImg, Math.round(p.x), Math.round(p.y), p.size, p.size);
         }
       });
 
+      // Obstacles
       obstacles.forEach((o) => {
         if (obstacleImg.complete && obstacleImg.naturalWidth > 0) {
           o.x -= 2.5 * speedMultiplier;
-          ctx.drawImage(obstacleImg, o.x, o.y - o.height, o.width, o.height);
+          ctx.drawImage(obstacleImg, Math.round(o.x), Math.round(o.y - o.height), o.width, o.height);
         }
       });
 
-      if (Math.random() < 0.022) coins.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 38 });
-if (Math.random() < 0.01) coins2.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
+      // Spawns
+      if (Math.random() < 0.022) coins.push({ x: CW(), y: Math.random() * 60 + (CH() - 300), size: 38 });
+      if (Math.random() < 0.01) coins2.push({ x: CW(), y: Math.random() * 60 + (CH() - 300), size: 40 });
+      if (Math.random() < 0.002) diamonds.push({ x: CW(), y: Math.random() * 60 + (CH() - 300), size: 42 });
 
-      if (Math.random() < 0.002) diamonds.push({ x: canvas.width, y: Math.random() * 60 + 180, size: 42 });
-
-      // ✅ יצירת מגנט
       if (Math.random() < 0.0015) {
-        powerUps.push({ type: "magnet", x: canvas.width, y: Math.random() * 60 + 180, size: 40 });
+        powerUps.push({ type: "magnet", x: CW(), y: Math.random() * 60 + (CH() - 300), size: 40 });
       }
 
       if (Math.random() < 0.007) {
         const isMobile = window.innerWidth < 768;
         const scale = isMobile ? 1.8 : 1.5;
         obstacles.push({
-          x: canvas.width,
-          y: ground - 25,
+          x: CW(),
+          y: CH() - 25,
           width: 60 * scale * 0.75,
           height: 60 * scale,
         });
       }
 
-coins2.forEach((c, i) => {
-  c.x -= 3 * speedMultiplier;
+      // Coins2
+      coins2.forEach((c, i) => {
+        c.x -= 3 * speedMultiplier;
 
-  // 🧲 משיכה אם מגנט פעיל
-  if (magnetActive && isWithinMagnetRange(c)) {
-    const dx = leo.x - c.x;
-    const dy = leo.y - c.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const pullStrength = 4;
-    if (dist > 1) {
-      c.x += (dx / dist) * pullStrength;
-      c.y += (dy / dist) * pullStrength;
-    }
-  }
+        if (magnetActive && isWithinMagnetRange(c)) {
+          const dx = leo.x - c.x;
+          const dy = leo.y - c.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const pullStrength = 4;
+          if (dist > 1) {
+            c.x += (dx / dist) * pullStrength;
+            c.y += (dy / dist) * pullStrength;
+          }
+        }
 
-  if (coin2Img.complete) {
-    ctx.drawImage(coin2Img, c.x, c.y, c.size, c.size);
-  }
+        if (coin2Img.complete) {
+          ctx.drawImage(coin2Img, Math.round(c.x), Math.round(c.y), c.size, c.size);
+        }
 
-  if (
-    checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) ||
-    (magnetActive && isWithinMagnetRange(c))
-  ) {
-    coins2.splice(i, 1);
-    currentScore += 3;
-    setScore(currentScore);
-    if (coinSound) {
-      coinSound.currentTime = 0;
-      coinSound.play().catch(() => {});
-    }
-  }
+        if (
+          checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) ||
+          (magnetActive && isWithinMagnetRange(c))
+        ) {
+          coins2.splice(i, 1);
+          currentScore += 3;
+          setScore(currentScore);
+          if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
 
-  if (c.x + c.size < 0) coins2.splice(i, 1);
-});
+        if (c.x + c.size < 0) coins2.splice(i, 1);
+      });
 
-
-
-
-      // ✅ איסוף מגנט
+      // איסוף מגנט
       powerUps.forEach((p, i) => {
         if (checkCollision(leo, { x: p.x, y: p.y, width: p.size, height: p.size })) {
           powerUps.splice(i, 1);
@@ -338,6 +356,7 @@ coins2.forEach((c, i) => {
         }
       });
 
+      // פגיעות במכשולים
       obstacles.forEach((o, i) => {
         const reducedHitbox = {
           x: o.x + o.width * 0.5,
@@ -396,10 +415,10 @@ coins2.forEach((c, i) => {
 
       if (showLevelUp && Date.now() - levelUpTimer < 2000) {
         ctx.save();
-        ctx.font = 'bold 48px Arial';
-        ctx.fillStyle = 'yellow';
-        ctx.textAlign = 'center';
-        ctx.fillText('LEVEL ' + level + '!', canvas.width / 2, 100);
+        ctx.font = "bold 48px Arial";
+        ctx.fillStyle = "yellow";
+        ctx.textAlign = "center";
+        ctx.fillText("LEVEL " + level + "!", CW() / 2, 100);
         ctx.restore();
       } else if (Date.now() - levelUpTimer >= 2000) {
         showLevelUp = false;
@@ -445,18 +464,18 @@ coins2.forEach((c, i) => {
       }
     }
 
-     document.addEventListener("keydown", handleKey);
+    document.addEventListener("keydown", handleKey);
     startGame();
 
     return () => {
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", setupCanvas);
       running = false;
     };
   }, [gameRunning]);
 
   return (
     <Layout>
-
       <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative">
         {/* 🎬 מסך פתיחה */}
         {showIntro && (
@@ -520,32 +539,37 @@ coins2.forEach((c, i) => {
         {/* 🎮 מסך המשחק */}
         {!showIntro && (
           <>
-<>
-  {/* ניקוד במסכים רחבים */}
-  {!showIntro && (
-    <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
-      Score: {score} | High Score: {highScore}
-    </div>
-  )}
+            <>
+              {/* ניקוד במסכים רחבים */}
+              {!showIntro && (
+                <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
+                  Score: {score} | High Score: {highScore}
+                </div>
+              )}
 
-  {/* ניקוד במסכים קטנים */}
-  {!showIntro && (
-    <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
-      Score: {score} | High Score: {highScore}
-    </div>
-  )}
-</>
-
-
-
+              {/* ניקוד במסכים קטנים */}
+              {!showIntro && (
+                <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
+                  Score: {score} | High Score: {highScore}
+                </div>
+              )}
+            </>
 
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
-              <canvas ref={canvasRef} width={960} height={480} className="relative z-0 border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh]" />
+              <canvas
+                ref={canvasRef}
+                width={960}
+                height={480}
+                className="relative z-0 border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh]"
+              />
 
               {gameOver && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-[999]">
                   <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">GAME OVER</h2>
-                  <button className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg" onClick={() => setGameRunning(true)}>
+                  <button
+                    className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
+                    onClick={() => setGameRunning(true)}
+                  >
                     Start Again
                   </button>
                 </div>
@@ -553,38 +577,39 @@ coins2.forEach((c, i) => {
             </div>
 
             {/* 🔙 Back */}
-            <button onClick={() => window.history.back()} className="fixed top-4 left-4 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded z-[999]">
+            <button
+              onClick={() => window.history.back()}
+              className="fixed top-4 left-4 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded z-[999]"
+            >
               ⬅ Back
             </button>
 
             {/* ⬆ Jump */}
-{/* כפתור Jump רגיל */}
-{gameRunning && (
-  <button
-    onClick={() => {
-      const e = new KeyboardEvent("keydown", { code: "Space" });
-      document.dispatchEvent(e);
-    }}
-    className="fixed bottom-36 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
-               sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
-  >
-    Jump
-  </button>
-)}
+            {gameRunning && (
+              <button
+                onClick={() => {
+                  const e = new KeyboardEvent("keydown", { code: "Space" });
+                  document.dispatchEvent(e);
+                }}
+                className="fixed bottom-36 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
+                           sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
+              >
+                Jump
+              </button>
+            )}
 
-{/* כפתור Jump נוסף למסכים רחבים בצד שמאל */}
-{gameRunning && (
-  <button
-    onClick={() => {
-      const e = new KeyboardEvent("keydown", { code: "Space" });
-      document.dispatchEvent(e);
-    }}
-    className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
-  >
-    Jump
-  </button>
-)}
-
+            {/* כפתור Jump נוסף למסכים רחבים בצד שמאל */}
+            {gameRunning && (
+              <button
+                onClick={() => {
+                  const e = new KeyboardEvent("keydown", { code: "Space" });
+                  document.dispatchEvent(e);
+                }}
+                className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+              >
+                Jump
+              </button>
+            )}
 
             {/* 🚪 Exit */}
             <button
