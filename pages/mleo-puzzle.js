@@ -2,21 +2,20 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 
-// --- Assets (PNG in /public/images) ---
+// --- Assets (שמור ב-/public/images) ---
 const IMG_KEEPER = "/images/leo-keeper.png";
-const IMG_BALL = "/images/ball.png";
+const IMG_BALL   = "/images/ball.png";
+const IMG_BG     = "/images/penalty-bg.png"; // רקע היי-רס שאפשר להחליף
 
-// --- Background (PNG in /public/images) ---
-const IMG_BG = "/images/penalty-bg.png";
-const bgImg = typeof Image !== "undefined" ? new Image() : null;
-if (bgImg) bgImg.src = IMG_BG;
-
-
+// Preload (רק בדפדפן)
 const keeperImg = typeof Image !== "undefined" ? new Image() : null;
 if (keeperImg) keeperImg.src = IMG_KEEPER;
 
 const ballImg = typeof Image !== "undefined" ? new Image() : null;
 if (ballImg) ballImg.src = IMG_BALL;
+
+const bgImg = typeof Image !== "undefined" ? new Image() : null;
+if (bgImg) bgImg.src = IMG_BG;
 
 // LocalStorage keys
 const LS_HS = "mleoPenaltyHighScore";
@@ -42,7 +41,6 @@ export default function MleoPenalty() {
     w: 800, h: 450,
     ball: { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false },
     goal: { x: 200, y: 60, w: 400, h: 160 },
-    // Bigger keeper box so sprite fits nicely
     keeper: { x: 400, y: 180, w: 90, h: 90, dir: 1, speed: 2.3 },
     aim: { x: 400, y: 120 },
     power: 0, charging: false,
@@ -69,38 +67,44 @@ export default function MleoPenalty() {
     if (sc > hs) { localStorage.setItem(LS_HS, String(sc)); setHighScore(sc); }
   };
 
-// Responsive canvas + HiDPI
-useEffect(() => {
-  const c = canvasRef.current;
-  if (!c) return;
+  // Responsive canvas + HiDPI
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
 
-  const onResize = () => {
-    const dpr = window.devicePixelRatio || 1;
-    const maxW = Math.min(window.innerWidth * 0.95, 960);
-    const aspect = 16 / 9;
+    const onResize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const maxW = Math.min(window.innerWidth * 0.95, 960);
+      const aspect = 16 / 9;
 
-    // גודל לוגי (CSS)
-    const logicalW = Math.round(maxW);
-    const logicalH = Math.round(maxW / aspect);
-    c.style.width = `${logicalW}px`;
-    c.style.height = `${logicalH}px`;
+      // גודל לוגי (CSS)
+      const logicalW = Math.round(maxW);
+      const logicalH = Math.round(maxW / aspect);
+      c.style.width = `${logicalW}px`;
+      c.style.height = `${logicalH}px`;
 
-    // רזולוציית ציור אמיתית (Device Pixels)
-    c.width = Math.round(logicalW * dpr);
-    c.height = Math.round(logicalH * dpr);
-  };
+      // רזולוציית ציור אמיתית (Device Pixels)
+      c.width = Math.round(logicalW * dpr);
+      c.height = Math.round(logicalH * dpr);
 
-  onResize();
-  window.addEventListener("resize", onResize);
-  window.addEventListener("orientationchange", onResize);
-  return () => {
-    window.removeEventListener("resize", onResize);
-    window.removeEventListener("orientationchange", onResize);
-  };
-}, []);
+      // שיפור רינדור
+      const ctx = c.getContext("2d");
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+      }
+    };
 
+    onResize();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
 
-  // Input (pointer drag inside goal to aim; release to shoot)
+  // Input (גרירה לכיוון + טעינת עוצמה; שחרור = בעיטה)
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
@@ -118,7 +122,6 @@ useEffect(() => {
       if (s.ball.moving) return;
       const p = getPos(e);
       s.charging = true; s.power = 0;
-      // clamp aim to goal
       s.aim.x = Math.max(s.goal.x+10, Math.min(s.goal.x+s.goal.w-10, p.x));
       s.aim.y = Math.max(s.goal.y+10, Math.min(s.goal.y+s.goal.h-10, p.y));
       e.preventDefault();
@@ -139,7 +142,6 @@ useEffect(() => {
       s.charging = false;
       if (!runningRef.current || s.ball.moving) return;
 
-      // Shoot
       const dx = s.aim.x - s.ball.x;
       const dy = s.aim.y - s.ball.y;
       const len = Math.max(1, Math.hypot(dx, dy));
@@ -202,54 +204,48 @@ useEffect(() => {
     return x > gx+6 && x < gx+gw-6 && y > gy+6 && y < gy+gh-6;
   };
 
-  // Main loop
+  // Main loop (ציור) — חשוב: להגדיר step לפני הקריאה ל-RAF
   useEffect(() => {
-    let raf = 0;
     const c = canvasRef.current;
     if (!c) return;
     const ctx = c.getContext("2d");
-ctx.imageSmoothingEnabled = true;
-ctx.imageSmoothingQuality = "high";
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
+    const drawPitch = (s) => {
+      const scaleX = c.width / s.w, scaleY = c.height / s.h;
 
-    // ====== DRAWING (improved visuals) ======
-const drawPitch = (s) => {
-  const scaleX = c.width / s.w, scaleY = c.height / s.h;
+      if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+        const iw = bgImg.naturalWidth, ih = bgImg.naturalHeight;
+        const r = Math.max(c.width / iw, c.height / ih);
+        const dw = iw * r, dh = ih * r;
+        const dx = (c.width - dw) / 2, dy = (c.height - dh) / 2;
+        ctx.drawImage(bgImg, dx, dy, dw, dh);
+      } else {
+        const skyH = (stateRef.current.goal.y / stateRef.current.h) * c.height;
+        const sky = ctx.createLinearGradient(0, 0, 0, skyH);
+        sky.addColorStop(0, "#9ad0ff"); sky.addColorStop(1, "rgba(154,208,255,0)");
+        ctx.fillStyle = sky; ctx.fillRect(0, 0, c.width, skyH);
+        ctx.fillStyle = "#0c8b39"; ctx.fillRect(0, skyH, c.width, c.height - skyH);
+        ctx.globalAlpha = 0.25;
+        for (let i = 0; i < 12; i++) {
+          ctx.fillStyle = i % 2 ? "#0a7c33" : "#0d943e";
+          const stripeY = skyH + (i * (c.height - skyH)) / 12;
+          ctx.fillRect(0, stripeY, c.width, (c.height - skyH) / 12);
+        }
+        ctx.globalAlpha = 1;
 
-  // אם יש תמונת רקע טעונה – נצייר אותה ב"cover" בלי עיוות
-  if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
-    const iw = bgImg.naturalWidth, ih = bgImg.naturalHeight;
-    const canvasW = c.width, canvasH = c.height;
-    const r = Math.max(canvasW / iw, canvasH / ih); // cover
-    const dw = iw * r, dh = ih * r;
-    const dx = (canvasW - dw) / 2, dy = (canvasH - dh) / 2;
-    ctx.drawImage(bgImg, dx, dy, dw, dh);
-  } else {
-    // פוֹלבק עדין (שמיים + דשא עם פסים) אם אין תמונה
-    const skyH = (s.goal.y / s.h) * c.height;
-    const sky = ctx.createLinearGradient(0, 0, 0, skyH);
-    sky.addColorStop(0, "#9ad0ff"); sky.addColorStop(1, "rgba(154,208,255,0)");
-    ctx.fillStyle = sky; ctx.fillRect(0, 0, c.width, skyH);
-    ctx.fillStyle = "#0c8b39"; ctx.fillRect(0, skyH, c.width, c.height - skyH);
-    ctx.globalAlpha = 0.25;
-    for (let i = 0; i < 12; i++) {
-      ctx.fillStyle = i % 2 ? "#0a7c33" : "#0d943e";
-      const stripeY = skyH + (i * (c.height - skyH)) / 12;
-      ctx.fillRect(0, stripeY, c.width, (c.height - skyH) / 12);
-    }
-    ctx.globalAlpha = 1;
-
-    // מסגרת שער ורשת (כמו שהיה)
-    const gx = s.goal.x * scaleX, gy = s.goal.y * scaleY, gw = s.goal.w * scaleX, gh = s.goal.h * scaleY;
-    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 6; ctx.strokeRect(gx, gy, gw, gh);
-    ctx.globalAlpha = 0.18; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-    const cols = 10, rows = 6;
-    for (let i = 1; i < cols; i++) { const xx = gx + (gw * i) / cols; ctx.beginPath(); ctx.moveTo(xx, gy); ctx.lineTo(xx, gy + gh); ctx.stroke(); }
-    for (let j = 1; j < rows; j++) { const yy = gy + (gh * j) / rows; ctx.beginPath(); ctx.moveTo(gx, yy); ctx.lineTo(gx + gw, yy); ctx.stroke(); }
-    ctx.globalAlpha = 1;
-  }
-};
-
+        const s = stateRef.current;
+        const gx = s.goal.x * scaleX, gy = s.goal.y * scaleY, gw = s.goal.w * scaleX, gh = s.goal.h * scaleY;
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 6; ctx.strokeRect(gx, gy, gw, gh);
+        ctx.globalAlpha = 0.18; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+        const cols = 10, rows = 6;
+        for (let i = 1; i < cols; i++) { const xx = gx + (gw * i) / cols; ctx.beginPath(); ctx.moveTo(xx, gy); ctx.lineTo(xx, gy + gh); ctx.stroke(); }
+        for (let j = 1; j < rows; j++) { const yy = gy + (gh * j) / rows; ctx.beginPath(); ctx.moveTo(gx, yy); ctx.lineTo(gx + gw, yy); ctx.stroke(); }
+        ctx.globalAlpha = 1;
+      }
+    };
 
     const drawKeeper = (s) => {
       const scaleX = c.width / s.w, scaleY = c.height / s.h;
@@ -258,7 +254,6 @@ const drawPitch = (s) => {
       const kx = (s.keeper.x * scaleX) - kw / 2;
       const ky = (s.keeper.y * scaleY) - kh / 2;
 
-      // shadow
       ctx.globalAlpha = 0.25;
       ctx.fillStyle = "#000";
       ctx.beginPath();
@@ -266,7 +261,6 @@ const drawPitch = (s) => {
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // sprite or fallback
       if (keeperImg && keeperImg.complete) {
         ctx.drawImage(keeperImg, kx, ky, kw, kh);
       } else {
@@ -281,7 +275,6 @@ const drawPitch = (s) => {
       const by = s.ball.y * scaleY;
       const br = s.ball.r * ((scaleX + scaleY) / 2);
 
-      // shadow
       ctx.globalAlpha = 0.3;
       ctx.fillStyle = "#000";
       ctx.beginPath();
@@ -303,11 +296,10 @@ const drawPitch = (s) => {
       if (!runningRef.current || s.ball.moving) return;
       const ax = s.aim.x * (c.width/s.w);
       const ay = s.aim.y * (c.height/s.h);
-      // crosshair
       ctx.strokeStyle = "#ff3b3b"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(ax-10,ay); ctx.lineTo(ax+10,ay); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(ax,ay-10); ctx.lineTo(ax,ay+10); ctx.stroke();
-      // power bar
+
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.fillRect(c.width-28, c.height-160, 14, 130);
       ctx.fillStyle = "#ff3b3b";
@@ -315,8 +307,8 @@ const drawPitch = (s) => {
       ctx.fillRect(c.width-28, c.height-30-ph, 14, ph);
       ctx.strokeStyle = "#fff"; ctx.strokeRect(c.width-28, c.height-160, 14, 130);
     };
-    // =======================================
 
+    // ---- כאן מוגדר step לפני הקריאה הראשונה ל-RAF ----
     const step = (ts) => {
       const s = stateRef.current;
       const dt = Math.min(0.035, (ts - s.lastTs) / 1000 || 0.016);
@@ -324,53 +316,53 @@ const drawPitch = (s) => {
 
       if (s.charging) { s.power += 0.9 * dt; if (s.power > 1.1) s.power = 1.1; }
 
-      // AI
       keeperAI(s);
 
-      // Ball physics
       if (s.ball.moving) {
         s.ball.x += s.ball.vx;
         s.ball.y += s.ball.vy;
         s.ball.vx *= 0.992; s.ball.vy *= 0.992;
 
-        // Keeper collision
         if (collideKeeper(s)) {
           s.ball.vy = Math.max(-s.ball.vy * 0.3, -2);
           s.ball.vx = -s.ball.vx * 0.4;
         }
 
-        // Out
         if (s.ball.y < 0 || s.ball.x < -60 || s.ball.x > s.w+60 || s.ball.y > s.h+60) {
-          setShots(sh => Math.max(0, sh-1));
+          setShots((sh) => Math.max(0, sh - 1));
           resetBall();
         }
 
-        // Goal
         if (inGoal(s) && s.ball.y < s.goal.y + s.goal.h - 12) {
           scoreRef.current += 1; setScore(scoreRef.current);
-          setShots(sh => Math.max(0, sh-1));
+          setShots((sh) => Math.max(0, sh - 1));
           resetBall();
         }
       }
 
-      // Draw
+      // ציור
       drawPitch(s);
       drawKeeper(s);
       drawBall(s);
       drawAimAndPower(s);
 
-      // End game
+      // סיום משחק
       if (runningRef.current && shots === 0 && !s.ball.moving && !s.charging) {
         runningRef.current = false;
         setGameOver(true);
         updateLeaderboard(playerName || "Player", scoreRef.current);
       }
 
-      raf = requestAnimationFrame(step);
+      rafRef.current = requestAnimationFrame(step);
     };
 
-    rafRef.current = raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    // מתחילים את הלולאה
+    rafRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
   }, [shots, playerName]);
 
   const startGame = () => {
@@ -383,37 +375,67 @@ const drawPitch = (s) => {
     // reset
     scoreRef.current = 0; setScore(0);
     setShots(5); setGameOver(false); setShowIntro(false);
+
     const s = stateRef.current;
     s.ball = { x: 400, y: 360, r: 10, vx:0, vy:0, moving:false };
-    s.aim = { x: 400, y: 120 }; s.power = 0; s.charging = false;
+    s.aim  = { x: 400, y: 120 };
+    s.power = 0; s.charging = false;
     s.keeper.x = 400; s.keeper.dir = 1;
+
     runningRef.current = true;
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame((t)=>{ stateRef.current.lastTs=t; });
+    // אין צורך להפעיל RAF כאן – הוא כבר רץ מה-useEffect
   };
 
   const playAgain = () => { startGame(); };
 
-  // Cleanup
+  // Cleanup כללי
   useEffect(() => {
-    return () => { runningRef.current = false; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, []);
-
-  // Auto-start on mount (no overlay)
-  useEffect(() => {
-    setPlayerName("Player");
-    setShowIntro(false);
-    startGame();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      runningRef.current = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, []);
 
   return (
     <Layout>
       <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative select-none">
+        {/* Intro (start screen) */}
+        {showIntro && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
+            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">⚽ Penalty Shootout</h1>
+            <p className="text-base sm:text-lg text-gray-200 mb-4">
+              גרור בתוך השער לכוון ולטעון עוצמה. שחרר כדי לבעוט. יש לך 5 בעיטות.
+            </p>
+
+            <input
+              type="text"
+              placeholder="השם שלך"
+              value={playerName}
+              onChange={(e)=>setPlayerName(e.target.value)}
+              className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
+            />
+
+            <button
+              onClick={() => {
+                if (!playerName.trim()) return;
+                setShowIntro(false);
+                startGame();
+              }}
+              disabled={!playerName.trim()}
+              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition ${
+                playerName.trim()
+                  ? "bg-yellow-400 text-black hover:scale-105"
+                  : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              }`}
+            >
+              ▶ התחל משחק
+            </button>
+          </div>
+        )}
 
         {!showIntro && (
           <>
-            {/* Top HUD (HTML, not drawn on canvas) */}
+            {/* HUD */}
             <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
               Score: {score} | Shots: {shots} | High Score: {highScore}
             </div>
