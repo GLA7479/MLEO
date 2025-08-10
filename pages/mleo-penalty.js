@@ -15,6 +15,12 @@ const LEVEL_DUR_SEC = [60, 90, 120, 150, 180]; // level 1: 60s, then +30s per le
 const BASE_SPEED = 2.3;                        // keeper speed at level 1
 const SPEED_INC  = 0.5;                        // speed increment per level
 
+// ---- Curve/Dash tuning (stronger & frame-rate independent) ----
+const CURVE_FACTOR = 0.06; // spin → lateral accel scale (feel free to tweak 0.04–0.08)
+const SPIN_MAX     = 3.0;  // cap on spin magnitude
+const DASH_MULT    = 5.0;  // how much faster during dash than normal speed
+const DASH_TIME    = 0.45; // dash duration in seconds
+
 const mmss = (sec) => {
   const s = Math.max(0, Math.floor(sec));
   const m = Math.floor(s / 60);
@@ -65,12 +71,16 @@ export default function MleoPenalty() {
   // World (logical space; scaled draw to canvas)
   const S = useRef({
     w: 800, h: 450,
-    ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false },
+    ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false, spin: 0 },
     goal:   { x: 200, y: 60,  w: 400, h: 160 },
-    keeper: { x: 400, y: 160, w: 120, h: 120, dir: 1, speed: BASE_SPEED },
+    keeper: {
+      x: 400, y: 160, w: 120, h: 120, dir: 1, speed: BASE_SPEED,
+      dashT: 0, dashTargetX: 400
+    },
     aim:    { x: 400, y: 120 },
     power:  0, charging: false,
     lastTs: 0,
+    input:  { startX: 400, lastX: 400, lastTs: 0, spinPreview: 0 },
   });
 
   // Pointer input
@@ -79,24 +89,16 @@ export default function MleoPenalty() {
     c.style.touchAction = "none";
     c.style.userSelect  = "none";
 
-const getPos = (e) => {
-  const rect = c.getBoundingClientRect();
-
-  // תמיכה גם ב-pointer events וגם ב-touch events
-  const hasTouch = 'touches' in e && e.touches && e.touches[0];
-  const clientX = hasTouch ? e.touches[0].clientX : e.clientX;
-  const clientY = hasTouch ? e.touches[0].clientY : e.clientY;
-
-  const cx = clientX - rect.left;
-  const cy = clientY - rect.top;
-
-  // ממירים למרחב "העולם" (S.current.w/h), לא לפיקסלים של הקנבס
-  const s = S.current;
-  return {
-    x: (cx / rect.width) * s.w,
-    y: (cy / rect.height) * s.h,
-  };
-};
+    const getPos = (e) => {
+      const rect = c.getBoundingClientRect();
+      const hasTouch = 'touches' in e && e.touches && e.touches[0];
+      const clientX = hasTouch ? e.touches[0].clientX : e.clientX;
+      const clientY = hasTouch ? e.touches[0].clientY : e.clientY;
+      const cx = clientX - rect.left;
+      const cy = clientY - rect.top;
+      const s = S.current;
+      return { x: (cx / rect.width) * s.w, y: (cy / rect.height) * s.h };
+    };
 
     const clampAim = (p) => {
       const s = S.current;
@@ -108,17 +110,37 @@ const getPos = (e) => {
       if (!runningRef.current) return;
       const s = S.current;
       if (s.ball.moving) return;
-      clampAim(getPos(e));
+      const p = getPos(e);
+      clampAim(p);
       s.charging = true; s.power = 0;
+
+      // spin gesture start
+      s.input.startX = p.x;
+      s.input.lastX = p.x;
+      s.input.lastTs = performance.now();
+      s.input.spinPreview = 0;
+
       e.preventDefault?.();
       c.setPointerCapture?.(e.pointerId);
     };
+
     const onMove = (e) => {
       const s = S.current;
       if (!s.charging) return;
-      clampAim(getPos(e));
+      const p = getPos(e);
+      clampAim(p);
+
+      // spin by total horizontal drag during charge
+      const now = performance.now();
+      const dxTotal = p.x - s.input.startX;
+      const spin = Math.max(-SPIN_MAX, Math.min(SPIN_MAX, dxTotal / (s.w * 0.20)));
+      s.input.spinPreview = spin;
+      s.input.lastX = p.x;
+      s.input.lastTs = now;
+
       e.preventDefault?.();
     };
+
     const onUp = (e) => {
       const s = S.current;
       if (!s.charging) return;
@@ -131,6 +153,11 @@ const getPos = (e) => {
       const nx = dx / len, ny = dy / len;
       const v  = 9.5 + (16 - 9.5) * Math.min(1, s.power);
       s.ball.vx = nx * v; s.ball.vy = ny * v; s.ball.moving = true;
+
+      // lock spin from preview & trigger keeper dash toward aim
+      s.ball.spin = s.input.spinPreview;
+      s.keeper.dashT = DASH_TIME;
+      s.keeper.dashTargetX = s.aim.x;
 
       e.preventDefault?.();
       try { c.releasePointerCapture?.(e.pointerId); } catch {}
@@ -158,20 +185,37 @@ const getPos = (e) => {
   // Helpers
   const resetBall = () => {
     const s = S.current;
-    s.ball.x = 400; s.ball.y = 360; s.ball.vx = 0; s.ball.vy = 0; s.ball.moving = false;
+    s.ball.x = 400; s.ball.y = 360; s.ball.vx = 0; s.ball.vy = 0; s.ball.moving = false; s.ball.spin = 0;
     s.aim.x  = 400; s.aim.y  = 120; s.power = 0; s.charging = false;
+    // end dash if any
+    s.keeper.dashT = 0;
   };
-  const keeperAI = (s) => {
+
+  const keeperAI = (s, dt) => {
     const left = s.goal.x + 40, right = s.goal.x + s.goal.w - 40;
-    if (s.charging) {
+
+    // dash phase (short burst toward predicted x)
+    if (s.keeper.dashT > 0) {
+      const dashSpeed = s.keeper.speed * DASH_MULT;
+      if (s.keeper.dashTargetX > s.keeper.x + 2) s.keeper.x += dashSpeed * dt * 60;
+      else if (s.keeper.dashTargetX < s.keeper.x - 2) s.keeper.x -= dashSpeed * dt * 60;
+      s.keeper.dashT -= dt;
+      if (s.keeper.dashT <= 0) s.keeper.dashT = 0;
+    } else if (s.charging) {
+      // read the aim slowly while player is charging
       if (s.aim.x > s.keeper.x + 4) s.keeper.x += s.keeper.speed * 0.6;
       else if (s.aim.x < s.keeper.x - 4) s.keeper.x -= s.keeper.speed * 0.6;
     } else {
+      // idle patrol
       s.keeper.x += s.keeper.dir * s.keeper.speed;
       if (s.keeper.x < left)  { s.keeper.x = left;  s.keeper.dir = 1;  }
       if (s.keeper.x > right) { s.keeper.x = right; s.keeper.dir = -1; }
     }
+
+    // clamp within goal
+    s.keeper.x = Math.max(left, Math.min(right, s.keeper.x));
   };
+
   const collideKeeper = (s) => {
     const kx1 = s.keeper.x - s.keeper.w/2, ky1 = s.keeper.y - s.keeper.h/2;
     const kx2 = kx1 + s.keeper.w, ky2 = ky1 + s.keeper.h;
@@ -180,6 +224,7 @@ const getPos = (e) => {
     const ny = Math.max(ky1, Math.min(cy, ky2));
     return Math.hypot(cx - nx, cy - ny) < r;
   };
+
   const inGoal = (s) => {
     const { x,y } = s.ball;
     const { x: gx, y: gy, w: gw, h: gh } = s.goal;
@@ -278,9 +323,19 @@ const getPos = (e) => {
       }
 
       if (s.charging) s.power = Math.min(1.1, s.power + 0.9 * dt);
-      keeperAI(s);
+
+      // keeper AI (with dash)
+      keeperAI(s, dt);
 
       if (s.ball.moving) {
+        // ----- curve physics (spin) -----
+        const dt60 = dt * 60; // normalize to 60 FPS
+        const k = CURVE_FACTOR * (s.ball.spin || 0) * dt60;
+        const ax = -s.ball.vy * k; // perpendicular accel
+        const ay =  s.ball.vx * k;
+        s.ball.vx += ax;
+        s.ball.vy += ay;
+
         // move & friction
         s.ball.x += s.ball.vx;
         s.ball.y += s.ball.vy;
@@ -336,10 +391,11 @@ const getPos = (e) => {
     setTimeLeft(LEVEL_DUR_SEC[startLevel - 1]);
 
     const s = S.current;
-    s.ball = { x: 400, y: 360, r: 10, vx:0, vy:0, moving:false };
+    s.ball = { x: 400, y: 360, r: 10, vx:0, vy:0, moving:false, spin: 0 };
     s.aim  = { x: 400, y: 120 }; s.power = 0; s.charging = false;
     s.keeper.x = 400; s.keeper.dir = 1;
     s.keeper.speed = BASE_SPEED + (startLevel - 1) * SPEED_INC;
+    s.keeper.dashT = 0; s.keeper.dashTargetX = s.keeper.x;
 
     runningRef.current = true;
   };
@@ -414,26 +470,22 @@ const getPos = (e) => {
           {!showIntro && (
             <>
               {/* Desktop/Tablet */}
-<div
-  className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
-    isLandscape ? "-top-12" : "-top-10"
-  } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999] pointer-events-none`}
->
-  Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
-</div>
-
-
+              <div
+                className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
+                  isLandscape ? "-top-12" : "-top-10"
+                } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999] pointer-events-none`}
+              >
+                Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
+              </div>
 
               {/* Mobile */}
-<div
-  className={`sm:hidden absolute left-1/2 -translate-x-1/2 ${
-    isLandscape ? "top-2" : "-top-5"
-  } bg-black/70 px-3 py-1 rounded text-sm font-bold z-[999] pointer-events-none`}
->
-  L{level} • {mmss(timeLeft)} • {score}
-</div>
-
-
+              <div
+                className={`sm:hidden absolute left-1/2 -translate-x-1/2 ${
+                  isLandscape ? "top-2" : "-top-5"
+                } bg-black/70 px-3 py-1 rounded text-sm font-bold z-[999] pointer-events-none`}
+              >
+                L{level} • {mmss(timeLeft)} • {score}
+              </div>
             </>
           )}
 
