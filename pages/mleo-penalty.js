@@ -67,7 +67,7 @@ export default function MleoPenalty() {
     w: 800, h: 450,
     ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false },
     goal:   { x: 200, y: 60,  w: 400, h: 160 },
-    keeper: { x: 400, y: 180, w: 90,  h: 90, dir: 1, speed: BASE_SPEED },
+    keeper: { x: 400, y: 160, w: 120, h: 120, dir: 1, speed: BASE_SPEED },
     aim:    { x: 400, y: 120 },
     power:  0, charging: false,
     lastTs: 0,
@@ -403,7 +403,7 @@ export default function MleoPenalty() {
               {/* Desktop/Tablet */}
 <div
   className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
-    isLandscape ? "-top-14" : "-top-10"
+    isLandscape ? "-top-12" : "-top-10"
   } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999]`}
 >
 
