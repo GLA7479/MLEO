@@ -11,9 +11,9 @@ const LS_HS   = "penaltyHighScore_v1";
 const LS_NAME = "penaltyPlayerName_v1";
 
 // ---- Levels config ----
-const LEVEL_DUR_SEC = [60, 90, 120, 150, 180]; // רמה 1: 60ש׳, כל רמה +30ש׳
-const BASE_SPEED = 2.3;                         // מהירות השוער ברמה 1
-const SPEED_INC  = 0.5;                         // תוספת מהירות לכל רמה
+const LEVEL_DUR_SEC = [60, 90, 120, 150, 180]; // level 1: 60s, then +30s per level
+const BASE_SPEED = 2.3;                        // keeper speed at level 1
+const SPEED_INC  = 0.5;                        // speed increment per level
 
 const mmss = (sec) => {
   const s = Math.max(0, Math.floor(sec));
@@ -38,7 +38,7 @@ export default function MleoPenalty() {
   const [shots, setShots] = useState(5);
   const [highScore, setHighScore] = useState(0);
 
-  // Level runtime (אין מעבר אוטומטי)
+  // Level runtime (no auto-advance)
   const [level, setLevel] = useState(1);
   const [timeLeft, setTimeLeft] = useState(LEVEL_DUR_SEC[0]);
   const [gameOver, setGameOver] = useState(false);
@@ -62,7 +62,7 @@ export default function MleoPenalty() {
     }
   }, []);
 
-  // World (logical space; ציור סקלבילי לקנבס)
+  // World (logical space; scaled draw to canvas)
   const S = useRef({
     w: 800, h: 450,
     ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false },
@@ -173,7 +173,7 @@ export default function MleoPenalty() {
     return x > gx+6 && x < gx+gw-6 && y > gy+6 && y < gy+gh-6;
   };
 
-  // Drawing (בלי ציור מסגרת/רשת שער)
+  // Drawing (background only — no white goal frame)
   const drawPitch = (ctx, c, s) => {
     ctx.clearRect(0, 0, c.width, c.height);
 
@@ -236,7 +236,7 @@ export default function MleoPenalty() {
     ctx.strokeStyle = "#fff"; ctx.strokeRect(c.width-28, c.height-160, 14, 130);
   };
 
-  // Main loop (טיימר מסיים משחק; אין מעבר אוטומטי)
+  // Main loop (timer ends game; no auto-advance)
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
     const ctx = c.getContext("2d"); if (!ctx) return;
@@ -273,13 +273,13 @@ export default function MleoPenalty() {
         s.ball.y += s.ball.vy;
         s.ball.vx *= 0.992; s.ball.vy *= 0.992;
 
-        // collision with keeper — קצת הדף
+        // keeper collision — little bounce
         if (collideKeeper(s)) {
           s.ball.vy = Math.max(-s.ball.vy * 0.4, -2.5);
           s.ball.vx = -s.ball.vx * 0.45;
         }
 
-        // אם הכדור כמעט לא זז → נחשב כהצלה/עצירה ונאפס (מונע "תקיעה")
+        // if ball nearly stops (not a goal) → count as save and reset
         const speed = Math.hypot(s.ball.vx, s.ball.vy);
         if (speed < 0.25 && !inGoal(s)) {
           setShots((sh) => Math.max(0, sh - 1));
@@ -349,16 +349,36 @@ export default function MleoPenalty() {
 
   useEffect(() => () => { runningRef.current = false; if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
-  // Responsive canvas — כמו ב-flyer
+  // ===== Responsive canvas (portrait vs landscape) =====
+  const [isLandscape, setIsLandscape] = useState(false);
+
   useEffect(() => {
     const onResize = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const W = Math.min(window.innerWidth * 0.95, 960);
-      const H = Math.min(Math.round(W * 0.52), window.innerHeight * 0.8);
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const landscape = vw > vh;
+      setIsLandscape(landscape);
+
+      // base logical aspect is 16:9 (approx 960x540)
+      let W, H;
+
+      if (landscape) {
+        // In landscape, limit by height so goal isn't cut
+        H = Math.min(Math.floor(vh * 0.72), 540);
+        W = Math.min(Math.floor(H * (16 / 9)), Math.floor(vw * 0.95), 960);
+      } else {
+        // Portrait: limit by width
+        W = Math.min(Math.floor(vw * 0.95), 960);
+        H = Math.min(Math.floor(W * (9 / 16)), Math.floor(vh * 0.80));
+      }
+
       canvas.width = W;
       canvas.height = H;
     };
+
     onResize();
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
@@ -374,16 +394,28 @@ export default function MleoPenalty() {
         id="game-wrapper"
         className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative select-none"
       >
-
-        {/* עטיפה יחסית לקנבס כדי למקם HUD צמוד למסגרת */}
+        {/* Relative wrapper so HUD can sit on the canvas edge */}
         <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
-          {/* HUD – בלי שם שחקן, וממוקם ממש מעל המסגרת */}
+
+          {/* HUD – player name removed; positioned higher */}
           {!showIntro && (
             <>
-              <div className="hidden sm:block absolute left-1/2 -translate-x-1/2 -top-20 bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999]">
+              {/* Desktop/Tablet */}
+<div
+  className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
+    isLandscape ? "-top-14" : "-top-10"
+  } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999]`}
+>
+
                 Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
               </div>
-              <div className="sm:hidden absolute left-1/2 -translate-x-1/2 -top-2 bg-black/70 px-3 py-1 rounded text-sm font-bold z-[999]">
+
+              {/* Mobile */}
+              <div
+                className={`sm:hidden absolute left-1/2 -translate-x-1/2 ${
+                  isLandscape ? "top-2" : "-top-5"
+                } bg-black/70 px-3 py-1 rounded text-sm font-bold z-[999]`}
+              >
                 L{level} • {mmss(timeLeft)} • {score}
               </div>
             </>
@@ -392,7 +424,7 @@ export default function MleoPenalty() {
           {/* Canvas */}
           <canvas
             ref={canvasRef}
-            className="border-4 border-yellow-400 rounded-lg w-full aspect-[2/1] max-h-[80vh] bg-black/20 touch-none"
+            className="border-4 border-yellow-400 rounded-lg w-full max-h-[80vh] bg-black/20 touch-none"
           />
 
           {gameOver && (
@@ -433,13 +465,14 @@ export default function MleoPenalty() {
           Exit
         </button>
 
-        {/* Intro – נשאר עם שדה שם כרגיל */}
+        {/* Intro – English */}
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-gray-900/95 z-[999]">
             <img src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6" />
             <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">⚽ Penalty Shootout</h1>
-            <p className="text-base sm:text-lg text-gray-200 mb-5">Select a level. Time decreases, and the goalkeeper gets faster at higher levels.
-</p>
+            <p className="text-base sm:text-lg text-gray-200 mb-5">
+              Select a level. Time decreases, and the goalkeeper gets faster at higher levels.
+            </p>
 
             <input
               type="text"
