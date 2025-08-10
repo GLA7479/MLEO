@@ -2,17 +2,22 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 
-// Optional images (if they exist under /public/images)
+// Optional images (game draws even without them)
 const IMG_KEEPER = "/images/leo-keeper.png";
 const IMG_BALL   = "/images/ball.png";
 const IMG_BG     = "/images/penalty-bg.png";
 
-const LS_HS = "penaltyHighScore_v1";
+const LS_HS   = "penaltyHighScore_v1";
+const LS_NAME = "penaltyPlayerName_v1";
 
 export default function PenaltyGame() {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const runningRef = useRef(false);
+
+  // Intro overlay ONLY (המשחק רץ מתחת)
+  const [showIntro, setShowIntro] = useState(true);
+  const [playerName, setPlayerName] = useState("");
 
   // UI
   const [score, setScore] = useState(0);
@@ -34,6 +39,7 @@ export default function PenaltyGame() {
     make(IMG_BALL, "ball");
 
     setHighScore(Number(localStorage.getItem(LS_HS) || 0));
+    setPlayerName(localStorage.getItem(LS_NAME) || "");
   }, []);
 
   // World (fixed logical size; CSS makes it responsive)
@@ -47,7 +53,7 @@ export default function PenaltyGame() {
     lastTs: 0,
   });
 
-  // Pointer input
+  // Pointer input (לא נוגעים)
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
     c.style.touchAction = "none";
@@ -116,7 +122,7 @@ export default function PenaltyGame() {
     };
   }, []);
 
-  // Helpers
+  // Helpers (לא נוגעים)
   const resetBall = () => {
     const s = S.current;
     s.ball.x = 400; s.ball.y = 360; s.ball.vx = 0; s.ball.vy = 0; s.ball.moving = false;
@@ -150,7 +156,7 @@ export default function PenaltyGame() {
     return x > gx+6 && x < gx+gw-6 && y > gy+6 && y < gy+gh-6;
   };
 
-  // Drawing helpers (works with or without images)
+  // Drawing helpers (לא נוגעים)
   const drawPitch = (ctx, c, s) => {
     ctx.clearRect(0, 0, c.width, c.height);
 
@@ -231,7 +237,7 @@ export default function PenaltyGame() {
     ctx.strokeStyle = "#fff"; ctx.strokeRect(c.width-28, c.height-160, 14, 130);
   };
 
-  // Main loop
+  // Main loop (כמו אצלך – לא נוגעים, נשאיר את התלות כמו שהייתה)
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
@@ -295,7 +301,7 @@ export default function PenaltyGame() {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [shots]);
 
-  // Flow
+  // Flow — בדיוק כמו שהיה: אוטו־סטארט פעם אחת
   const startGame = () => {
     scoreRef.current = 0; setScore(0);
     setShots(5);
@@ -305,16 +311,28 @@ export default function PenaltyGame() {
     s.keeper.x = 400; s.keeper.dir = 1;
     runningRef.current = true;
   };
+  useEffect(() => { startGame(); }, []); // ← כמו בגרסה שעבדה לך
 
-  // Auto-start once on mount
-  useEffect(() => { startGame(); }, []);
+  // כפתור Start במסך פתיחה (רק הורדת שכבה + שמירת שם + fullscreen לנייד)
+  const handleStart = () => {
+    const n = playerName.trim(); if (!n) return;
+    localStorage.setItem(LS_NAME, n);
+    // fullscreen במובייל
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const host = document.getElementById("penalty-host");
+    if (isMobile && host) {
+      const req = host.requestFullscreen || host.webkitRequestFullscreen || host.msRequestFullscreen;
+      try { req?.call(host); } catch {}
+    }
+    setShowIntro(false);
+  };
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-start min-h-screen bg-gray-900 text-white relative">
+      <div id="penalty-host" className="flex flex-col items-center justify-start min-h-screen bg-gray-900 text-white relative">
         {/* HUD */}
         <div className="absolute left-1/2 -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[60] top-10 pointer-events-none">
-          Score: {score} | Shots: {shots} | High Score: {highScore}
+          Player: {playerName || "—"} | Score: {score} | Shots: {shots} | High Score: {highScore}
         </div>
 
         {/* Canvas */}
@@ -334,11 +352,41 @@ export default function PenaltyGame() {
             const hs = Number(localStorage.getItem(LS_HS) || 0);
             if (scoreRef.current > hs) { localStorage.setItem(LS_HS, String(scoreRef.current)); setHighScore(scoreRef.current); }
             runningRef.current = false;
+            setShowIntro(true); // חוזרים למסך פתיחה בלבד (המשחק רץ מחדש אחרי refresh או Start חדש)
           }}
           className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[80]"
         >
           Exit
         </button>
+
+        {/* Intro overlay (מכסה את המשחק שרץ מתחת) */}
+        {showIntro && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-gray-900/95 z-[90]">
+            <img src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-6" />
+            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">⚽ Penalty Shootout</h1>
+            <p className="text-base sm:text-lg text-gray-200 mb-5">
+              Drag & hold inside the goal to aim & charge. Release to shoot.
+            </p>
+
+            <input
+              type="text"
+              value={playerName}
+              onChange={(e)=>setPlayerName(e.target.value)}
+              onKeyDown={(e)=>{ if (e.key === "Enter" && playerName.trim()) handleStart(); }}
+              placeholder="Your name"
+              className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
+            />
+            <button
+              onClick={handleStart}
+              disabled={!playerName.trim()}
+              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition ${
+                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              }`}
+            >
+              ▶ Start Game
+            </button>
+          </div>
+        )}
       </div>
     </Layout>
   );
