@@ -416,7 +416,7 @@ const getPos = (e) => {
               {/* Desktop/Tablet */}
 <div
   className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
-    isLandscape ? "-top-14" : "-top-10"
+    isLandscape ? "-top-12" : "-top-10"
   } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999] pointer-events-none`}
 >
   Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
