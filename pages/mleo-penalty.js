@@ -11,9 +11,9 @@ const LS_HS   = "penaltyHighScore_v1";
 const LS_NAME = "penaltyPlayerName_v1";
 
 // ---- Levels config ----
-const LEVEL_DUR_SEC = [60, 90, 120, 150, 180]; // level 1: 60s, then +30s per level
-const BASE_SPEED = 2.3;                        // keeper speed at level 1
-const SPEED_INC  = 0.5;                        // speed increment per level
+const LEVEL_DUR_SEC = [60, 90, 120, 150, 180];
+const BASE_SPEED = 2.3;
+const SPEED_INC  = 0.5;
 
 const mmss = (sec) => {
   const s = Math.max(0, Math.floor(sec));
@@ -21,17 +21,6 @@ const mmss = (sec) => {
   const r = s % 60;
   return `${m}:${String(r).padStart(2, "0")}`;
 };
-
-// ---- Per-level GK behavior (L1..L5) ----
-const LVL = {
-  reactMs:    [220, 170, 130, 100, 80],
-  dashProb:   [0.45, 0.55, 0.65, 0.75, 0.85],
-  dashTimeAdd:[0.00, 0.02, 0.04, 0.06, 0.08],
-  dashMultAdd:[0.00, 0.10, 0.20, 0.30, 0.40],
-  aimError:   [60, 45, 30, 18, 10],
-};
-const DASH_MULT_BASE = 3.2;
-const DASH_TIME_BASE = 0.35;
 
 export default function MleoPenalty() {
   const canvasRef = useRef(null);
@@ -49,15 +38,16 @@ export default function MleoPenalty() {
   const [shots, setShots] = useState(5);
   const [highScore, setHighScore] = useState(0);
 
-  // Level runtime (no auto-advance)
+  // Level runtime
   const [level, setLevel] = useState(1);
   const [timeLeft, setTimeLeft] = useState(LEVEL_DUR_SEC[0]);
   const [gameOver, setGameOver] = useState(false);
 
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(false);
+  // Joysticks
+  const LStick = useRef({ active:false, cx:0, cy:0, px:0, py:0, power:0 });
+  const RStick = useRef({ active:false, cx:0, cy:0, px:0, py:0, power:0 });
 
-  // Images (game still draws without)
+  // Images
   const imgsRef = useRef({ bg: null, keeper: null, ball: null });
   useEffect(() => {
     const make = (src, key) => {
@@ -73,112 +63,22 @@ export default function MleoPenalty() {
     if (typeof window !== "undefined") {
       setHighScore(Number(localStorage.getItem(LS_HS) || 0));
       setPlayerName(localStorage.getItem(LS_NAME) || "");
-      setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
     }
   }, []);
 
-  // World (logical space; scaled draw to canvas)
+  // World
   const S = useRef({
     w: 800, h: 450,
-    ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false, spin: 0 },
+    ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false },
     goal:   { x: 200, y: 60,  w: 400, h: 160 },
-    keeper: {
-      x: 400, y: 160, w: 120, h: 120, dir: 1, speed: BASE_SPEED,
-      dashT: 0, dashTargetX: 400,
-      reactT: 0, planDash: false,
-    },
+    keeper: { x: 400, y: 160, w: 120, h: 120, dir: 1, speed: BASE_SPEED },
     aim:    { x: 400, y: 120 },
     power:  0, charging: false,
     lastTs: 0,
-    ballWasMoving: false,
+    stuckT: 0 // anti-stuck timer
   });
 
-  // ===== Joystick (mobile) =====
-  const joyRef = useRef(null);
-  const [joyActive, setJoyActive] = useState(false);
-  const [joyKnob, setJoyKnob] = useState({ x: 0, y: 0 }); // -1..1 each axis
-  const JOY_RADIUS = 60;   // px
-  const JOY_DEAD   = 0.15; // deadzone
-
-  // Map joystick displacement to a point inside the goal
-  const applyJoystickToAim = (nx, ny) => {
-    const s = S.current;
-    // deadzone
-    const len = Math.hypot(nx, ny);
-    const k = len < JOY_DEAD ? 0 : (len - JOY_DEAD) / (1 - JOY_DEAD);
-    const dx = (len ? nx / len : 0) * k;
-    const dy = (len ? ny / len : 0) * k;
-
-    const gx1 = s.goal.x + 10;
-    const gx2 = s.goal.x + s.goal.w - 10;
-    const gy1 = s.goal.y + 10;
-    const gy2 = s.goal.y + s.goal.h - 10;
-    const gcx = (gx1 + gx2) / 2;
-    const gcy = (gy1 + gy2) / 2;
-    const halfx = (gx2 - gx1) / 2;
-    const halfy = (gy2 - gy1) / 2;
-
-    // nx: -1..1 → aim across goal; ny: -1..1 → up/down in goal
-    s.aim.x = Math.max(gx1, Math.min(gx2, gcx + dx * halfx));
-    s.aim.y = Math.max(gy1, Math.min(gy2, gcy + dy * halfy));
-  };
-
-  const joyStart = (e) => {
-    if (!runningRef.current) return;
-    const s = S.current;
-    if (s.ball.moving) return;
-
-    setJoyActive(true);
-    s.charging = true; s.power = 0;
-
-    const rect = joyRef.current.getBoundingClientRect();
-    const touch = e.touches ? e.touches[0] : e;
-    const cx = touch.clientX - rect.left - rect.width/2;
-    const cy = touch.clientY - rect.top  - rect.height/2;
-
-    const nx = Math.max(-JOY_RADIUS, Math.min(JOY_RADIUS, cx)) / JOY_RADIUS;
-    const ny = Math.max(-JOY_RADIUS, Math.min(JOY_RADIUS, cy)) / JOY_RADIUS;
-
-    setJoyKnob({ x: nx, y: ny });
-    applyJoystickToAim(nx, ny);
-
-    e.preventDefault?.();
-  };
-
-  const joyMove = (e) => {
-    if (!joyActive) return;
-    const rect = joyRef.current.getBoundingClientRect();
-    const touch = e.touches ? e.touches[0] : e;
-    const cx = touch.clientX - rect.left - rect.width/2;
-    const cy = touch.clientY - rect.top  - rect.height/2;
-
-    const nx = Math.max(-JOY_RADIUS, Math.min(JOY_RADIUS, cx)) / JOY_RADIUS;
-    const ny = Math.max(-JOY_RADIUS, Math.min(JOY_RADIUS, cy)) / JOY_RADIUS;
-
-    setJoyKnob({ x: nx, y: ny });
-    applyJoystickToAim(nx, ny);
-    e.preventDefault?.();
-  };
-
-  const joyEnd = (e) => {
-    const s = S.current;
-    setJoyActive(false);
-    setJoyKnob({ x: 0, y: 0 });
-
-    if (!runningRef.current || s.ball.moving) return;
-    // take the shot (same as pointer up)
-    const dx = s.aim.x - s.ball.x;
-    const dy = s.aim.y - s.ball.y;
-    const len = Math.max(1, Math.hypot(dx, dy));
-    const nx = dx / len, ny = dy / len;
-    const v  = 9.5 + (16 - 9.5) * Math.min(1, s.power);
-    s.ball.vx = nx * v; s.ball.vy = ny * v; s.ball.moving = true;
-    s.charging = false;
-
-    e?.preventDefault?.();
-  };
-
-  // Pointer input (desktop & tap anywhere)
+  // ======= Pointer on canvas (עדיין אפשר לשחק ישירות על הקנבס) =======
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
     c.style.touchAction = "none";
@@ -186,12 +86,13 @@ export default function MleoPenalty() {
 
     const getPos = (e) => {
       const rect = c.getBoundingClientRect();
-      const hasTouch = "touches" in e && e.touches && e.touches[0];
+      const hasTouch = 'touches' in e && e.touches && e.touches[0];
       const clientX = hasTouch ? e.touches[0].clientX : e.clientX;
       const clientY = hasTouch ? e.touches[0].clientY : e.clientY;
       const cx = clientX - rect.left;
       const cy = clientY - rect.top;
       const s = S.current;
+      // map to world (not pixels)
       return { x: (cx / rect.width) * s.w, y: (cy / rect.height) * s.h };
     };
 
@@ -202,8 +103,6 @@ export default function MleoPenalty() {
     };
 
     const onDown = (e) => {
-      // אם יש ג׳ויסטיק פעיל בנייד — מתעלמים ממגע בקנבס
-      if (isMobile) return;
       if (!runningRef.current) return;
       const s = S.current;
       if (s.ball.moving) return;
@@ -213,14 +112,12 @@ export default function MleoPenalty() {
       c.setPointerCapture?.(e.pointerId);
     };
     const onMove = (e) => {
-      if (isMobile) return;
       const s = S.current;
       if (!s.charging) return;
       clampAim(getPos(e));
       e.preventDefault?.();
     };
     const onUp = (e) => {
-      if (isMobile) return;
       const s = S.current;
       if (!s.charging) return;
       s.charging = false;
@@ -241,8 +138,6 @@ export default function MleoPenalty() {
     c.addEventListener("pointermove", onMove, { passive: false });
     c.addEventListener("pointerup",   onUp,   { passive: false });
     c.addEventListener("pointercancel", onUp, { passive: false });
-
-    // עדיין מאפשרים טאצ׳ לקנבס בדסקטופ טאצ׳ / טאבלט בלי ג׳ויסטיק
     c.addEventListener("touchstart", onDown, { passive: false });
     c.addEventListener("touchmove",  onMove, { passive: false });
     c.addEventListener("touchend",   onUp,   { passive: false });
@@ -256,32 +151,88 @@ export default function MleoPenalty() {
       c.removeEventListener("touchmove", onMove);
       c.removeEventListener("touchend", onUp);
     };
-  }, [isMobile]);
+  }, []);
 
-  // Helpers
-  const resetBall = () => {
-    const s = S.current;
-    s.ball.x = 400; s.ball.y = 360; s.ball.vx = 0; s.ball.vy = 0;
-    s.ball.moving = false; s.ball.spin = 0;
-    s.aim.x  = 400; s.aim.y  = 120; s.power = 0; s.charging = false;
-    s.keeper.dashT = 0; s.keeper.reactT = 0; s.keeper.planDash = false;
+  // ======= Joystick helpers (לשני הצדדים) =======
+  const stickStart = (e, which) => {
+    if (!runningRef.current) return;
+    const s = S.current; if (s.ball.moving) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const cx = box.left + box.width / 2;
+    const cy = box.top  + box.height / 2;
+    const hasTouch = 'touches' in e && e.touches && e.touches[0];
+    const px = (hasTouch ? e.touches[0].clientX : e.clientX);
+    const py = (hasTouch ? e.touches[0].clientY : e.clientY);
+
+    const stick = (which === "L" ? LStick : RStick).current;
+    stick.active = true; stick.cx = cx; stick.cy = cy; stick.px = px; stick.py = py; stick.power = 0;
+
+    // start charging
+    s.charging = true; s.power = 0;
+    e.preventDefault?.();
   };
 
-  const keeperAI = (s, dt, lvlIndex) => {
-    const left = s.goal.x + 40, right = s.goal.x + s.goal.w - 40;
+  const stickMove = (e, which) => {
+    const s = S.current;
+    const stick = (which === "L" ? LStick : RStick).current;
+    if (!stick.active || s.ball.moving) return;
 
-    if (s.keeper.reactT > 0) {
-      if (s.aim.x > s.keeper.x + 4) s.keeper.x += s.keeper.speed * 0.35;
-      else if (s.aim.x < s.keeper.x - 4) s.keeper.x -= s.keeper.speed * 0.35;
-      s.keeper.reactT -= dt;
-    } else if (s.keeper.dashT > 0) {
-      const mult = DASH_MULT_BASE + LVL.dashMultAdd[lvlIndex];
-      const dashSpeed = s.keeper.speed * mult;
-      if (s.keeper.dashTargetX > s.keeper.x + 2) s.keeper.x += dashSpeed * dt * 60;
-      else if (s.keeper.dashTargetX < s.keeper.x - 2) s.keeper.x -= dashSpeed * dt * 60;
-      s.keeper.dashT -= dt;
-      if (s.keeper.dashT <= 0) s.keeper.dashT = 0;
-    } else if (s.charging) {
+    const hasTouch = 'touches' in e && e.touches && e.touches[0];
+    const px = (hasTouch ? e.touches[0].clientX : e.clientX);
+    const py = (hasTouch ? e.touches[0].clientY : e.clientY);
+    stick.px = px; stick.py = py;
+
+    // vector from center
+    const dx = px - stick.cx;
+    const dy = py - stick.cy;
+    const rad = Math.min(70, Math.hypot(dx, dy));    // clamp knob radius
+    const nx = dx === 0 && dy === 0 ? 0 : dx / Math.hypot(dx, dy);
+    const ny = dx === 0 && dy === 0 ? 0 : dy / Math.hypot(dx, dy);
+    stick.power = Math.min(1, rad / 70);
+
+    // map to goal area (aim)
+    const gx = s.goal.x, gy = s.goal.y, gw = s.goal.w, gh = s.goal.h;
+    const cxGoal = gx + gw / 2, cyGoal = gy + gh / 2;
+    const margin = 14;
+    const ax = Math.max(gx + margin, Math.min(gx + gw - margin, cxGoal + nx * (gw/2 - margin)));
+    const ay = Math.max(gy + margin, Math.min(gy + gh - margin, cyGoal + ny * (gh/2 - margin)));
+    s.aim.x = ax; s.aim.y = ay;
+
+    // charge bar
+    s.power = Math.max(s.power, stick.power);
+    e.preventDefault?.();
+  };
+
+  const stickEnd = (e, which) => {
+    const s = S.current;
+    const stick = (which === "L" ? LStick : RStick).current;
+    if (!stick.active) return;
+    stick.active = false;
+
+    if (!runningRef.current || s.ball.moving) { s.charging = false; return; }
+
+    // shoot toward current aim with power from stick
+    const dx = s.aim.x - s.ball.x;
+    const dy = s.aim.y - s.ball.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const nx = dx / len, ny = dy / len;
+    const v = 9.5 + (16 - 9.5) * Math.min(1, Math.max(s.power, stick.power));
+    s.ball.vx = nx * v; s.ball.vy = ny * v; s.ball.moving = true;
+    s.charging = false;
+
+    e.preventDefault?.();
+  };
+
+  // ======= Helpers =======
+  const resetBall = () => {
+    const s = S.current;
+    s.ball.x = 400; s.ball.y = 360; s.ball.vx = 0; s.ball.vy = 0; s.ball.moving = false;
+    s.aim.x  = 400; s.aim.y  = 120; s.power = 0; s.charging = false; s.stuckT = 0;
+  };
+
+  const keeperAI = (s) => {
+    const left = s.goal.x + 40, right = s.goal.x + s.goal.w - 40;
+    if (s.charging) {
       if (s.aim.x > s.keeper.x + 4) s.keeper.x += s.keeper.speed * 0.6;
       else if (s.aim.x < s.keeper.x - 4) s.keeper.x -= s.keeper.speed * 0.6;
     } else {
@@ -289,17 +240,11 @@ export default function MleoPenalty() {
       if (s.keeper.x < left)  { s.keeper.x = left;  s.keeper.dir = 1;  }
       if (s.keeper.x > right) { s.keeper.x = right; s.keeper.dir = -1; }
     }
-
-    s.keeper.x = Math.max(left, Math.min(right, s.keeper.x));
   };
 
   const collideKeeper = (s) => {
-    const shrinkX = 0.85, shrinkY = 0.80;
-    const kx1 = s.keeper.x - (s.keeper.w * shrinkX) / 2;
-    const ky1 = s.keeper.y - (s.keeper.h * shrinkY) / 2;
-    const kx2 = kx1 + s.keeper.w * shrinkX;
-    const ky2 = ky1 + s.keeper.h * shrinkY;
-
+    const kx1 = s.keeper.x - s.keeper.w/2, ky1 = s.keeper.y - s.keeper.h/2;
+    const kx2 = kx1 + s.keeper.w, ky2 = ky1 + s.keeper.h;
     const cx = s.ball.x, cy = s.ball.y, r = s.ball.r;
     const nx = Math.max(kx1, Math.min(cx, kx2));
     const ny = Math.max(ky1, Math.min(cy, ky2));
@@ -312,7 +257,7 @@ export default function MleoPenalty() {
     return x > gx+6 && x < gx+gw-6 && y > gy+6 && y < gy+gh-6;
   };
 
-  // Drawing (background only — no white goal frame)
+  // ======= Drawing =======
   const drawPitch = (ctx, c, s) => {
     ctx.clearRect(0, 0, c.width, c.height);
 
@@ -336,6 +281,7 @@ export default function MleoPenalty() {
     const kw = s.keeper.w * sx, kh = s.keeper.h * sy;
     const kx = s.keeper.x * sx - kw / 2, ky = s.keeper.y * sy - kh / 2;
 
+    // shadow
     ctx.globalAlpha = 0.25; ctx.fillStyle = "#000";
     ctx.beginPath(); ctx.ellipse(s.keeper.x * sx, s.keeper.y * sy + kh * 0.45, kw * 0.45, kh * 0.18, 0, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
@@ -366,18 +312,15 @@ export default function MleoPenalty() {
     ctx.beginPath(); ctx.moveTo(ax-10,ay); ctx.lineTo(ax+10,ay); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(ax,ay-10); ctx.lineTo(ax,ay+10); ctx.stroke();
 
-    // power bar
-    const pw = 14, phTot = 130;
-    const baseX = c.width - 28, baseY = c.height - 160;
     ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(baseX, baseY, pw, phTot);
+    ctx.fillRect(c.width-28, c.height-160, 14, 130);
     ctx.fillStyle = "#ff3b3b";
-    const ph = Math.round(phTot * Math.min(1, s.power));
-    ctx.fillRect(baseX, baseY + phTot - 30 - ph + 30, pw, ph);
-    ctx.strokeStyle = "#fff"; ctx.strokeRect(baseX, baseY, pw, phTot);
+    const ph = Math.round(130 * Math.min(1, s.power));
+    ctx.fillRect(c.width-28, c.height-30-ph, 14, ph);
+    ctx.strokeStyle = "#fff"; ctx.strokeRect(c.width-28, c.height-160, 14, 130);
   };
 
-  // Main loop
+  // ======= Main loop =======
   useEffect(() => {
     const c = canvasRef.current; if (!c) return;
     const ctx = c.getContext("2d"); if (!ctx) return;
@@ -387,6 +330,7 @@ export default function MleoPenalty() {
       const dt = Math.min(0.035, (ts - s.lastTs) / 1000 || 0.016);
       s.lastTs = ts;
 
+      // timer
       if (runningRef.current && !gameOver && !showIntro) {
         setTimeLeft((t) => {
           const nt = t - dt;
@@ -405,47 +349,41 @@ export default function MleoPenalty() {
       }
 
       if (s.charging) s.power = Math.min(1.1, s.power + 0.9 * dt);
-
-      const lvlIndex = Math.max(0, Math.min(4, level - 1));
-      if (s.ball.moving && !s.ballWasMoving) {
-        s.ballWasMoving = true;
-        s.keeper.reactT = LVL.reactMs[lvlIndex] / 1000;
-        s.keeper.planDash = Math.random() < LVL.dashProb[lvlIndex];
-      } else if (!s.ball.moving) {
-        s.ballWasMoving = false;
-        s.keeper.planDash = false;
-      }
-
-      if (s.keeper.reactT <= 0 && s.keeper.planDash && s.keeper.dashT <= 0 && s.ball.moving) {
-        s.keeper.planDash = false;
-        const err = (Math.random() * 2 - 1) * LVL.aimError[lvlIndex];
-        s.keeper.dashTargetX = s.aim.x + err;
-        s.keeper.dashT = DASH_TIME_BASE + LVL.dashTimeAdd[lvlIndex];
-      }
-
-      keeperAI(s, dt, lvlIndex);
+      keeperAI(s);
 
       if (s.ball.moving) {
         s.ball.x += s.ball.vx;
         s.ball.y += s.ball.vy;
         s.ball.vx *= 0.992; s.ball.vy *= 0.992;
 
+        // keeper collision — small bounce
         if (collideKeeper(s)) {
-          s.ball.vy = Math.max(-s.ball.vy * 0.4, -2.5);
-          s.ball.vx = -s.ball.vx * 0.45;
+          s.ball.vy = Math.max(-s.ball.vy * 0.35, -2.2);
+          s.ball.vx = -s.ball.vx * 0.42;
         }
 
         const speed = Math.hypot(s.ball.vx, s.ball.vy);
-        if (speed < 0.25 && !inGoal(s)) {
-          setShots((sh) => Math.max(0, sh - 1));
-          resetBall();
+
+        // --- Anti-stuck near goal line or after long slow roll ---
+        const gy = s.goal.y, gh = s.goal.h;
+        const nearLine = s.ball.y > gy + gh - 14 && s.ball.y < gy + gh + 10; // around line
+        if (speed < 0.18) {
+          s.stuckT += dt;
+          if (nearLine || s.stuckT > 0.9) {
+            setShots((sh) => Math.max(0, sh - 1));
+            resetBall();
+          }
+        } else {
+          s.stuckT = 0;
         }
 
+        // out of bounds
         if (s.ball.y < 0 || s.ball.x < -60 || s.ball.x > s.w + 60 || s.ball.y > s.h + 60) {
           setShots((sh) => Math.max(0, sh - 1));
           resetBall();
         }
 
+        // goal
         if (inGoal(s) && s.ball.y < s.goal.y + s.goal.h - 12) {
           scoreRef.current += 1; setScore(scoreRef.current);
           setShots((sh) => Math.max(0, sh - 1));
@@ -453,6 +391,7 @@ export default function MleoPenalty() {
         }
       }
 
+      // render
       drawPitch(ctx, c, s);
       drawKeeper(ctx, c, s);
       drawBall(ctx, c, s);
@@ -463,7 +402,7 @@ export default function MleoPenalty() {
 
     rafRef.current = requestAnimationFrame(step);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [showIntro, gameOver, level]);
+  }, [showIntro, gameOver]);
 
   // Start game by selected level
   const startGame = (startLevel = 1) => {
@@ -475,12 +414,11 @@ export default function MleoPenalty() {
     setTimeLeft(LEVEL_DUR_SEC[startLevel - 1]);
 
     const s = S.current;
-    s.ball = { x: 400, y: 360, r: 10, vx:0, vy:0, moving:false, spin:0 };
+    s.ball = { x: 400, y: 360, r: 10, vx:0, vy:0, moving:false };
     s.aim  = { x: 400, y: 120 }; s.power = 0; s.charging = false;
     s.keeper.x = 400; s.keeper.dir = 1;
     s.keeper.speed = BASE_SPEED + (startLevel - 1) * SPEED_INC;
-    s.keeper.dashT = 0; s.keeper.reactT = 0; s.keeper.planDash = false;
-    s.ballWasMoving = false;
+    s.stuckT = 0;
 
     runningRef.current = true;
   };
@@ -489,10 +427,10 @@ export default function MleoPenalty() {
     const n = playerName.trim(); if (!n) return;
     localStorage.setItem(LS_NAME, n);
 
-    // fullscreen on mobile
-    const isMob = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    // fullscreen on mobile (אופציונלי)
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const wrapper = document.getElementById("game-wrapper");
-    if (isMob && wrapper) {
+    if (isMobile && wrapper) {
       const req = wrapper.requestFullscreen || wrapper.webkitRequestFullscreen || wrapper.msRequestFullscreen;
       try { req?.call(wrapper); } catch {}
     }
@@ -503,14 +441,12 @@ export default function MleoPenalty() {
 
   useEffect(() => () => { runningRef.current = false; if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
-  // ===== Responsive canvas (portrait vs landscape) =====
+  // ===== Responsive canvas =====
   const [isLandscape, setIsLandscape] = useState(false);
-
   useEffect(() => {
     const onResize = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const landscape = vw > vh;
@@ -527,7 +463,6 @@ export default function MleoPenalty() {
       canvas.width = W;
       canvas.height = H;
     };
-
     onResize();
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
@@ -537,19 +472,19 @@ export default function MleoPenalty() {
     };
   }, []);
 
+  // ===== Render =====
   return (
     <Layout>
       <div
         id="game-wrapper"
         className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative select-none"
       >
-        {/* Relative wrapper so HUD can sit on the canvas edge */}
+        {/* Relative wrapper */}
         <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
 
           {/* HUD */}
           {!showIntro && (
             <>
-              {/* Desktop/Tablet */}
               <div
                 className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
                   isLandscape ? "-top-12" : "-top-10"
@@ -558,7 +493,6 @@ export default function MleoPenalty() {
                 Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
               </div>
 
-              {/* Mobile */}
               <div
                 className={`sm:hidden absolute left-1/2 -translate-x-1/2 ${
                   isLandscape ? "top-2" : "-top-5"
@@ -595,42 +529,6 @@ export default function MleoPenalty() {
               </div>
             </div>
           )}
-
-          {/* ===== Joystick UI (mobile only) ===== */}
-          {runningRef.current && !showIntro && isMobile && (
-            <div className="sm:hidden">
-              <div
-                ref={joyRef}
-                onTouchStart={joyStart}
-                onTouchMove={joyMove}
-                onTouchEnd={joyEnd}
-                onMouseDown={joyStart}
-                onMouseMove={joyMove}
-                onMouseUp={joyEnd}
-                className="fixed left-4 bottom-5 z-[999]"
-                style={{ width: 140, height: 140 }}
-              >
-                {/* base circle */}
-                <div className="absolute inset-0 rounded-full bg-white/10 border border-white/20 backdrop-blur-sm" />
-                {/* knob */}
-                <div
-                  className="absolute w-16 h-16 rounded-full bg-white/70 border border-white/80 shadow"
-                  style={{
-                    left: 70 - 32 + joyKnob.x * JOY_RADIUS,
-                    top:  70 - 32 + joyKnob.y * JOY_RADIUS,
-                    transition: joyActive ? "none" : "transform 0.12s ease",
-                  }}
-                />
-                {/* hint text */}
-                {!joyActive && (
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-white/70 text-xs">
-                    Drag to aim • Release to shoot
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {/* ===== /Joystick ===== */}
         </div>
 
         {/* Exit */}
@@ -649,7 +547,64 @@ export default function MleoPenalty() {
           Exit
         </button>
 
-        {/* Intro – English */}
+        {/* ===== Two Joysticks — always visible on all screens ===== */}
+        {!showIntro && (
+          <>
+            {/* Left stick */}
+            <div
+              className="fixed bottom-7 left-6 z-[900] select-none"
+              onPointerDown={(e)=>stickStart(e,"L")}
+              onPointerMove={(e)=>stickMove(e,"L")}
+              onPointerUp={(e)=>stickEnd(e,"L")}
+              onPointerCancel={(e)=>stickEnd(e,"L")}
+              onTouchStart={(e)=>stickStart(e,"L")}
+              onTouchMove={(e)=>stickMove(e,"L")}
+              onTouchEnd={(e)=>stickEnd(e,"L")}
+            >
+              <div className="relative w-[210px] h-[210px] rounded-full bg-white/5 border border-white/10 backdrop-blur-[2px]">
+                <div
+                  className="absolute rounded-full bg-white/30"
+                  style={{
+                    width: 100, height: 100,
+                    left: 55 + Math.max(-70, Math.min(70, LStick.current.px - LStick.current.cx)) - 50,
+                    top:  55 + Math.max(-70, Math.min(70, LStick.current.py - LStick.current.cy)) - 50,
+                  }}
+                />
+                <div className="absolute left-1/2 -translate-x-1/2 top-[calc(100%+6px)] text-xs text-gray-300 opacity-80">
+                  Drag to aim • Release to shoot
+                </div>
+              </div>
+            </div>
+
+            {/* Right stick */}
+            <div
+              className="fixed bottom-7 right-6 z-[900] select-none"
+              onPointerDown={(e)=>stickStart(e,"R")}
+              onPointerMove={(e)=>stickMove(e,"R")}
+              onPointerUp={(e)=>stickEnd(e,"R")}
+              onPointerCancel={(e)=>stickEnd(e,"R")}
+              onTouchStart={(e)=>stickStart(e,"R")}
+              onTouchMove={(e)=>stickMove(e,"R")}
+              onTouchEnd={(e)=>stickEnd(e,"R")}
+            >
+              <div className="relative w-[210px] h-[210px] rounded-full bg-white/5 border border-white/10 backdrop-blur-[2px]">
+                <div
+                  className="absolute rounded-full bg-white/30"
+                  style={{
+                    width: 100, height: 100,
+                    left: 55 + Math.max(-70, Math.min(70, RStick.current.px - RStick.current.cx)) - 50,
+                    top:  55 + Math.max(-70, Math.min(70, RStick.current.py - RStick.current.cy)) - 50,
+                  }}
+                />
+                <div className="absolute left-1/2 -translate-x-1/2 top-[calc(100%+6px)] text-xs text-gray-300 opacity-80">
+                  Drag to aim • Release to shoot
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Intro */}
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-gray-900/95 z-[999]">
             <img src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6" />
