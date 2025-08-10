@@ -79,12 +79,25 @@ export default function MleoPenalty() {
     c.style.touchAction = "none";
     c.style.userSelect  = "none";
 
-    const getPos = (e) => {
-      const rect = c.getBoundingClientRect();
-      const cx = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
-      const cy = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
-      return { x: (cx / rect.width) * c.width, y: (cy / rect.height) * c.height };
-    };
+const getPos = (e) => {
+  const rect = c.getBoundingClientRect();
+
+  // תמיכה גם ב-pointer events וגם ב-touch events
+  const hasTouch = 'touches' in e && e.touches && e.touches[0];
+  const clientX = hasTouch ? e.touches[0].clientX : e.clientX;
+  const clientY = hasTouch ? e.touches[0].clientY : e.clientY;
+
+  const cx = clientX - rect.left;
+  const cy = clientY - rect.top;
+
+  // ממירים למרחב "העולם" (S.current.w/h), לא לפיקסלים של הקנבס
+  const s = S.current;
+  return {
+    x: (cx / rect.width) * s.w,
+    y: (cy / rect.height) * s.h,
+  };
+};
+
     const clampAim = (p) => {
       const s = S.current;
       s.aim.x = Math.max(s.goal.x + 10, Math.min(s.goal.x + s.goal.w - 10, p.x));
@@ -403,21 +416,24 @@ export default function MleoPenalty() {
               {/* Desktop/Tablet */}
 <div
   className={`hidden sm:block absolute left-1/2 -translate-x-1/2 ${
-    isLandscape ? "-top-12" : "-top-10"
-  } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999]`}
+    isLandscape ? "-top-14" : "-top-10"
+  } bg-black/70 px-4 py-2 rounded-md text-[17px] font-bold z-[999] pointer-events-none`}
 >
+  Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
+</div>
 
-                Level: {level} | Time: {mmss(timeLeft)} | Score: {score} | High: {highScore}
-              </div>
+
 
               {/* Mobile */}
-              <div
-                className={`sm:hidden absolute left-1/2 -translate-x-1/2 ${
-                  isLandscape ? "top-2" : "-top-5"
-                } bg-black/70 px-3 py-1 rounded text-sm font-bold z-[999]`}
-              >
-                L{level} • {mmss(timeLeft)} • {score}
-              </div>
+<div
+  className={`sm:hidden absolute left-1/2 -translate-x-1/2 ${
+    isLandscape ? "top-2" : "-top-5"
+  } bg-black/70 px-3 py-1 rounded text-sm font-bold z-[999] pointer-events-none`}
+>
+  L{level} • {mmss(timeLeft)} • {score}
+</div>
+
+
             </>
           )}
 
