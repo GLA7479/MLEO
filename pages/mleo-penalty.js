@@ -14,22 +14,21 @@ const LEVEL_DUR_SEC = [60, 90, 120, 150, 180];
 const BASE_SPEED = 2.3;
 const SPEED_INC  = 0.5;
 
-// Joysticks
+// Joysticks (ללא שינויי גדלים/רגישות)
 const JOY_PAD_PX   = 90;
 const JOY_KNOB_PX  = 36;
 const JOY_MAX_R    = JOY_PAD_PX * 0.5;
-const JOY_DEADZONE = 0.07;   // smaller deadzone
-const JOY_RANGE_GAIN = 1.25; // push a bit more toward edges
+const JOY_DEADZONE = 0.07;
+const JOY_RANGE_GAIN = 1.25;
 
 // Physics
-const POWER_CHARGE_PER_SEC = 0.5; // for canvas-hold only
+const POWER_CHARGE_PER_SEC = 0.5; // לחיצה על הקנבס בלבד
 const FRICTION = 0.992;
 const STUCK_SPEED = 0.22;
 const STUCK_NEAR_GOAL_Y = 8;
 const STUCK_TIME = 0.6;
 
-// Aim area: allow slight overshoot beyond the goal
-// e.g. 8% beyond each side
+// Overshoot כדי להגיע לקצוות השער
 const GOAL_OVERSHOOT = 0.08;
 
 const mmss = (sec) => {
@@ -96,6 +95,8 @@ export default function MleoPenalty() {
     right: { active:false, cx:0, cy:0, dx:0, dy:0 },
     lastSide: null,
   });
+  // ✅ טריגר רנדר עבור תנועת הסטיקים
+  const [, setJoyTick] = useState(0);
 
   // shoot helper
   const doKick = (s, power) => {
@@ -111,6 +112,7 @@ export default function MleoPenalty() {
     const j = joyRef.current;
     j.left.active = j.right.active = false;
     j.left.dx = j.left.dy = j.right.dx = j.right.dy = 0;
+    setJoyTick(t => t + 1); // לרענון מצב הכפתורים אחרי בעיטה
   };
 
   // canvas input (tap/hold to shoot)
@@ -148,7 +150,7 @@ export default function MleoPenalty() {
       clampAim(getPos(e));
       s.charging = true; s.power = 0;
       e.preventDefault?.();
-      c.setPointerCapture?.(e.pointerId);
+      try { c.setPointerCapture?.(e.pointerId); } catch {}
     };
     const onMove = (e) => {
       const s = S.current;
@@ -287,7 +289,6 @@ export default function MleoPenalty() {
     const use = j.left.active ? j.left : j.right.active ? j.right : null;
     if (!use) return;
 
-    // expanded (overshoot) rectangle around the goal
     const gx = s.goal.x - s.goal.w * GOAL_OVERSHOOT;
     const gy = s.goal.y - s.goal.h * GOAL_OVERSHOOT;
     const gw = s.goal.w * (1 + 2 * GOAL_OVERSHOOT);
@@ -301,16 +302,14 @@ export default function MleoPenalty() {
     const dirx = mag > 0 ? nx / mag : 0;
     const diry = mag > 0 ? ny / mag : 0;
 
-    // allow [-overshoot .. 1+overshoot] before clamping into expanded rect
     const ex = dirx * f * JOY_RANGE_GAIN * 0.5 + 0.5;
     const ey = diry * f * JOY_RANGE_GAIN * 0.5 + 0.5;
 
-    // map to expanded rect (and clamp finally to it)
     s.aim.x = clamp(gx + ex * gw, gx, gx + gw);
     s.aim.y = clamp(gy + ey * gh, gy, gy + gh);
 
     s.charging = true;
-    s.power = f; // power by stick magnitude
+    s.power = f; // כוח = גודל הסטיק
   };
 
   // main loop
@@ -340,7 +339,7 @@ export default function MleoPenalty() {
         });
       }
 
-      // If charging by canvas hold (not joystick), use time-based charge
+      // טעינת כוח רק אם לא משתמשים בסטיק
       const j = joyRef.current;
       const usingJoystick = j.left.active || j.right.active;
       if (s.charging && !usingJoystick) {
@@ -421,6 +420,7 @@ export default function MleoPenalty() {
     j.left.dx = j.left.dy = 0; j.left.active = false;
     j.right.dx = j.right.dy = 0; j.right.active = false;
     j.lastSide = null;
+    setJoyTick(t => t + 1);
 
     runningRef.current = true;
   };
@@ -475,7 +475,7 @@ export default function MleoPenalty() {
     };
   }, []);
 
-  // joystick DOM (kick on release)
+  // joystick DOM — touch-action none + pointercancel=kick + טריגר רנדר
   const bindJoy = (side) => ({
     onPointerDown: (e) => {
       const el = e.currentTarget;
@@ -498,7 +498,8 @@ export default function MleoPenalty() {
       const s = S.current;
       if (!s.ball.moving) { s.charging = true; s.power = 0; }
 
-      el.setPointerCapture?.(e.pointerId);
+      try { el.setPointerCapture?.(e.pointerId); } catch {}
+      setJoyTick(t => t + 1);
       e.preventDefault();
     },
     onPointerMove: (e) => {
@@ -514,6 +515,7 @@ export default function MleoPenalty() {
       const ny = len ? dy / len : 0;
       j.dx = nx * cl; j.dy = ny * cl;
       joyRef.current.lastSide = side;
+      setJoyTick(t => t + 1);
       e.preventDefault();
     },
     onPointerUp: (e) => {
@@ -522,19 +524,26 @@ export default function MleoPenalty() {
 
       const s = S.current;
       if (!s.ball.moving && s.charging) {
-        doKick(s, s.power); // kick with current stick power
+        doKick(s, s.power);
       }
 
       j.dx = 0; j.dy = 0;
-      e.currentTarget.releasePointerCapture?.(e.pointerId);
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+      setJoyTick(t => t + 1);
       e.preventDefault();
     },
     onPointerCancel: (e) => {
+      // מתנהגים כמו UP כדי שלא נאבד בעיטה בספארי
+      const s = S.current;
+      if (!s.ball.moving && s.charging) {
+        doKick(s, s.power);
+      }
       const j = joyRef.current[side];
       j.active = false; j.dx = 0; j.dy = 0;
-      const s = S.current; s.charging = false; s.power = 0;
+      setJoyTick(t => t + 1);
       e.preventDefault();
     },
+    onContextMenu: (e) => e.preventDefault(),
   });
 
   const joyKnobWrapStyle = (side) => {
@@ -629,7 +638,11 @@ export default function MleoPenalty() {
         {!showIntro && !gameOver && (
           <>
             {/* LEFT */}
-            <div className="fixed bottom-6 left-6 z-[999] select-none" style={{ width: JOY_PAD_PX, height: JOY_PAD_PX }} {...bindJoy("left")}>
+            <div
+              className="fixed bottom-6 left-6 z-[999] select-none"
+              style={{ width: JOY_PAD_PX, height: JOY_PAD_PX, touchAction: "none" }}
+              {...bindJoy("left")}
+            >
               <div className="relative w-full h-full rounded-full bg-black/30 border border-white/20">
                 <div className="absolute left-1/2 top-1/2" style={joyKnobWrapStyle("left")}>
                   <div className="rounded-full bg-white/80 shadow" style={{ width: JOY_KNOB_PX, height: JOY_KNOB_PX }} />
@@ -638,7 +651,11 @@ export default function MleoPenalty() {
             </div>
 
             {/* RIGHT */}
-            <div className="fixed bottom-6 right-6 z-[999] select-none" style={{ width: JOY_PAD_PX, height: JOY_PAD_PX }} {...bindJoy("right")}>
+            <div
+              className="fixed bottom-6 right-6 z-[999] select-none"
+              style={{ width: JOY_PAD_PX, height: JOY_PAD_PX, touchAction: "none" }}
+              {...bindJoy("right")}
+            >
               <div className="relative w-full h-full rounded-full bg-black/30 border border-white/20">
                 <div className="absolute left-1/2 top-1/2" style={joyKnobWrapStyle("right")}>
                   <div className="rounded-full bg-white/80 shadow" style={{ width: JOY_KNOB_PX, height: JOY_KNOB_PX }} />
