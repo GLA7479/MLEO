@@ -1,337 +1,344 @@
-// ✅ גרסה מתוקנת עם תמיכה בהחלקת טאצ' + ביטול גלילה מיותרת בנייד + אזהרה לסיבוב מסך
-
-import { useEffect, useState } from "react";
+// pages/mleo-penalty.js
+import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
-import Image from "next/image";
 
-const SHAPES = [
-  "heart.png",
-  "circle.png",
-  "square.png",
-  "drop.png",
-  "diamond.png",
-  "star.png",
-];
+// Optional images (if they exist under /public/images)
+const IMG_KEEPER = "/images/leo-keeper.png";
+const IMG_BALL   = "/images/ball.png";
+const IMG_BG     = "/images/penalty-bg.png";
 
-const DIFFICULTY_SETTINGS = {
-  easy: { grid: 6, scoreToWin: 500, time: 60 },
-  medium: { grid: 7, scoreToWin: 800, time: 90 },
-  hard: { grid: 8, scoreToWin: 1400, time: 120 },
-};
+const LS_HS = "penaltyHighScore_v1";
 
-export default function MleoMatch() {
-  const [playerName, setPlayerName] = useState("");
-  const [difficulty, setDifficulty] = useState("easy");
-  const [grid, setGrid] = useState([]);
+export default function PenaltyGame() {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const runningRef = useRef(false);
+
+  // UI
   const [score, setScore] = useState(0);
-  const [time, setTime] = useState(60);
-  const [gameRunning, setGameRunning] = useState(false);
-  const [gameOver, setGameOver] = useState(false);
-  const [didWin, setDidWin] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [touchStart, setTouchStart] = useState(null);
-  const [isLandscape, setIsLandscape] = useState(false);
+  const scoreRef = useRef(0);
+  const [shots, setShots] = useState(5);
+  const [highScore, setHighScore] = useState(0);
 
-  const size = DIFFICULTY_SETTINGS[difficulty].grid;
-
+  // Images (loaded if exist; game draws even without them)
+  const imgsRef = useRef({ bg: null, keeper: null, ball: null });
   useEffect(() => {
-    const checkOrientation = () => {
-      const isMobile = window.innerWidth < 1024;
-      const isLandscape = window.innerWidth > window.innerHeight;
-      setIsLandscape(isMobile && isLandscape);
+    const make = (src, key) => {
+      const im = new Image();
+      im.onload  = () => { imgsRef.current[key] = im; };
+      im.onerror = () => { imgsRef.current[key] = null; };
+      im.src = src;
     };
+    make(IMG_BG, "bg");
+    make(IMG_KEEPER, "keeper");
+    make(IMG_BALL, "ball");
 
-    checkOrientation();
-    window.addEventListener("resize", checkOrientation);
-    return () => window.removeEventListener("resize", checkOrientation);
+    setHighScore(Number(localStorage.getItem(LS_HS) || 0));
   }, []);
 
-  useEffect(() => {
-    if (!gameRunning) return;
-    if (time <= 0) {
-      setGameOver(true);
-      setDidWin(score >= DIFFICULTY_SETTINGS[difficulty].scoreToWin);
-      setGameRunning(false);
-    }
-    const interval = setInterval(() => setTime((t) => t - 1), 1000);
-    return () => clearInterval(interval);
-  }, [gameRunning, time]);
+  // World (fixed logical size; CSS makes it responsive)
+  const S = useRef({
+    w: 800, h: 450,
+    ball:   { x: 400, y: 360, r: 10, vx: 0, vy: 0, moving: false },
+    goal:   { x: 200, y: 60,  w: 400, h: 160 },
+    keeper: { x: 400, y: 180, w: 90,  h: 90, dir: 1, speed: 2.3 },
+    aim:    { x: 400, y: 120 },
+    power:  0, charging: false,
+    lastTs: 0,
+  });
 
+  // Pointer input
   useEffect(() => {
-    const preventTouchScroll = (e) => {
-      if (e.target.closest(".grid")) e.preventDefault();
+    const c = canvasRef.current; if (!c) return;
+    c.style.touchAction = "none";
+    c.style.userSelect  = "none";
+
+    const getPos = (e) => {
+      const rect = c.getBoundingClientRect();
+      const cx = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
+      const cy = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
+      return { x: (cx / rect.width) * c.width, y: (cy / rect.height) * c.height };
     };
-    document.body.style.overflow = "hidden";
-    document.addEventListener("touchmove", preventTouchScroll, { passive: false });
+    const clampAim = (p) => {
+      const s = S.current;
+      s.aim.x = Math.max(s.goal.x + 10, Math.min(s.goal.x + s.goal.w - 10, p.x));
+      s.aim.y = Math.max(s.goal.y + 10, Math.min(s.goal.y + s.goal.h - 10, p.y));
+    };
+
+    const onDown = (e) => {
+      if (!runningRef.current) return;
+      const s = S.current;
+      if (s.ball.moving) return;
+      clampAim(getPos(e));
+      s.charging = true; s.power = 0;
+      e.preventDefault?.();
+      c.setPointerCapture?.(e.pointerId);
+    };
+    const onMove = (e) => {
+      const s = S.current;
+      if (!s.charging) return;
+      clampAim(getPos(e));
+      e.preventDefault?.();
+    };
+    const onUp = (e) => {
+      const s = S.current;
+      if (!s.charging) return;
+      s.charging = false;
+      if (!runningRef.current || s.ball.moving) return;
+
+      const dx = s.aim.x - s.ball.x;
+      const dy = s.aim.y - s.ball.y;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      const nx = dx / len, ny = dy / len;
+      const v  = 9.5 + (16 - 9.5) * Math.min(1, s.power);
+      s.ball.vx = nx * v; s.ball.vy = ny * v; s.ball.moving = true;
+
+      e.preventDefault?.();
+      try { c.releasePointerCapture?.(e.pointerId); } catch {}
+    };
+
+    c.addEventListener("pointerdown", onDown, { passive: false });
+    c.addEventListener("pointermove", onMove, { passive: false });
+    c.addEventListener("pointerup",   onUp,   { passive: false });
+    c.addEventListener("pointercancel", onUp, { passive: false });
+    c.addEventListener("touchstart", onDown, { passive: false });
+    c.addEventListener("touchmove",  onMove, { passive: false });
+    c.addEventListener("touchend",   onUp,   { passive: false });
 
     return () => {
-      document.body.style.overflow = "auto";
-      document.removeEventListener("touchmove", preventTouchScroll);
+      c.removeEventListener("pointerdown", onDown);
+      c.removeEventListener("pointermove", onMove);
+      c.removeEventListener("pointerup", onUp);
+      c.removeEventListener("pointercancel", onUp);
+      c.removeEventListener("touchstart", onDown);
+      c.removeEventListener("touchmove", onMove);
+      c.removeEventListener("touchend", onUp);
     };
   }, []);
 
-  const generateGrid = () => {
-    const newGrid = [];
-    for (let i = 0; i < size * size; i++) {
-      const rand = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-      newGrid.push(rand);
-    }
-    setGrid(newGrid);
+  // Helpers
+  const resetBall = () => {
+    const s = S.current;
+    s.ball.x = 400; s.ball.y = 360; s.ball.vx = 0; s.ball.vy = 0; s.ball.moving = false;
+    s.aim.x  = 400; s.aim.y  = 120; s.power = 0; s.charging = false;
   };
 
-  const getIndex = (row, col) => row * size + col;
-  const getCoords = (index) => [Math.floor(index / size), index % size];
-
-  const areAdjacent = (i1, i2) => {
-    const [r1, c1] = getCoords(i1);
-    const [r2, c2] = getCoords(i2);
-    return (
-      (r1 === r2 && Math.abs(c1 - c2) === 1) ||
-      (c1 === c2 && Math.abs(r1 - r2) === 1)
-    );
-  };
-
-  const swapAndCheck = (i1, i2) => {
-    const newGrid = [...grid];
-    [newGrid[i1], newGrid[i2]] = [newGrid[i2], newGrid[i1]];
-    if (hasMatch(newGrid)) {
-      setGrid(newGrid);
-      clearMatches(newGrid);
+  const keeperAI = (s) => {
+    const left = s.goal.x + 40, right = s.goal.x + s.goal.w - 40;
+    if (s.charging) {
+      if (s.aim.x > s.keeper.x + 4) s.keeper.x += s.keeper.speed * 0.6;
+      else if (s.aim.x < s.keeper.x - 4) s.keeper.x -= s.keeper.speed * 0.6;
+    } else {
+      s.keeper.x += s.keeper.dir * s.keeper.speed;
+      if (s.keeper.x < left)  { s.keeper.x = left;  s.keeper.dir = 1;  }
+      if (s.keeper.x > right) { s.keeper.x = right; s.keeper.dir = -1; }
     }
   };
 
-  const hasMatch = (g) => {
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size - 2; c++) {
-        const i = getIndex(r, c);
-        if (g[i] && g[i] === g[i + 1] && g[i] === g[i + 2]) return true;
+  const collideKeeper = (s) => {
+    const kx1 = s.keeper.x - s.keeper.w/2, ky1 = s.keeper.y - s.keeper.h/2;
+    const kx2 = kx1 + s.keeper.w, ky2 = ky1 + s.keeper.h;
+    const cx = s.ball.x, cy = s.ball.y, r = s.ball.r;
+    const nx = Math.max(kx1, Math.min(cx, kx2));
+    const ny = Math.max(ky1, Math.min(cy, ky2));
+    return Math.hypot(cx - nx, cy - ny) < r;
+  };
+
+  const inGoal = (s) => {
+    const { x,y } = s.ball;
+    const { x: gx, y: gy, w: gw, h: gh } = s.goal;
+    return x > gx+6 && x < gx+gw-6 && y > gy+6 && y < gy+gh-6;
+  };
+
+  // Drawing helpers (works with or without images)
+  const drawPitch = (ctx, c, s) => {
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    const bg = imgsRef.current.bg; // null => fallback
+    if (bg) {
+      const iw = bg.naturalWidth, ih = bg.naturalHeight;
+      const r = Math.max(c.width / iw, c.height / ih);
+      const dw = iw * r, dh = ih * r;
+      const dx = (c.width - dw) / 2, dy = (c.height - dh) / 2;
+      ctx.drawImage(bg, dx, dy, dw, dh);
+    } else {
+      const skyH = (s.goal.y / s.h) * c.height;
+      const sky = ctx.createLinearGradient(0, 0, 0, skyH);
+      sky.addColorStop(0, "#9ad0ff"); sky.addColorStop(1, "rgba(154,208,255,0)");
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, c.width, skyH);
+      ctx.fillStyle = "#0c8b39"; ctx.fillRect(0, skyH, c.width, c.height - skyH);
+      ctx.globalAlpha = 0.25;
+      for (let i = 0; i < 12; i++) {
+        ctx.fillStyle = i % 2 ? "#0a7c33" : "#0d943e";
+        const stripeY = skyH + (i * (c.height - skyH)) / 12;
+        ctx.fillRect(0, stripeY, c.width, (c.height - skyH) / 12);
       }
+      ctx.globalAlpha = 1;
     }
-    for (let c = 0; c < size; c++) {
-      for (let r = 0; r < size - 2; r++) {
-        const i = getIndex(r, c);
-        if (g[i] && g[i] === g[i + size] && g[i] === g[i + 2 * size]) return true;
-      }
-    }
-    return false;
+
+    // goal + net
+    const scaleX = c.width / s.w, scaleY = c.height / s.h;
+    const gx = s.goal.x * scaleX, gy = s.goal.y * scaleY, gw = s.goal.w * scaleX, gh = s.goal.h * scaleY;
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 6; ctx.strokeRect(gx, gy, gw, gh);
+    ctx.globalAlpha = 0.18; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    const cols = 10, rows = 6;
+    for (let i = 1; i < cols; i++) { const xx = gx + (gw * i) / cols; ctx.beginPath(); ctx.moveTo(xx, gy); ctx.lineTo(xx, gy + gh); ctx.stroke(); }
+    for (let j = 1; j < rows; j++) { const yy = gy + (gh * j) / rows; ctx.beginPath(); ctx.moveTo(gx, yy); ctx.lineTo(gx + gw, yy); ctx.stroke(); }
+    ctx.globalAlpha = 1;
   };
 
-  const clearMatches = (g) => {
-    const toClear = Array(size * size).fill(false);
+  const drawKeeper = (ctx, c, s) => {
+    const scaleX = c.width / s.w, scaleY = c.height / s.h;
+    const kw = s.keeper.w * scaleX, kh = s.keeper.h * scaleY;
+    const kx = s.keeper.x * scaleX - kw / 2, ky = s.keeper.y * scaleY - kh / 2;
 
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size - 2; c++) {
-        const i = getIndex(r, c);
-        const val = g[i];
-        if (val && val === g[i + 1] && val === g[i + 2]) {
-          toClear[i] = toClear[i + 1] = toClear[i + 2] = true;
+    // shadow
+    ctx.globalAlpha = 0.25; ctx.fillStyle = "#000";
+    ctx.beginPath(); ctx.ellipse(s.keeper.x * scaleX, s.keeper.y * scaleY + kh * 0.45, kw * 0.45, kh * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const im = imgsRef.current.keeper;
+    if (im) ctx.drawImage(im, kx, ky, kw, kh);
+    else { ctx.fillStyle = "#444"; ctx.fillRect(kx, ky, kw, kh); }
+  };
+
+  const drawBall = (ctx, c, s) => {
+    const scaleX = c.width / s.w, scaleY = c.height / s.h;
+    const bx = s.ball.x * scaleX, by = s.ball.y * scaleY;
+    const br = s.ball.r * ((scaleX + scaleY) / 2);
+
+    ctx.globalAlpha = 0.3; ctx.fillStyle = "#000";
+    ctx.beginPath(); ctx.ellipse(bx, by + br * 0.5, br * 0.9, br * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const im = imgsRef.current.ball;
+    if (im) ctx.drawImage(im, bx - br * 1.5, by - br * 1.5, br * 3, br * 3);
+    else { ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#000"; ctx.stroke(); }
+  };
+
+  const drawAimAndPower = (ctx, c, s) => {
+    if (!runningRef.current || s.ball.moving) return;
+    const ax = s.aim.x * (c.width/s.w), ay = s.aim.y * (c.height/s.h);
+    ctx.strokeStyle = "#ff3b3b"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ax-10,ay); ctx.lineTo(ax+10,ay); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax,ay-10); ctx.lineTo(ax,ay+10); ctx.stroke();
+
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(c.width-28, c.height-160, 14, 130);
+    ctx.fillStyle = "#ff3b3b";
+    const ph = Math.round(130 * Math.min(1, s.power));
+    ctx.fillRect(c.width-28, c.height-30-ph, 14, ph);
+    ctx.strokeStyle = "#fff"; ctx.strokeRect(c.width-28, c.height-160, 14, 130);
+  };
+
+  // Main loop
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+
+    // fixed internal resolution; responsive via CSS
+    c.width = 960;
+    c.height = 540;
+
+    const step = (ts) => {
+      const s = S.current;
+      const dt = Math.min(0.035, (ts - s.lastTs) / 1000 || 0.016);
+      s.lastTs = ts;
+
+      if (s.charging) s.power = Math.min(1.1, s.power + 0.9 * dt);
+      keeperAI(s);
+
+      if (s.ball.moving) {
+        s.ball.x += s.ball.vx;
+        s.ball.y += s.ball.vy;
+        s.ball.vx *= 0.992; s.ball.vy *= 0.992;
+
+        if (collideKeeper(s)) {
+          s.ball.vy = Math.max(-s.ball.vy * 0.3, -2);
+          s.ball.vx = -s.ball.vx * 0.4;
+        }
+
+        if (s.ball.y < 0 || s.ball.x < -60 || s.ball.x > s.w + 60 || s.ball.y > s.h + 60) {
+          setShots((sh) => Math.max(0, sh - 1));
+          resetBall();
+        }
+
+        if (inGoal(s) && s.ball.y < s.goal.y + s.goal.h - 12) {
+          scoreRef.current += 1; setScore(scoreRef.current);
+          setShots((sh) => Math.max(0, sh - 1));
+          resetBall();
         }
       }
-    }
 
-    for (let c = 0; c < size; c++) {
-      for (let r = 0; r < size - 2; r++) {
-        const i = getIndex(r, c);
-        const val = g[i];
-        if (val && val === g[i + size] && val === g[i + 2 * size]) {
-          toClear[i] = toClear[i + size] = toClear[i + 2 * size] = true;
+      // render
+      drawPitch(ctx, c, s);
+      drawKeeper(ctx, c, s);
+      drawBall(ctx, c, s);
+      drawAimAndPower(ctx, c, s);
+
+      // end-game check
+      if (runningRef.current && !s.ball.moving && !s.charging && shots === 0) {
+        runningRef.current = false;
+        const hs = Number(localStorage.getItem(LS_HS) || 0);
+        if (scoreRef.current > hs) {
+          localStorage.setItem(LS_HS, String(scoreRef.current));
+          setHighScore(scoreRef.current);
         }
       }
-    }
 
-    let cleared = 0;
-    for (let i = 0; i < toClear.length; i++) {
-      if (toClear[i]) {
-        g[i] = null;
-        cleared++;
-      }
-    }
-    if (cleared > 0) {
-      setScore((s) => s + cleared * 10);
-      fallDown(g);
-    }
-  };
+      rafRef.current = requestAnimationFrame(step);
+    };
 
-  const fallDown = (g) => {
-    for (let c = 0; c < size; c++) {
-      let col = [];
-      for (let r = 0; r < size; r++) {
-        const i = getIndex(r, c);
-        if (g[i]) col.push(g[i]);
-      }
-      while (col.length < size) {
-        col.unshift(SHAPES[Math.floor(Math.random() * SHAPES.length)]);
-      }
-      for (let r = 0; r < size; r++) {
-        g[getIndex(r, c)] = col[r];
-      }
-    }
-    setGrid([...g]);
-    setTimeout(() => clearMatches(g), 300);
-  };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [shots]);
 
-  const handleClick = (index) => {
-    if (selected === null) {
-      setSelected(index);
-    } else if (selected === index) {
-      setSelected(null);
-    } else if (areAdjacent(selected, index)) {
-      swapAndCheck(selected, index);
-      setSelected(null);
-    } else {
-      setSelected(index);
-    }
-  };
-
-  const handleTouchStart = (index, e) => {
-    const touch = e.touches[0];
-    setTouchStart({ index, x: touch.clientX, y: touch.clientY });
-  };
-
-  const handleTouchEnd = (index, e) => {
-    if (!touchStart) return;
-    const touch = e.changedTouches[0];
-    const dx = touch.clientX - touchStart.x;
-    const dy = touch.clientY - touchStart.y;
-    const threshold = 30;
-    let targetIndex = null;
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      if (dx > threshold && getCoords(touchStart.index)[1] < size - 1) {
-        targetIndex = touchStart.index + 1;
-      } else if (dx < -threshold && getCoords(touchStart.index)[1] > 0) {
-        targetIndex = touchStart.index - 1;
-      }
-    } else {
-      if (dy > threshold && getCoords(touchStart.index)[0] < size - 1) {
-        targetIndex = touchStart.index + size;
-      } else if (dy < -threshold && getCoords(touchStart.index)[0] > 0) {
-        targetIndex = touchStart.index - size;
-      }
-    }
-
-    if (targetIndex !== null && areAdjacent(touchStart.index, targetIndex)) {
-      swapAndCheck(touchStart.index, targetIndex);
-      setSelected(null);
-    }
-
-    setTouchStart(null);
-  };
-
+  // Flow
   const startGame = () => {
-    setShowIntro(false);
-    setGameRunning(true);
-    setGameOver(false);
-    setDidWin(false);
-    setScore(0);
-    setTime(DIFFICULTY_SETTINGS[difficulty].time);
-    generateGrid();
+    scoreRef.current = 0; setScore(0);
+    setShots(5);
+    const s = S.current;
+    s.ball = { x: 400, y: 360, r: 10, vx:0, vy:0, moving:false };
+    s.aim  = { x: 400, y: 120 }; s.power = 0; s.charging = false;
+    s.keeper.x = 400; s.keeper.dir = 1;
+    runningRef.current = true;
   };
+
+  // Auto-start once on mount
+  useEffect(() => { startGame(); }, []);
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative overflow-hidden">
-        {isLandscape && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 text-white text-center p-6">
-            <h2 className="text-xl font-bold">Please rotate the screen to portrait mode.</h2>
-          </div>
-        )}
+      <div className="flex flex-col items-center justify-start min-h-screen bg-gray-900 text-white relative">
+        {/* HUD */}
+        <div className="absolute left-1/2 -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[60] top-10 pointer-events-none">
+          Score: {score} | Shots: {shots} | High Score: {highScore}
+        </div>
 
-        {!showIntro && !isLandscape && (
-          <>
-            <div className="flex gap-5 my-4 text-lg font-bold z-[999]">
-              <div className="bg-black/60 px-3 py-1 rounded">⏳ {time}s</div>
-              <div className="bg-black/60 px-3 py-1 rounded">⭐ {score}</div>
-            </div>
-            <button
-              onClick={() => window.location.reload()}
-              className="fixed top-20 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base z-[999] hover:scale-105 transition"
-            >
-              Exit
-            </button>
-          </>
-        )}
+        {/* Canvas */}
+        <div className="relative w-full mt-24" style={{ maxWidth: 960 }}>
+          <canvas
+            ref={canvasRef}
+            width={960}
+            height={540}
+            className="border-4 border-yellow-400 rounded-lg block w-full"
+            style={{ height: "auto", cursor: "crosshair" }}
+          />
+        </div>
 
-        {!isLandscape && showIntro ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
-            <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-6 animate-bounce" />
-            <h1 className="text-4xl font-bold text-yellow-400 mb-4">🍬 LIO Match</h1>
-            <input
-              type="text"
-              placeholder="Enter your name"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
-            />
-            <div className="flex gap-3 mb-6">
-              {Object.keys(DIFFICULTY_SETTINGS).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => setDifficulty(key)}
-                  className={`px-4 py-2 rounded font-bold text-sm ${
-                    difficulty === key ? "bg-yellow-500" : "bg-yellow-300"
-                  }`}
-                >
-                  {key.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={startGame}
-              disabled={!playerName.trim()}
-              className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-lg hover:scale-105 transition"
-            >
-              ▶ Start Game
-            </button>
-          </div>
-        ) : null}
-
-        {!isLandscape && !showIntro && (
-          <>
-            <div
-              className="grid gap-1 touch-none"
-              style={{
-                gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
-                width: "min(95vw, 480px)",
-                marginTop: "2rem",
-              }}
-            >
-              {grid.map((shape, i) => (
-                <div
-                  key={i}
-                  onClick={() => handleClick(i)}
-                  onTouchStart={(e) => handleTouchStart(i, e)}
-                  onTouchEnd={(e) => handleTouchEnd(i, e)}
-                  className={`bg-gray-700 rounded p-1 transition cursor-pointer select-none ${
-                    selected === i ? "ring-4 ring-yellow-400" : ""
-                  }`}
-                >
-                  <img
-                    src={`/images/candy/${shape}`}
-                    alt="candy"
-                    className="w-full h-auto object-contain"
-                    draggable={false}
-                  />
-                </div>
-              ))}
-            </div>
-            {gameOver && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-[999] text-center">
-                <h2 className="text-4xl font-bold text-yellow-400 mb-4">
-                  {didWin ? "🎉 YOU WIN 🎉" : "💥 GAME OVER 💥"}
-                </h2>
-                <p className="text-lg mb-4">Final Score: {score}</p>
-                <button
-                  className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-lg hover:scale-105"
-                  onClick={startGame}
-                >
-                  ▶ Play Again
-                </button>
-              </div>
-            )}
-          </>
-        )}
+        {/* Exit */}
+        <button
+          onClick={() => {
+            const hs = Number(localStorage.getItem(LS_HS) || 0);
+            if (scoreRef.current > hs) { localStorage.setItem(LS_HS, String(scoreRef.current)); setHighScore(scoreRef.current); }
+            runningRef.current = false;
+          }}
+          className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[80]"
+        >
+          Exit
+        </button>
       </div>
     </Layout>
   );
