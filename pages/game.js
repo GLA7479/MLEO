@@ -40,11 +40,11 @@ export default function Games() {
       available: true,
     },
     {
-      title: "Coming Soon",
-      description: "🚀 A new exciting Lio game is on the way!",
-      link: "#",
-      icon: "🚀",
-      available: false,
+      title: "Mleo Penalty",
+      description: "⚽ Score goals in the ultimate penalty shootout with Lio!",
+      link: "/mleo-penalty",
+      icon: "⚽",
+      available: true,
     },
     {
       title: "Coming Soon",
