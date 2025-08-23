@@ -16,20 +16,21 @@ export default function Layout({ children, video }) {
     }
   }, [video]);
 
-  const isGamePage = router.pathname === "/game";
-  const isSubGame  = router.pathname.startsWith("/mleo-");
-  const showButtonsOnlyOnGame = isGamePage;
+  const isGameHub = router.pathname === "/game";        // דף הרשימה
+  const isSubGame  = router.pathname.startsWith("/mleo-"); // דפי משחק/הרשמה
+
+  // כפתורים רק בעמודים שלאחר /game (הרשמה + המשחקים עצמם)
+  const showButtons = isSubGame;
 
   const handleBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       window.history.back();
     } else {
-      router.push("/");
+      router.push("/game");
     }
   };
 
-  // כמה להוריד (px) מתחת ל-safe-area
-  const TOP_OFFSET = 56;
+  const TOP_OFFSET = 80; // כמה להוריד מתחת ל-safe-area
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -49,7 +50,8 @@ export default function Layout({ children, video }) {
 
       <Header />
 
-      {showButtonsOnlyOnGame && (
+      {/* Back + Full רק בדפי המשחקים (mleo-*) */}
+      {showButtons && (
         <>
           <button
             onClick={handleBack}
@@ -67,7 +69,8 @@ export default function Layout({ children, video }) {
 
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {!isGamePage && !isSubGame && (
+      {/* הסתרת Join Presale בעמודי משחקים ובהאב; הצגה בשאר העמודים */}
+      {!isGameHub && !isSubGame && (
         <a
           href="/presale"
           className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600
