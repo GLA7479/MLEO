@@ -5,88 +5,58 @@ import Image from "next/image";
 
 export default function MleoRunner() {
   const canvasRef = useRef(null);
-
-  // ---------- UI / state ----------
   const [gameRunning, setGameRunning] = useState(false);
-  const [gameOver, setGameOver]   = useState(false);
+  const [gameOver, setGameOver] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
-  const [score, setScore]         = useState(0);
+  const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
-  const [playerName, setPlayerName]   = useState("");
+
+  const [playerName, setPlayerName] = useState("");
   const [leaderboard, setLeaderboard] = useState([]);
 
-  // ---------- Audio (נוצר פעם אחת) ----------
-  const audioRef = useRef({
-    bg: null,
-    jump: null,
-    coin: null,
-    over: null,
-    created: false,
-  });
-
-  // אחראי ליצור את האובייקטים פעם אחת בלבד
-  const ensureAudio = () => {
-    if (audioRef.current.created) return audioRef.current;
-    const safe = (src) => {
-      try { return new Audio(src); } catch { return null; }
-    };
-    const bg   = safe("/sounds/bg-music.mp3");
-    const jump = safe("/sounds/jump.mp3");
-    const coin = safe("/sounds/coin.mp3");
-    const over = safe("/sounds/game-over.mp3");
-
-    if (bg)   { bg.loop = true; bg.volume = 0.4; }
-    if (jump) jump.volume = 0.6;
-    if (coin) coin.volume = 0.6;
-    if (over) over.volume = 0.7;
-
-    audioRef.current = { bg, jump, coin, over, created: true };
-    return audioRef.current;
-  };
-
-  // עצירת כל הסאונדים ואיפוסם
-  const stopAllAudio = () => {
-    const { bg, jump, coin, over } = audioRef.current;
-    [bg, jump, coin, over].forEach(a => {
-      if (!a) return;
-      try { a.pause(); a.currentTime = 0; } catch {}
-    });
+  // === helpers: mute flags from localStorage ===
+  const getMute = () => {
+    if (typeof window === "undefined") return { all:false, music:false, sfx:false };
+    const all   = localStorage.getItem("settings:muteAll")   === "true";
+    const music = localStorage.getItem("settings:muteMusic") === "true";
+    const sfx   = localStorage.getItem("settings:muteSFX")   === "true";
+    return { all, music, sfx };
   };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedHighScore = localStorage.getItem("mleoHighScore") || 0;
       setHighScore(Number(savedHighScore));
+
       const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
       setLeaderboard(stored);
     }
-
-    // אם האפליקציה הולכת לרקע – לעצור מוזיקה
-    const onVis = () => {
-      if (document.hidden) stopAllAudio();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  // -------- משחק (לולאה/קנבס) --------
   useEffect(() => {
-    if (!gameRunning) {
-      // כשלא משחקים – לא מנגנים
-      stopAllAudio();
-      return;
-    }
+    if (!gameRunning) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    // תמונות
-    const leoSprite   = new window.Image(); leoSprite.src   = "/images/dog.png";
-    const coinImg     = new window.Image(); coinImg.src     = "/images/leo-logo.png";
-    const diamondImg  = new window.Image(); diamondImg.src  = "/images/diamond.png";
-    const magnetImg   = new window.Image(); magnetImg.src   = "/images/magnet.png";
-    const coin2Img    = new window.Image(); coin2Img.src    = "/images/coin2.png";
-    const obstacleImg = new window.Image(); obstacleImg.src = "/images/obstacle.png";
+    // 🐶 תמונה בודדת של הכלב (לא ספרייט)
+    const leoSprite = new window.Image();
+    leoSprite.src = "/images/dog.png";
+
+    const coinImg = new window.Image();
+    coinImg.src = "/images/leo-logo.png";
+
+    const diamondImg = new window.Image();
+    diamondImg.src = "/images/diamond.png";
+
+    const magnetImg = new window.Image();
+    magnetImg.src = "/images/magnet.png";
+
+    const coin2Img = new window.Image();
+    coin2Img.src = "/images/coin2.png";
+
+    const obstacleImg = new window.Image();
+    obstacleImg.src = "/images/obstacle.png";
 
     const backgrounds = [
       "/images/game-day.png",
@@ -98,13 +68,47 @@ export default function MleoRunner() {
     let bgImg = new window.Image();
     bgImg.src = backgrounds[0];
 
-    // סאונד
-    const { bg: bgMusic, jump: jumpSound, coin: coinSound, over: gameOverSound } = ensureAudio();
+    // ==== Audio (עם כיבוי בטוח) ====
+    let bgMusic, jumpSound, coinSound, gameOverSound;
+    const mutes = getMute();
+
+    if (typeof window !== "undefined") {
+      const createSafeAudio = (path) => {
+        try {
+          const a = new Audio(path);
+          a.preload = "auto";
+          return a;
+        } catch {
+          return null;
+        }
+      };
+
+      bgMusic = createSafeAudio("/sounds/bg-music.mp3");
+      jumpSound = createSafeAudio("/sounds/jump.mp3");
+      coinSound = createSafeAudio("/sounds/coin.mp3");
+      gameOverSound = createSafeAudio("/sounds/game-over.mp3");
+
+      if (bgMusic) {
+        bgMusic.loop = true;
+        bgMusic.volume = mutes.all || mutes.music ? 0 : 0.4;
+      }
+      if (jumpSound)   jumpSound.volume    = mutes.all || mutes.sfx ? 0 : 0.6;
+      if (coinSound)   coinSound.volume    = mutes.all || mutes.sfx ? 0 : 0.6;
+      if (gameOverSound) gameOverSound.volume = mutes.all || mutes.sfx ? 0 : 0.7;
+    }
+
+    // עוצר/מחדש רקע לפי נראות המסך
+    const onVisibility = () => {
+      if (!bgMusic) return;
+      if (document.hidden) bgMusic.pause();
+      else if (!mutes.all && !mutes.music && !gameOver) {
+        bgMusic.play().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     let leo, gravity, coins, diamonds, obstacles;
     let coins2 = [];
-    let powerUps = [];
-    let magnetActive = false;
 
     let level = 1;
     let showLevelUp = false;
@@ -115,31 +119,57 @@ export default function MleoRunner() {
     let speedMultiplier = 1;
     let showHitbox = false;
 
-    // DPI
+    let powerUps = [];
+    let magnetActive = false;
+
+    // === DPR setup (חדות) ===
     function setupCanvas() {
       const dpr = window.devicePixelRatio || 1;
-      const displayWidth  = canvas.clientWidth  || 960;
+      const displayWidth = canvas.clientWidth || 960;
       const displayHeight = canvas.clientHeight || 480;
-      canvas.width  = Math.round(displayWidth  * dpr);
+
+      canvas.width = Math.round(displayWidth * dpr);
       canvas.height = Math.round(displayHeight * dpr);
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
     }
     setupCanvas();
     window.addEventListener("resize", setupCanvas);
+
     const DPR = window.devicePixelRatio || 1;
     const CW = () => canvas.width / DPR;
     const CH = () => canvas.height / DPR;
 
+    function isWithinMagnetRange(obj) {
+      const dx = Math.abs(leo.x - obj.x);
+      const dy = Math.abs(leo.y - obj.y);
+      return dx < 150 && dy < 150;
+    }
+
     function initGame() {
       const isMobile = window.innerWidth < 768;
+
       const LEO_W = isMobile ? 90 : 85;
       const LEO_H = isMobile ? 110 : 100;
 
-      leo = { x: CW() * 0.18, y: 0, width: LEO_W, height: LEO_H, dy: 0, jumping: false };
+      leo = {
+        x: CW() * 0.18,
+        y: 0,
+        width: LEO_W,
+        height: LEO_H,
+        dy: 0,
+        jumping: false,
+      };
+
       gravity = 0.35;
-      coins = []; diamonds = []; obstacles = []; coins2 = []; powerUps = [];
-      currentScore = 0; setScore(0); setGameOver(false);
+      coins = [];
+      diamonds = [];
+      powerUps = [];
+      obstacles = [];
+      currentScore = 0;
+      setScore(0);
+      setGameOver(false);
 
       const ground = CH() - 40;
       leo.y = ground - leo.height;
@@ -154,24 +184,22 @@ export default function MleoRunner() {
       );
     }
 
-    const drawLeo = () => {
+    function drawLeo() {
       if (!leoSprite.complete || leoSprite.naturalWidth === 0) return;
-      ctx.drawImage(leoSprite, Math.round(leo.x), Math.round(leo.y), leo.width, leo.height);
-    };
+      const x = Math.round(leo.x);
+      const y = Math.round(leo.y);
+      ctx.drawImage(leoSprite, x, y, leo.width, leo.height);
+    }
 
     function update() {
       if (!running) return;
 
-      // מוזיקת רקע – לוודא ניגון יחיד
-      if (bgMusic && bgMusic.paused) {
-        bgMusic.currentTime = 0;
-        bgMusic.play().catch(() => {});
-      }
-
       speedMultiplier = 0.6 + Math.floor(currentScore / 20) * 0.05;
 
       if (!showLevelUp && currentScore >= level * 30) {
-        level++; showLevelUp = true; levelUpTimer = Date.now();
+        level++;
+        showLevelUp = true;
+        levelUpTimer = Date.now();
         const newBgIndex = (level - 1) % backgrounds.length;
         bgImg.src = backgrounds[newBgIndex];
       }
@@ -185,88 +213,101 @@ export default function MleoRunner() {
         ctx.drawImage(bgImg, Math.round(bgX + CW()), 0, CW(), CH());
       }
 
-      // פיזיקה בסיסית
       const ground = CH() - 40;
+
       leo.y += leo.dy;
       if (leo.y + leo.height < ground) leo.dy += gravity;
-      else { leo.dy = 0; leo.jumping = false; leo.y = ground - leo.height; }
+      else {
+        leo.dy = 0;
+        leo.jumping = false;
+        leo.y = ground - leo.height;
+      }
 
       drawLeo();
 
-      // ----- Coins -----
-      const magnetPull = (obj) => {
-        const dx = leo.x - obj.x, dy = leo.y - obj.y;
-        const dist = Math.hypot(dx, dy); const pull = 4;
-        if (dist > 1) { obj.x += (dx / dist) * pull; obj.y += (dy / dist) * pull; }
-      };
-      const withinMagnet = (o) => Math.abs(leo.x - o.x) < 150 && Math.abs(leo.y - o.y) < 150;
-
+      // Coins
       coins.forEach((c, i) => {
         c.x -= 3 * speedMultiplier;
-        if (magnetActive && withinMagnet(c)) magnetPull(c);
-        if (coinImg.complete) ctx.drawImage(coinImg, Math.round(c.x), Math.round(c.y), c.size, c.size);
-        if (checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) || (magnetActive && withinMagnet(c))) {
-          coins.splice(i, 1);
-          currentScore++; setScore(currentScore);
-          if (audioRef.current.coin) { audioRef.current.coin.currentTime = 0; audioRef.current.coin.play().catch(()=>{}); }
+
+        if (magnetActive && isWithinMagnetRange(c)) {
+          const dx = leo.x - c.x;
+          const dy = leo.y - c.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const pullStrength = 4;
+          if (dist > 1) {
+            c.x += (dx / dist) * pullStrength;
+            c.y += (dy / dist) * pullStrength;
+          }
         }
+
+        if (coinImg.complete) {
+          ctx.drawImage(coinImg, Math.round(c.x), Math.round(c.y), c.size, c.size);
+        }
+
+        if (
+          checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) ||
+          (magnetActive && isWithinMagnetRange(c))
+        ) {
+          coins.splice(i, 1);
+          currentScore++;
+          setScore(currentScore);
+          if (coinSound && !(mutes.all || mutes.sfx)) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
+
         if (c.x + c.size < 0) coins.splice(i, 1);
       });
 
+      // Diamonds
       diamonds.forEach((d, i) => {
         d.x -= 3 * speedMultiplier;
-        if (magnetActive && withinMagnet(d)) magnetPull(d);
-        if (diamondImg.complete) ctx.drawImage(diamondImg, Math.round(d.x), Math.round(d.y), d.size, d.size);
-        if (checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) || (magnetActive && withinMagnet(d))) {
-          diamonds.splice(i, 1);
-          currentScore += 5; setScore(currentScore);
-          if (audioRef.current.coin) { audioRef.current.coin.currentTime = 0; audioRef.current.coin.play().catch(()=>{}); }
+
+        if (magnetActive && isWithinMagnetRange(d)) {
+          const dx = leo.x - d.x;
+          const dy = leo.y - d.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const pullStrength = 4;
+          if (dist > 1) {
+            d.x += (dx / dist) * pullStrength;
+            d.y += (dy / dist) * pullStrength;
+          }
         }
+
+        if (diamondImg.complete) {
+          ctx.drawImage(diamondImg, Math.round(d.x), Math.round(d.y), d.size, d.size);
+        }
+
+        if (
+          checkCollision(leo, { x: d.x, y: d.y, width: d.size, height: d.size }) ||
+          (magnetActive && isWithinMagnetRange(d))
+        ) {
+          diamonds.splice(i, 1);
+          currentScore += 5;
+          setScore(currentScore);
+          if (coinSound && !(mutes.all || mutes.sfx)) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
+
         if (d.x + d.size < 0) diamonds.splice(i, 1);
       });
 
-      powerUps.forEach((p, i) => {
+      // PowerUps (magnet)
+      powerUps.forEach((p) => {
         p.x -= 3 * speedMultiplier;
-        if (p.type === "magnet" && magnetImg.complete)
+        if (p.type === "magnet" && magnetImg.complete) {
           ctx.drawImage(magnetImg, Math.round(p.x), Math.round(p.y), p.size, p.size);
-        if (checkCollision(leo, { x: p.x, y: p.y, width: p.size, height: p.size })) {
-          powerUps.splice(i, 1);
-          if (p.type === "magnet") { magnetActive = true; setTimeout(()=> (magnetActive = false), 5000); }
         }
       });
 
-      obstacles.forEach((o, i) => {
-        if (obstacleImg.complete) {
+      // Obstacles
+      obstacles.forEach((o) => {
+        if (obstacleImg.complete && obstacleImg.naturalWidth > 0) {
           o.x -= 2.5 * speedMultiplier;
           ctx.drawImage(obstacleImg, Math.round(o.x), Math.round(o.y - o.height), o.width, o.height);
-          const hb = { x: o.x + o.width * 0.5, y: o.y - o.height * 0.55, width: o.width * 0.1, height: o.height * 0.2 };
-          if (checkCollision(leo, hb)) {
-            if (leo.y + leo.height - 15 <= hb.y) {
-              if (audioRef.current.jump) { audioRef.current.jump.currentTime = 0; audioRef.current.jump.play().catch(()=>{}); }
-              leo.dy = -10; leo.jumping = true;
-            } else {
-              // --- GAME OVER ---
-              running = false;
-              setGameRunning(false);
-              stopAllAudio();
-              if (audioRef.current.over) { audioRef.current.over.currentTime = 0; audioRef.current.over.play().catch(()=>{}); }
-              setGameOver(true);
-
-              if (currentScore > highScore) {
-                setHighScore(currentScore);
-                localStorage.setItem("mleoHighScore", currentScore);
-              }
-              const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
-              let updated = [...stored];
-              const idx = updated.findIndex(p => p.name === playerName);
-              if (idx >= 0) { if (currentScore > updated[idx].score) updated[idx].score = currentScore; }
-              else { updated.push({ name: playerName, score: currentScore }); }
-              updated = updated.sort((a,b)=> b.score - a.score).slice(0,20);
-              localStorage.setItem("leaderboard", JSON.stringify(updated));
-              setLeaderboard(updated);
-            }
-          }
-          if (o.x + o.width < 0) obstacles.splice(i, 1);
         }
       });
 
@@ -274,64 +315,204 @@ export default function MleoRunner() {
       if (Math.random() < 0.022) coins.push({ x: CW(), y: Math.random() * 60 + (CH() - 300), size: 38 });
       if (Math.random() < 0.01) coins2.push({ x: CW(), y: Math.random() * 60 + (CH() - 300), size: 40 });
       if (Math.random() < 0.002) diamonds.push({ x: CW(), y: Math.random() * 60 + (CH() - 300), size: 42 });
-      if (Math.random() < 0.0015) powerUps.push({ type: "magnet", x: CW(), y: Math.random() * 60 + (CH() - 300), size: 40 });
+
+      if (Math.random() < 0.0015) {
+        powerUps.push({ type: "magnet", x: CW(), y: Math.random() * 60 + (CH() - 300), size: 40 });
+      }
+
       if (Math.random() < 0.007) {
         const isMobile = window.innerWidth < 768;
         const scale = isMobile ? 1.8 : 1.5;
-        obstacles.push({ x: CW(), y: CH() - 25, width: 60 * scale * 0.75, height: 60 * scale });
+        obstacles.push({
+          x: CW(),
+          y: CH() - 25,
+          width: 60 * scale * 0.75,
+          height: 60 * scale,
+        });
       }
 
-      // ניקוד על מסך רחב/צר – נשאר כמו שהיה
+      // Coins2
+      coins2.forEach((c, i) => {
+        c.x -= 3 * speedMultiplier;
+
+        if (magnetActive && isWithinMagnetRange(c)) {
+          const dx = leo.x - c.x;
+          const dy = leo.y - c.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const pullStrength = 4;
+          if (dist > 1) {
+            c.x += (dx / dist) * pullStrength;
+            c.y += (dy / dist) * pullStrength;
+          }
+        }
+
+        if (coin2Img.complete) {
+          ctx.drawImage(coin2Img, Math.round(c.x), Math.round(c.y), c.size, c.size);
+        }
+
+        if (
+          checkCollision(leo, { x: c.x, y: c.y, width: c.size, height: c.size }) ||
+          (magnetActive && isWithinMagnetRange(c))
+        ) {
+          coins2.splice(i, 1);
+          currentScore += 3;
+          setScore(currentScore);
+          if (coinSound && !(mutes.all || mutes.sfx)) {
+            coinSound.currentTime = 0;
+            coinSound.play().catch(() => {});
+          }
+        }
+
+        if (c.x + c.size < 0) coins2.splice(i, 1);
+      });
+
+      // איסוף מגנט
+      powerUps.forEach((p, i) => {
+        if (checkCollision(leo, { x: p.x, y: p.y, width: p.size, height: p.size })) {
+          powerUps.splice(i, 1);
+          if (p.type === "magnet") {
+            magnetActive = true;
+            setTimeout(() => (magnetActive = false), 5000);
+          }
+        }
+      });
+
+      // פגיעות במכשולים
+      obstacles.forEach((o, i) => {
+        const reducedHitbox = {
+          x: o.x + o.width * 0.5,
+          y: o.y - o.height * 0.55,
+          width: o.width * 0.1,
+          height: o.height * 0.2,
+        };
+
+        if (showHitbox) {
+          ctx.save();
+          ctx.strokeStyle = "rgba(255,0,0,0.7)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(reducedHitbox.x, reducedHitbox.y, reducedHitbox.width, reducedHitbox.height);
+          ctx.restore();
+        }
+
+        if (checkCollision(leo, reducedHitbox)) {
+          if (leo.y + leo.height - 15 <= reducedHitbox.y) {
+            if (jumpSound && !(mutes.all || mutes.sfx)) {
+              jumpSound.currentTime = 0;
+              jumpSound.play().catch(() => {});
+            }
+            leo.dy = -10;
+            leo.jumping = true;
+          } else {
+            running = false;
+            setGameRunning(false);
+            if (bgMusic) bgMusic.pause();
+            if (gameOverSound && !(mutes.all || mutes.sfx)) {
+              gameOverSound.currentTime = 0;
+              gameOverSound.play().catch(() => {});
+            }
+
+            setGameOver(true);
+
+            if (currentScore > highScore) {
+              setHighScore(currentScore);
+              localStorage.setItem("mleoHighScore", currentScore);
+            }
+
+            const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
+            let updated = [...stored];
+            const playerIndex = updated.findIndex((p) => p.name === playerName);
+            if (playerIndex >= 0) {
+              if (currentScore > updated[playerIndex].score) updated[playerIndex].score = currentScore;
+            } else {
+              updated.push({ name: playerName, score: currentScore });
+            }
+            updated = updated.sort((a, b) => b.score - a.score).slice(0, 20);
+            localStorage.setItem("leaderboard", JSON.stringify(updated));
+            setLeaderboard(updated);
+          }
+        }
+        if (o.x + o.width < 0) obstacles.splice(i, 1);
+      });
+
+      if (showLevelUp && Date.now() - levelUpTimer < 2000) {
+        ctx.save();
+        ctx.font = "bold 48px Arial";
+        ctx.fillStyle = "yellow";
+        ctx.textAlign = "center";
+        ctx.fillText("LEVEL " + level + "!", CW() / 2, 100);
+        ctx.restore();
+      } else if (Date.now() - levelUpTimer >= 2000) {
+        showLevelUp = false;
+      }
+
       requestAnimationFrame(update);
     }
 
     function startGame() {
-      const wrapper = document.getElementById("game-wrapper");
       const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(()=>{});
+      const wrapper = document.getElementById("game-wrapper");
+      if (isMobile && wrapper?.requestFullscreen) wrapper.requestFullscreen().catch(() => {});
       else if (isMobile && wrapper?.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
 
-      // נגן רקע
-      const { bg } = ensureAudio();
-      if (bg) { bg.currentTime = 0; bg.play().catch(()=>{}); }
+      if (bgMusic && !(mutes.all || mutes.music)) {
+        bgMusic.currentTime = 0;
+        bgMusic.play().catch(() => {});
+      }
 
       initGame();
+      running = true;
       update();
     }
 
     function jump() {
-      const { jump } = audioRef.current;
-      if (jump) { jump.currentTime = 0; jump.play().catch(()=>{}); }
-      // ה־leo נוצר בתוך update; נשתמש ברפרנס גלובלי
-      // נחלץ דרך closure:
-      // (למעלה הוגדר leo; כאן רק נשנה dy אם קיים)
-      if (typeof leo !== "undefined" && !leo.jumping) {
-        leo.dy = -8.5; leo.jumping = true;
+      if (leo && !leo.jumping) {
+        if (jumpSound && !(mutes.all || mutes.sfx)) {
+          jumpSound.currentTime = 0;
+          jumpSound.play().catch(() => {});
+        }
+        leo.dy = -8.5;
+        leo.jumping = true;
       }
     }
 
     function handleKey(e) {
-      if (e.code === "Space") { e.preventDefault(); jump(); }
-      if (e.code === "KeyH") { showHitbox = !showHitbox; }
+      if (e.code === "Space") {
+        e.preventDefault();
+        jump();
+      }
+      if (e.code === "KeyH") {
+        showHitbox = !showHitbox;
+      }
     }
 
     document.addEventListener("keydown", handleKey);
     startGame();
 
-    // ---- Cleanup כשעוזבים את העמוד / משנים מצב ----
+    // ==== ניקוי מוחלט של אודיו והאזנות ====
     return () => {
       document.removeEventListener("keydown", handleKey);
       window.removeEventListener("resize", setupCanvas);
-      stopAllAudio();
-    };
-  }, [gameRunning, highScore, playerName]);
+      document.removeEventListener("visibilitychange", onVisibility);
+      running = false;
 
-  // ---------- UI ----------
+      // עצירה ושחרור
+      [bgMusic, jumpSound, coinSound, gameOverSound].forEach((a) => {
+        if (!a) return;
+        try {
+          a.pause();
+          a.currentTime = 0;
+          // פריקה מהדפדפן כדי שלא ימשיך "לנשום" אחרי ניווט
+          a.src = "";
+          a.load?.();
+        } catch {}
+      });
+    };
+  }, [gameRunning]);
+
   return (
     <Layout>
       <div id="game-wrapper" className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative">
-
-        {/* מסך פתיחה */}
+        {/* 🎬 מסך פתיחה */}
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -364,20 +545,49 @@ export default function MleoRunner() {
             >
               ▶ Start Game
             </button>
+
+            {/* 📊 טבלת השיאים */}
+            <div className="absolute top-12 right-20 bg-black/50 p-4 rounded-lg w-72 shadow-lg hidden sm:block">
+              <h2 className="text-lg font-bold mb-2 text-yellow-300">🏆 Leaderboard</h2>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="text-left">#</th>
+                    <th className="text-left">Player</th>
+                    <th className="text-right">High Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((p, i) => (
+                    <tr key={i} className="border-t border-gray-600">
+                      <td className="text-left py-1">{i + 1}</td>
+                      <td className="text-left py-1">{p.name}</td>
+                      <td className="text-right py-1">{p.score}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        {/* המשחק */}
+        {/* 🎮 מסך המשחק */}
         {!showIntro && (
           <>
-            {/* ניקוד – רחב */}
-            <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-0.5">
-              Score: {score} | High Score: {highScore}
-            </div>
-            {/* ניקוד – צר */}
-            <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
-              Score: {score} | High Score: {highScore}
-            </div>
+            <>
+              {/* ניקוד – רחב */}
+              {!showIntro && (
+                <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
+                  Score: {score} | High Score: {highScore}
+                </div>
+              )}
+              {/* ניקוד – מובייל */}
+              {!showIntro && (
+                <div className="sm:hidden absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-3 py-1 rounded-md text-base font-bold z-[999] bottom-36">
+                  Score: {score} | High Score: {highScore}
+                </div>
+              )}
+            </>
 
             <div className="relative w-full max-w-[95vw] sm:max-w-[960px]">
               <canvas
@@ -392,7 +602,7 @@ export default function MleoRunner() {
                   <h2 className="text-4xl sm:text-5xl font-bold text-red-500 mb-4">GAME OVER</h2>
                   <button
                     className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-base sm:text-lg"
-                    onClick={() => { setGameOver(false); setGameRunning(true); }}
+                    onClick={() => setGameRunning(true)}
                   >
                     Start Again
                   </button>
@@ -400,53 +610,53 @@ export default function MleoRunner() {
               )}
             </div>
 
-            {/* Back */}
+            {/* 🔙 Back */}
             <button
-              onClick={() => {
-                stopAllAudio();
-                window.history.back();
-              }}
+              onClick={() => window.history.back()}
               className="fixed top-4 left-4 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded z-[999]"
             >
               ⬅ Back
             </button>
 
-            {/* Jump – מובייל */}
+            {/* ⬆ Jump */}
             {gameRunning && (
-              <>
-                <button
-                  onClick={() => {
-                    const e = new KeyboardEvent("keydown", { code: "Space" });
-                    document.dispatchEvent(e);
-                  }}
-                  className="fixed bottom-36 sm:bottom-4 right-4 sm:right-4 sm:left-auto px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
-                             left-1/2 transform -translate-x-1/2 sm:translate-x-0 sm:left-auto"
-                >
-                  Jump
-                </button>
-                <button
-                  onClick={() => {
-                    const e = new KeyboardEvent("keydown", { code: "Space" });
-                    document.dispatchEvent(e);
-                  }}
-                  className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
-                >
-                  Jump
-                </button>
-              </>
+              <button
+                onClick={() => {
+                  const e = new KeyboardEvent("keydown", { code: "Space" });
+                  document.dispatchEvent(e);
+                }}
+                className="fixed bottom-36 sm:bottom-4 right-4 sm:right-4 sm:left-auto sm:transform-none sm:translate-x-0 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]
+                           sm:bottom-4 sm:right-4 left-1/2 transform -translate-x-1/2 sm:left-auto"
+              >
+                Jump
+              </button>
             )}
 
-            {/* Exit */}
+            {/* כפתור Jump נוסף למסכים רחבים בצד שמאל */}
+            {gameRunning && (
+              <button
+                onClick={() => {
+                  const e = new KeyboardEvent("keydown", { code: "Space" });
+                  document.dispatchEvent(e);
+                }}
+                className="hidden sm:block fixed bottom-4 left-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+              >
+                Jump
+              </button>
+            )}
+
+            {/* 🚪 Exit */}
             <button
               onClick={() => {
-                if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                else if (document.webkitFullscreenElement) document.webkitExitFullscreen?.();
-                stopAllAudio();
+                try {
+                  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+                  else if (document.webkitFullscreenElement) document.webkitExitFullscreen();
+                } catch {}
                 setGameRunning(false);
                 setGameOver(false);
                 setShowIntro(true);
               }}
-              className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+              className="fixed top-4 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
             >
               Exit
             </button>
