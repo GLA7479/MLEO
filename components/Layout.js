@@ -5,7 +5,7 @@ import Header from "./Header";
 import { Footer } from "./Header";
 import FullscreenButton from "./FullscreenButton";
 
-export default function Layout({ children, video, page }) {
+export default function Layout({ children, video }) {
   const videoRef = useRef(null);
   const router = useRouter();
 
@@ -17,18 +17,19 @@ export default function Layout({ children, video, page }) {
   }, [video]);
 
   const isGamePage = router.pathname === "/game";
-  const isSubGame = router.pathname.startsWith("/mleo-");
+  const isSubGame  = router.pathname.startsWith("/mleo-");
+  const showButtonsOnlyOnGame = isGamePage;
 
-  const showBack = !["/", "/game"].includes(router.pathname);
   const handleBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       window.history.back();
     } else {
-      router.push("/game");
+      router.push("/");
     }
   };
 
-  const showFullscreen = isGamePage || isSubGame;
+  // כמה להוריד (px) מתחת ל-safe-area
+  const TOP_OFFSET = 56;
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -44,30 +45,28 @@ export default function Layout({ children, video, page }) {
           src={video}
         />
       )}
-
       {video && <div className="absolute inset-0 bg-black/50 -z-10"></div>}
 
       <Header />
 
-      {/* Back Button */}
-      {showBack && (
-        <button
-          onClick={handleBack}
-          aria-label="Back"
-          className="fixed left-4 fixed-top-safe
-                     z-[9999] rounded-xl bg-black/60 text-white px-4 py-2
-                     border border-white/20 backdrop-blur shadow active:scale-95"
-        >
-          ← Back
-        </button>
-      )}
+      {showButtonsOnlyOnGame && (
+        <>
+          <button
+            onClick={handleBack}
+            aria-label="Back"
+            style={{ top: `calc(env(safe-area-inset-top, 0px) + ${TOP_OFFSET}px)` }}
+            className="fixed left-4 z-[9999] rounded-xl bg-black/60 text-white px-4 py-2
+                       border border-white/20 backdrop-blur shadow active:scale-95"
+          >
+            ← Back
+          </button>
 
-      {/* Fullscreen Button */}
-      {showFullscreen && <FullscreenButton label="Full" />}
+          <FullscreenButton label="Full" topOffset={TOP_OFFSET} />
+        </>
+      )}
 
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {/* CTA Join Presale – לא יוצג ב-/game ובדפי משחקים */}
       {!isGamePage && !isSubGame && (
         <a
           href="/presale"
