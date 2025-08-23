@@ -13,68 +13,48 @@ body {
   scroll-behavior: smooth;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 /* אנימציה - סיבוב איטי ללוגו */
-@keyframes spin-slow {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
+@keyframes spin-slow { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin-slow 6s linear infinite; }
 
-.animate-spin-slow {
-  animation: spin-slow 6s linear infinite;
-}
-
-/* אנימציית פתיחה */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* אנימציית סגירה */
-@keyframes fade-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.3s ease-in-out forwards;
-}
-
-.animate-fade-out {
-  animation: fade-out 0.3s ease-in-out forwards;
-}
+/* אנימציות פתיחה/סגירה */
+@keyframes fade-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+@keyframes fade-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.95); } }
+.animate-fade-in { animation: fade-in 0.3s ease-in-out forwards; }
+.animate-fade-out { animation: fade-out 0.3s ease-in-out forwards; }
 
 /* קישורים בתפריט */
-a {
-  transition: color 0.2s;
-}
-
-a:hover {
-  color: #ffd700;
-}
+a { transition: color 0.2s; }
+a:hover { color: #ffd700; }
 
 /* מניעת גלילה – לשימוש בעמודי משחק בלבד */
-.no-scroll {
-  overflow: hidden;
-  height: 100vh;
+.no-scroll { overflow: hidden; height: 100vh; }
+
+/* ===== PWA helpers for iOS & Android browsers ===== */
+
+/* 100dvh ביומטרי; נפילה ל-100vh אם לא נתמך */
+:root { --vh: 100dvh; }
+@supports not (height: 100dvh) { :root { --vh: 100vh; } }
+
+/* עמוד מסך-מלא שמכבד safe-area */
+.fullscreen-page {
+  min-height: var(--vh);
+  padding-top: calc(env(safe-area-inset-top, 0px));
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px));
 }
 
+/* מיקומים בטוחים לכפתורים קבועים */
+.fixed-top-safe {
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+}
+.fixed-bottom-safe {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+/* שיפור חוויית מגע ב-iOS */
+html, body {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
