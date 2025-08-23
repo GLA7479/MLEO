@@ -403,7 +403,7 @@ export default function MleoCatcher() {
                 setGameOver(false);
                 setShowIntro(true);
               }}
-              className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+              className="fixed top-4 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
             >
               Exit
             </button>

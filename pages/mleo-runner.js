@@ -577,7 +577,7 @@ export default function MleoRunner() {
             <>
               {/* ניקוד – רחב */}
               {!showIntro && (
-                <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-10">
+                <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2 bg-black/60 px-4 py-2 rounded-lg text-lg font-bold z-[999] top-0.5">
                   Score: {score} | High Score: {highScore}
                 </div>
               )}

@@ -495,7 +495,7 @@ export default function MleoFlyer() {
                 runningRef.current = false;
                 if (rafRef.current) cancelAnimationFrame(rafRef.current);
               }}
-              className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
+              className="fixed top-4 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
             >
               Exit
             </button>
