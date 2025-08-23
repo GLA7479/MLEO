@@ -14,10 +14,17 @@ export default function Layout({ children, video, page }) {
     }
   }, [video]);
 
-  // בדיקה אם הנתיב הנוכחי הוא עמוד המשחקים או אחד המשחקים עצמם
-  const hideButton =
-    router.pathname === "/game" ||
-    router.pathname.startsWith("/mleo-");
+  // Show Back on every page EXCEPT home and /game
+  const hideBackOn = new Set(["/", "/game"]);
+  const showBack = !hideBackOn.has(router.pathname);
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      router.push("/game"); // fallback
+    }
+  };
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -38,13 +45,29 @@ export default function Layout({ children, video, page }) {
 
       <Header />
 
+      {/* Back button — always visible above everything (except on / and /game) */}
+      {showBack && (
+        <button
+          onClick={handleBack}
+          aria-label="Back"
+          className="fixed left-4 top-[calc(env(safe-area-inset-top,0px)+8px)]
+                     z-[9999] pointer-events-auto
+                     rounded-xl bg-black/60 text-white px-4 py-2
+                     border border-white/20 backdrop-blur shadow active:scale-95"
+        >
+          ← Back
+        </button>
+      )}
+
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {/* כפתור פריסייל – לא יוצג בעמוד GAME ובמשחקים */}
-      {!hideButton && (
+      {/* Presale CTA — hide on /game (hub) only */}
+      {router.pathname !== "/game" && (
         <a
           href="/presale"
-          className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg transition z-50"
+          className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600
+                     text-black px-4 py-2 rounded-full text-sm font-bold
+                     shadow-lg transition z-50"
         >
           🚀 Join Presale
         </a>

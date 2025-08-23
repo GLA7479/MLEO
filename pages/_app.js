@@ -1,10 +1,25 @@
 import "../styles/globals.css";
 import "../i18n"; // מחברים את ההגדרות
-import { useEffect } from "react";
+import React, { useEffect } from "react";
+
+// אם אין לך alias של "@", הנתיב היחסי הזה נכון למבנה הנוכחי:
+import {
+  registerBackButtonListener,
+  removeBackButtonAllListeners,
+} from "../src/mobile/back-handler";
 
 function MyApp({ Component, pageProps }) {
   useEffect(() => {
-    // קוד שרץ פעם אחת בטעינת האתר
+    // הרשמה ללחצן BACK באנדרואיד (ב־WebView בתוך האפליקציה)
+    const onBack = () => {
+      if (typeof window !== "undefined") {
+        // כאן אפשר לשים לוגיקה – סגירת מודל, ניווט אחורה וכו'
+        history.back();
+      }
+    };
+
+    registerBackButtonListener(onBack);
+    return () => removeBackButtonAllListeners();
   }, []);
 
   return <Component {...pageProps} />;

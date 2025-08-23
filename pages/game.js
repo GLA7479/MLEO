@@ -1,8 +1,19 @@
 import Layout from "../components/Layout";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/router";
 
 export default function Games() {
+  const router = useRouter();
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      router.replace("/"); // fallback to home if no history
+    }
+  };
+
   const games = [
     {
       title: "Mleo Runner",
@@ -88,6 +99,17 @@ export default function Games() {
       >
         <source src="/videos/gallery-bg.mp4" type="video/mp4" />
       </video>
+
+      {/* Minimal Back button only on this page */}
+      <button
+        onClick={handleBack}
+        aria-label="Back"
+        className="fixed left-4 top-[calc(env(safe-area-inset-top,0px)+8px)] z-50
+                   rounded-xl bg-black/60 text-white px-4 py-2 border border-white/20
+                   backdrop-blur shadow active:scale-95"
+      >
+        ← Back
+      </button>
 
       <motion.main
         className="relative min-h-screen flex flex-col items-center p-4 text-white overflow-hidden pt-[70px]"
