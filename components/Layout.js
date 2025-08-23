@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import Header from "./Header";
 import { Footer } from "./Header";
 import FullscreenButton from "./FullscreenButton";
-import SettingsButton from "./SettingsButton"; // ← חדש
+import SettingsButton from "./SettingsButton";
 
 export default function Layout({ children, video }) {
   const videoRef = useRef(null);
@@ -17,32 +17,24 @@ export default function Layout({ children, video }) {
     }
   }, [video]);
 
-  const isGameHub = router.pathname === "/game";           // דף מרכז משחקים
-  const isSubGame  = router.pathname.startsWith("/mleo-"); // דפי משחק/הרשמה
-  const showButtons = isSubGame;                            // רק אחרי דף /game
+  const isGameHub = router.pathname === "/game";
+  const isSubGame  = router.pathname.startsWith("/mleo-");
+  const showButtons = isSubGame; // רק בדפי המשחקים
 
-  // Back: קודם יוצאים מ-Fullscreen ואז ניווט אחורה/חזרה ל-/game
+  // Back: קודם לצאת מ-Full ואז ניווט
   const handleBack = async () => {
     try {
-      const inFs =
-        !!document.fullscreenElement ||
-        !!document.webkitFullscreenElement;
-
+      const inFs = !!document.fullscreenElement || !!document.webkitFullscreenElement;
       if (inFs) {
         if (document.exitFullscreen) await document.exitFullscreen();
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
         await new Promise(r => setTimeout(r, 80));
       }
     } catch {}
-
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      window.history.back();
-    } else {
-      router.push("/game");
-    }
+    if (typeof window !== "undefined" && window.history.length > 1) window.history.back();
+    else router.push("/game");
   };
 
-  // שינוי ערך זה יעלה/יוריד את שלושת הכפתורים יחד
   const TOP_OFFSET = 76;
 
   return (
@@ -63,10 +55,9 @@ export default function Layout({ children, video }) {
 
       <Header />
 
-      {/* Back + Full + Settings רק בדפי המשחקים (mleo-*) */}
       {showButtons && (
         <>
-          {/* Back (שמאל) */}
+          {/* Back – שמאל */}
           <button
             onClick={handleBack}
             aria-label="Back"
@@ -77,21 +68,14 @@ export default function Layout({ children, video }) {
             ← Back
           </button>
 
-          {/* Fullscreen (ימין) */}
-          <FullscreenButton
-            labelFull="Full"
-            labelExit="Exit"
-            topOffset={TOP_OFFSET}
-          />
-
-          {/* Settings (ימין, ליד Full) */}
-          <SettingsButton topOffset={TOP_OFFSET} />
+          {/* ימני: ⚙️, ומשמאלו: Full */}
+          <SettingsButton topOffset={TOP_OFFSET} rightOffsetPx={16} />
+          <FullscreenButton topOffset={TOP_OFFSET} rightOffsetPx={88} labelFull="Full" labelExit="Exit" />
         </>
       )}
 
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {/* CTA מוצג בכל העמודים חוץ מהאב והמשחקים */}
       {!isGameHub && !isSubGame && (
         <a
           href="/presale"
