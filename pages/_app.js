@@ -4,6 +4,9 @@ import "../i18n";
 import React, { useEffect } from "react";
 import { registerBackButtonListener, removeBackButtonAllListeners } from "../src/mobile/back-handler";
 
+// ⬇️ חדש: מסך פתיחה עם וידאו / פולבאק
+import IntroOverlay from "../components/IntroOverlay";
+
 function MyApp({ Component, pageProps }) {
   useEffect(() => {
     // גובה אמיתי (תיקון iOS ל-100vh/100dvh)
@@ -29,7 +32,13 @@ function MyApp({ Component, pageProps }) {
     return () => removeBackButtonAllListeners();
   }, []);
 
-  return <Component {...pageProps} />;
+  return (
+    <>
+      {/* מוצג פעם אחת בכל סשן, נסגר כשהוידאו מסתיים או אחרי טיימאאוט */}
+      <IntroOverlay />
+      <Component {...pageProps} />
+    </>
+  );
 }
 
 export default MyApp;
