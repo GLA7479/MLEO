@@ -20,7 +20,20 @@ export default function Layout({ children, video }) {
   const isSubGame  = router.pathname.startsWith("/mleo-"); // דפי משחק/הרשמה
   const showButtons = isSubGame; // רק אחרי דף /game
 
-  const handleBack = () => {
+  // ←←← כאן השינוי: קודם יוצאים מה-Fullscreen ואז ניווט אחורה
+  const handleBack = async () => {
+    try {
+      const inFs =
+        !!document.fullscreenElement ||
+        !!document.webkitFullscreenElement;
+
+      if (inFs) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        await new Promise(r => setTimeout(r, 80)); // שיהיה זמן לצאת מה-FS
+      }
+    } catch {}
+
     if (typeof window !== "undefined" && window.history.length > 1) {
       window.history.back();
     } else {
@@ -28,7 +41,7 @@ export default function Layout({ children, video }) {
     }
   };
 
-  const TOP_OFFSET = 76; // אפשר לשנות להוריד/להעלות
+  const TOP_OFFSET = 76; // לשינוי מיקום הכפתורים מלמעלה
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -61,11 +74,15 @@ export default function Layout({ children, video }) {
             ← Back
           </button>
 
-          <FullscreenButton label="Full" topOffset={TOP_OFFSET} />
+          <FullscreenButton
+            labelFull="Full"
+            labelExit="Exit"
+            topOffset={TOP_OFFSET}
+          />
         </>
       )}
 
-      {/* שים לב: אם תרצה גובה מלא – הוסף fullscreen-page לדפים הרלוונטיים */}
+      {/* אם תרצה גובה מלא – הוסף fullscreen-page לדפים הרלוונטיים */}
       <main className="relative z-10 pt-[65px]">{children}</main>
 
       {/* CTA מוצג בכל העמודים חוץ מהאב והמשחקים */}

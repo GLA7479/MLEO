@@ -14,10 +14,12 @@ function isIOS() {
 }
 
 export default function FullscreenButton({
-  label = "Full",
+  labelFull = "Full",
+  labelExit = "Exit",
   className = "",
-  topOffset = 76, // כמה להוריד מתחת ל-safe-area
+  topOffset = 76,
 }) {
+  const [isFs, setIsFs] = useState(false);
   const [showTip, setShowTip] = useState(false);
 
   const canFullscreen = useMemo(() => {
@@ -26,7 +28,13 @@ export default function FullscreenButton({
   }, []);
 
   useEffect(() => {
-    const onChange = () => setShowTip(false);
+    const onChange = () => {
+      const active =
+        !!document.fullscreenElement ||
+        !!document.webkitFullscreenElement;
+      setIsFs(active);
+      if (!active) setShowTip(false);
+    };
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
     return () => {
@@ -35,26 +43,52 @@ export default function FullscreenButton({
     };
   }, []);
 
-  const tryFullscreen = async () => {
-    if (typeof document === "undefined") return;
+  const enterFs = async () => {
     const el = document.documentElement;
-
     try {
-      if (!document.fullscreenElement && canFullscreen) {
-        if (el.requestFullscreen) { await el.requestFullscreen(); return; }
-        if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); return; }
-      }
-    } catch (_) {}
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } catch {}
+  };
 
-    if (isIOS() && !isStandalone()) { setShowTip(true); return; }
+  const exitFs = async () => {
+    try {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } catch {}
+  };
 
-    try { window.scrollTo(0, 1); document.body.classList.add("fullscreen-page"); } catch (_) {}
+  const onClick = async () => {
+    const alreadyFs =
+      !!document.fullscreenElement || !!document.webkitFullscreenElement;
+
+    if (alreadyFs) {
+      await exitFs();
+      return;
+    }
+
+    if (canFullscreen) {
+      await enterFs();
+      return;
+    }
+
+    // iOS Safari רגיל – להציע Add to Home Screen
+    if (isIOS() && !isStandalone()) {
+      setShowTip(true);
+      return;
+    }
+
+    // Fallback קטן
+    try {
+      window.scrollTo(0, 1);
+      document.body.classList.add("fullscreen-page");
+    } catch {}
   };
 
   return (
     <>
       <button
-        onClick={tryFullscreen}
+        onClick={onClick}
         style={{ top: `calc(env(safe-area-inset-top, 0px) + ${topOffset}px)` }}
         className={
           "fixed right-4 z-[9999] rounded-xl bg-black/60 text-white px-3 py-2 " +
@@ -63,7 +97,7 @@ export default function FullscreenButton({
         aria-label="Fullscreen"
         title="Fullscreen"
       >
-        ⛶ {label}
+        ⛶ {isFs ? labelExit : labelFull}
       </button>
 
       {showTip && (
