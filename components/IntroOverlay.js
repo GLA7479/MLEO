@@ -2,16 +2,16 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function IntroOverlay({
-  src = "/videos/leo-intro.mp4",     // שים כאן את הווידאו שלך (public/videos/leo-intro.mp4)
+  src = "/videos/leo-intro.mp4",     // הווידאו שלך (public/videos/leo-intro.mp4)
   durationFallback = 4500,            // כמה זמן להציג אם אין וידאו (פולבאק)
-  onceKey = "intro_seen_session",     // מפתח בסשן – רץ פעם אחת
-  logo = "/icons/apple-touch-icon.png"// לוגו לפולבאק האנימציה
+  onceKey = "intro_seen_session",     // פעם אחת בכל סשן (כמו אצלך)
+  logo = "/icons/apple-touch-icon.png"
 }) {
   const [show, setShow] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
   const videoRef = useRef(null);
 
-  // להציג פעם אחת בכל סשן
+  // להציג פעם אחת בכל סשן (כמו שהיה)
   useEffect(() => {
     const seen = sessionStorage.getItem(onceKey);
     if (!seen) {
@@ -20,7 +20,7 @@ export default function IntroOverlay({
     }
   }, [onceKey]);
 
-  // אם אנחנו במצב פולבאק – נסגור אחרי זמן קצוב
+  // פולבאק: נסגר אחרי זמן קצוב
   useEffect(() => {
     if (show && useFallback) {
       const t = setTimeout(() => setShow(false), durationFallback);
@@ -47,17 +47,18 @@ export default function IntroOverlay({
         </video>
       )}
 
-      {/* שכבת טקסט משותפת (מעל וידאו/פולבאק) */}
-      <div className="absolute inset-x-0 bottom-[8vh] text-center px-4">
+      {/* טקסט – גדול, במרכז, עם אנימציית כניסה איטית */}
+      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-6 text-center">
         <h1
-          className="text-white/90 text-[15px] sm:text-lg font-bold tracking-[.25em] uppercase"
-          style={{ textShadow: "0 2px 12px rgba(0,0,0,.6)" }}
+          className="intro-text-animated uppercase font-extrabold text-white/95 tracking-[.30em]
+                     text-3xl sm:text-4xl md:text-5xl lg:text-6xl"
+          style={{ textShadow: "0 2px 12px rgba(0,0,0,.55)" }}
         >
           POWERED BY <span className="text-yellow-400">LEO</span> – THE REAL SHIBA INU
         </h1>
       </div>
 
-      {/* פולבאק אנימציה אם אין וידאו / שגיאה בטעינה */}
+      {/* פולבאק אנימציה אם אין וידאו */}
       {useFallback && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="absolute w-[70vmin] h-[70vmin] rounded-full blur-3xl opacity-25 bg-yellow-500/40 animate-pulse" />
