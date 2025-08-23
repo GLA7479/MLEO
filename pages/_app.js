@@ -4,16 +4,12 @@ import "../i18n";
 import React, { useEffect } from "react";
 import { registerBackButtonListener, removeBackButtonAllListeners } from "../src/mobile/back-handler";
 
-// ⬇️ חדש: מסך פתיחה עם וידאו / פולבאק
-import IntroOverlay from "../components/IntroOverlay";
+import { SettingsProvider } from "../components/SettingsContext";
+import "../utils/global-audio-guard"; // ← טעינה פעם אחת לכל האתר (אין ייצוא)
 
 function MyApp({ Component, pageProps }) {
   useEffect(() => {
-    // גובה אמיתי (תיקון iOS ל-100vh/100dvh)
-    const setVh = () => {
-      const vh = window.innerHeight;
-      document.documentElement.style.setProperty("--app-vh", `${vh}px`);
-    };
+    const setVh = () => document.documentElement.style.setProperty("--app-vh", `${window.innerHeight}px`);
     setVh();
     window.addEventListener("resize", setVh);
     window.addEventListener("orientationchange", setVh);
@@ -24,21 +20,15 @@ function MyApp({ Component, pageProps }) {
   }, []);
 
   useEffect(() => {
-    // BACK באנדרואיד (ב-WebView של Capacitor)
-    const onBack = () => {
-      if (typeof window !== "undefined") history.back();
-    };
+    const onBack = () => { if (typeof window !== "undefined") history.back(); };
     registerBackButtonListener(onBack);
     return () => removeBackButtonAllListeners();
   }, []);
 
   return (
-    <>
-      {/* מוצג פעם אחת בכל סשן, נסגר כשהוידאו מסתיים או אחרי טיימאאוט */}
-      <IntroOverlay />
+    <SettingsProvider>
       <Component {...pageProps} />
-    </>
+    </SettingsProvider>
   );
 }
-
 export default MyApp;

@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import Header from "./Header";
 import { Footer } from "./Header";
 import FullscreenButton from "./FullscreenButton";
+import SettingsButton from "./SettingsButton"; // ← חדש
 
 export default function Layout({ children, video }) {
   const videoRef = useRef(null);
@@ -16,11 +17,11 @@ export default function Layout({ children, video }) {
     }
   }, [video]);
 
-  const isGameHub = router.pathname === "/game";          // דף מרכז משחקים
+  const isGameHub = router.pathname === "/game";           // דף מרכז משחקים
   const isSubGame  = router.pathname.startsWith("/mleo-"); // דפי משחק/הרשמה
-  const showButtons = isSubGame; // רק אחרי דף /game
+  const showButtons = isSubGame;                            // רק אחרי דף /game
 
-  // ←←← כאן השינוי: קודם יוצאים מה-Fullscreen ואז ניווט אחורה
+  // Back: קודם יוצאים מ-Fullscreen ואז ניווט אחורה/חזרה ל-/game
   const handleBack = async () => {
     try {
       const inFs =
@@ -30,7 +31,7 @@ export default function Layout({ children, video }) {
       if (inFs) {
         if (document.exitFullscreen) await document.exitFullscreen();
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        await new Promise(r => setTimeout(r, 80)); // שיהיה זמן לצאת מה-FS
+        await new Promise(r => setTimeout(r, 80));
       }
     } catch {}
 
@@ -41,7 +42,8 @@ export default function Layout({ children, video }) {
     }
   };
 
-  const TOP_OFFSET = 76; // לשינוי מיקום הכפתורים מלמעלה
+  // שינוי ערך זה יעלה/יוריד את שלושת הכפתורים יחד
+  const TOP_OFFSET = 76;
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -61,9 +63,10 @@ export default function Layout({ children, video }) {
 
       <Header />
 
-      {/* Back + Full רק בדפי המשחקים (mleo-*) */}
+      {/* Back + Full + Settings רק בדפי המשחקים (mleo-*) */}
       {showButtons && (
         <>
+          {/* Back (שמאל) */}
           <button
             onClick={handleBack}
             aria-label="Back"
@@ -74,15 +77,18 @@ export default function Layout({ children, video }) {
             ← Back
           </button>
 
+          {/* Fullscreen (ימין) */}
           <FullscreenButton
             labelFull="Full"
             labelExit="Exit"
             topOffset={TOP_OFFSET}
           />
+
+          {/* Settings (ימין, ליד Full) */}
+          <SettingsButton topOffset={TOP_OFFSET} />
         </>
       )}
 
-      {/* אם תרצה גובה מלא – הוסף fullscreen-page לדפים הרלוונטיים */}
       <main className="relative z-10 pt-[65px]">{children}</main>
 
       {/* CTA מוצג בכל העמודים חוץ מהאב והמשחקים */}
