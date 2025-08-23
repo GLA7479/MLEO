@@ -33,9 +33,14 @@ html, body { -webkit-tap-highlight-color: transparent; touch-action: manipulatio
 }
 .animate-pulse-slow { animation: pulse-slow 2.6s ease-in-out infinite; }
 
-@keyframes splash-scale {
-  0%   { transform: scale(.65); opacity: 0;   filter: blur(8px); }
-  50%  { transform: scale(1.06); opacity: 1;  filter: blur(0); }
-  100% { transform: scale(1.00); opacity: 0;  filter: blur(6px); }
+/* אנימציית כניסה איטית לטקסט */
+@keyframes introTextIn {
+  0%   { opacity: 0; transform: translateY(18px) scale(0.98); filter: blur(6px); }
+  40%  { opacity: 1; transform: translateY(0)   scale(1.00);  filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0)   scale(1.00);  filter: blur(0); }
 }
-.animate-splash-scale { animation: splash-scale 1.6s ease forwards; }
+.intro-text-animated {
+  animation: introTextIn 1.8s ease-out both; /* כניסה איטית יותר */
+  text-shadow: 0 2px 12px rgba(0,0,0,.55);
+}
+
