@@ -16,21 +16,37 @@ export default function Layout({ children, video }) {
     }
   }, [video]);
 
-  const isGameHub = router.pathname === "/game";        // דף הרשימה
-  const isSubGame  = router.pathname.startsWith("/mleo-"); // דפי משחק/הרשמה
+  const isGameHub = router.pathname === "/game";            // דף הרשימה
+  const isSubGame  = router.pathname.startsWith("/mleo-");  // דפי משחק/הרשמה
+  const showButtons = isSubGame;                            // כפתורים רק אחרי /game
 
-  // כפתורים רק בעמודים שלאחר /game (הרשמה + המשחקים עצמם)
-  const showButtons = isSubGame;
+  // כמה להוריד מתחת ל-safe-area (שנה כאן אם תרצה)
+  const TOP_OFFSET = 74;
 
-  const handleBack = () => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      window.history.back();
-    } else {
-      router.push("/game");
+  // יציאה ממסך מלא אם צריך (תומך גם ב-webkit ל-Safari)
+  const exitFullscreenIfNeeded = async () => {
+    if (typeof document === "undefined") return;
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    } catch (_e) {
+      // לא נורא אם נכשל – נמשיך ניווט
     }
   };
 
-  const TOP_OFFSET = 80; // כמה להוריד מתחת ל-safe-area
+  // Back: קודם לצאת ממסך מלא, ואז לחזור אחורה/לניווט חלופי
+  const handleBack = async () => {
+    await exitFullscreenIfNeeded();
+
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      router.push("/game"); // fallback: חזרה לרשימת המשחקים
+    }
+  };
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -69,7 +85,7 @@ export default function Layout({ children, video }) {
 
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {/* הסתרת Join Presale בעמודי משחקים ובהאב; הצגה בשאר העמודים */}
+      {/* הסתרת Join Presale בהאב ובדפי משחקים; הצגה בשאר העמודים */}
       {!isGameHub && !isSubGame && (
         <a
           href="/presale"
