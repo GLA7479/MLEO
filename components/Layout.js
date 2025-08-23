@@ -1,7 +1,9 @@
+// components/Layout.js
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Header from "./Header";
 import { Footer } from "./Header";
+import FullscreenButton from "./FullscreenButton";
 
 export default function Layout({ children, video, page }) {
   const videoRef = useRef(null);
@@ -14,17 +16,19 @@ export default function Layout({ children, video, page }) {
     }
   }, [video]);
 
-  // Show Back on every page EXCEPT home and /game
-  const hideBackOn = new Set(["/", "/game"]);
-  const showBack = !hideBackOn.has(router.pathname);
+  const isGamePage = router.pathname === "/game";
+  const isSubGame = router.pathname.startsWith("/mleo-");
 
+  const showBack = !["/", "/game"].includes(router.pathname);
   const handleBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       window.history.back();
     } else {
-      router.push("/game"); // fallback
+      router.push("/game");
     }
   };
+
+  const showFullscreen = isGamePage || isSubGame;
 
   return (
     <div className="relative w-full min-h-screen text-white overflow-hidden">
@@ -45,24 +49,26 @@ export default function Layout({ children, video, page }) {
 
       <Header />
 
-      {/* Back button — always visible above everything (except on / and /game) */}
+      {/* Back Button */}
       {showBack && (
         <button
           onClick={handleBack}
           aria-label="Back"
-          className="fixed left-4 top-[calc(env(safe-area-inset-top,0px)+8px)]
-                     z-[9999] pointer-events-auto
-                     rounded-xl bg-black/60 text-white px-4 py-2
+          className="fixed left-4 fixed-top-safe
+                     z-[9999] rounded-xl bg-black/60 text-white px-4 py-2
                      border border-white/20 backdrop-blur shadow active:scale-95"
         >
           ← Back
         </button>
       )}
 
+      {/* Fullscreen Button */}
+      {showFullscreen && <FullscreenButton label="Full" />}
+
       <main className="relative z-10 pt-[65px]">{children}</main>
 
-      {/* Presale CTA — hide on /game (hub) only */}
-      {router.pathname !== "/game" && (
+      {/* CTA Join Presale – לא יוצג ב-/game ובדפי משחקים */}
+      {!isGamePage && !isSubGame && (
         <a
           href="/presale"
           className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600
