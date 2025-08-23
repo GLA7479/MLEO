@@ -1,4 +1,5 @@
 // utils/global-audio-guard.js
+// רץ רק בדפדפן (לא ב-SSR)
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   (function () {
     const KEY = "mleo_settings_v1";
@@ -7,7 +8,7 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
     };
     let settings = { master:true, music:true, sfx:true, haptics:true, ...read() };
 
-    const isMusicSrc = (src="") => {
+    const isMusicSrc = (src = "") => {
       const s = (src || "").toLowerCase();
       return s.includes("/music/") || s.includes("bgm") || s.includes("music=");
     };
@@ -23,57 +24,65 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
       } catch {}
     };
 
-    const rescan = () => { document.querySelectorAll("audio").forEach(applyToAudioEl); };
+    const rescan = () => {
+      try { document.querySelectorAll("audio").forEach(applyToAudioEl); } catch {}
+    };
 
-    const mo = new MutationObserver((muts) => {
-      for (const m of muts) {
-        m.addedNodes && m.addedNodes.forEach((n) => {
-          if (n && n.nodeType === 1) {
-            if (n.tagName === "AUDIO") applyToAudioEl(n);
-            n.querySelectorAll && n.querySelectorAll("audio").forEach(applyToAudioEl);
+    // מאזין לתוספת/שינוי של תגי <audio>
+    try {
+      const mo = new MutationObserver((muts) => {
+        for (const m of muts) {
+          m.addedNodes && m.addedNodes.forEach((n) => {
+            if (n && n.nodeType === 1) {
+              if (n.tagName === "AUDIO") applyToAudioEl(n);
+              n.querySelectorAll && n.querySelectorAll("audio").forEach(applyToAudioEl);
+            }
+          });
+          if (m.type === "attributes" && m.target?.tagName === "AUDIO" && m.attributeName === "src") {
+            applyToAudioEl(m.target);
           }
-        });
-        if (m.type === "attributes" && m.target?.tagName === "AUDIO" && m.attributeName === "src") {
-          applyToAudioEl(m.target);
         }
-      }
-    });
-    try { mo.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:["src"] }); } catch {}
+      });
+      mo.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:["src"] });
+    } catch {}
 
+    // עיטוף new Audio(...)
     try {
       const NativeAudio = window.Audio;
       window.Audio = function (...args) {
         const el = new NativeAudio(...args);
-        try { setTimeout(() => applyToAudioEl(el), 0); } catch {}
+        setTimeout(() => applyToAudioEl(el), 0);
         return el;
       };
       window.Audio.prototype = NativeAudio.prototype;
     } catch {}
 
+    // רטט/Haptics: ללא import; משתמשים ב-Capacitor אם קיים, אחרת vibrate
     const nativeVibrate = navigator.vibrate?.bind(navigator);
     navigator.vibrate = function (pattern) {
       if (!settings.haptics || !settings.master) return false;
       return nativeVibrate ? nativeVibrate(pattern) : false;
     };
 
-    (async () => {
-      try {
-        const mod = await import("@capacitor/haptics");
-        const origImpact = mod?.Haptics?.impact?.bind(mod.Haptics);
-        if (origImpact) {
-          mod.Haptics.impact = async (...a) => {
-            if (!settings.haptics || !settings.master) return;
-            try { await origImpact(...a); } catch {}
-          };
-        }
-      } catch {}
-    })();
+    // אם רץ בתוך Capacitor, נעטוף את Plugins.Haptics (אם קיים)
+    try {
+      const capHaptics = window?.Capacitor?.Plugins?.Haptics;
+      if (capHaptics && typeof capHaptics.impact === "function") {
+        const origImpact = capHaptics.impact.bind(capHaptics);
+        capHaptics.impact = async (...a) => {
+          if (!settings.haptics || !settings.master) return;
+          try { await origImpact(...a); } catch {}
+        };
+      }
+    } catch {}
 
+    // מאזין לעדכונים מה-Provider
     window.addEventListener("mleo:settings", (ev) => {
       settings = { ...settings, ...(ev.detail || {}) };
       rescan();
     });
 
+    // עדכון מלשוניות אחרות (localStorage)
     window.addEventListener("storage", (ev) => {
       if (ev.key === KEY) {
         settings = { ...settings, ...(read()) };
@@ -81,6 +90,7 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
       }
     });
 
+    // הפעלה ראשונית
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", rescan, { once:true });
     } else {
