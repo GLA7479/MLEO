@@ -1,7 +1,9 @@
+// pages/game.js
 import Layout from "../components/Layout";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import SplashIntro from "../components/SplashIntro";
 
 export default function Games() {
   const router = useRouter();
@@ -10,97 +12,36 @@ export default function Games() {
     if (typeof window !== "undefined" && window.history.length > 1) {
       window.history.back();
     } else {
-      router.replace("/"); // fallback to home if no history
+      router.replace("/");
     }
   };
 
   const games = [
-    {
-      title: "Mleo Runner",
-      description: "🏃‍♂️ Run with Lio and collect points!",
-      link: "/mleo-runner",
-      icon: "🏃‍♂️",
-      available: true,
-    },
-    {
-      title: "Mleo Flyer",
-      description: "🪂 Fly with Lio and collect coins!",
-      link: "/mleo-flyer",
-      icon: "🪂",
-      available: true,
-    },
-    {
-      title: "Mleo Catcher",
-      description: "🎯 Catch coins and diamonds while avoiding bombs!",
-      link: "/mleo-catcher",
-      icon: "🎯",
-      available: true,
-    },
-    {
-      title: "Mleo Puzzle",
-      description: "🧩 Match 3 tiles and score points like Candy Crush!",
-      link: "/mleo-puzzle",
-      icon: "🧩",
-      available: true,
-    },
-    {
-      title: "Mleo Memory",
-      description: "🧠 Flip the cards and find all matching pairs!",
-      link: "/mleo-memory",
-      icon: "🧠",
-      available: true,
-    },
-    {
-      title: "Mleo Penalty",
-      description: "⚽ Score goals in the ultimate penalty shootout with Lio!",
-      link: "/mleo-penalty",
-      icon: "⚽",
-      available: true,
-    },
-    {
-      title: "Coming Soon",
-      description: "🔥 Another fun adventure with Lio is coming soon!",
-      link: "#",
-      icon: "🔥",
-      available: false,
-    },
-    {
-      title: "Coming Soon",
-      description: "🎮 Get ready for a brand new challenge with Lio!",
-      link: "#",
-      icon: "🎮",
-      available: false,
-    },
-    {
-      title: "Coming Soon",
-      description: "⭐ More fun Lio games are coming soon!",
-      link: "#",
-      icon: "⭐",
-      available: false,
-    },
-    {
-      title: "Coming Soon",
-      description: "🎲 A surprise Lio game is coming soon!",
-      link: "#",
-      icon: "🎲",
-      available: false,
-    },
+    { title: "Mleo Runner",  description: "Run with Lio and collect points!",            link: "/mleo-runner",  icon: "🏃‍♂️", available: true },
+    { title: "Mleo Flyer",   description: "Fly with Lio and collect coins!",             link: "/mleo-flyer",   icon: "🪂",   available: true },
+    { title: "Mleo Catcher", description: "Catch coins & diamonds, avoid bombs!",        link: "/mleo-catcher", icon: "🎯",   available: true },
+    { title: "Mleo Puzzle",  description: "Match 3 tiles and score points!",             link: "/mleo-puzzle",  icon: "🧩",   available: true },
+    { title: "Mleo Memory",  description: "Flip the cards and find matching pairs!",     link: "/mleo-memory",  icon: "🧠",   available: true },
+    { title: "Mleo Penalty", description: "Score goals in the ultimate penalty shoot!",  link: "/mleo-penalty", icon: "⚽",   available: true },
+    { title: "Coming Soon",  description: "Another fun adventure with Lio is coming!",   link: "#",             icon: "🔥",   available: false },
+    { title: "Coming Soon",  description: "Get ready for a brand new challenge with Lio!", link: "#",           icon: "🎮",   available: false },
+    { title: "Coming Soon",  description: "More fun Lio games are coming soon!",         link: "#",             icon: "⭐",   available: false },
+    { title: "Coming Soon",  description: "A surprise Lio game is coming soon!",         link: "#",             icon: "🎲",   available: false },
   ];
 
   return (
     <Layout page="games">
+      {/* Splash – רק ב-/game, פעם ראשונה בסשן */}
+      <SplashIntro />
+
       <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
+        autoPlay muted loop playsInline preload="auto"
         className="absolute inset-0 w-full h-full object-cover -z-10"
       >
         <source src="/videos/gallery-bg.mp4" type="video/mp4" />
       </video>
 
-      {/* Minimal Back button only on this page */}
+      {/* Back פשוט גם בדף זה (אם אין היסטוריה – חוזר הביתה) */}
       <button
         onClick={handleBack}
         aria-label="Back"
@@ -117,7 +58,7 @@ export default function Games() {
         animate={{ opacity: 1 }}
         transition={{ duration: 1 }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/80 -z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/80 -z-10" />
 
         <motion.h1
           className="text-4xl sm:text-5xl font-extrabold mb-2 flex items-center gap-3 text-center drop-shadow-lg"
@@ -144,10 +85,7 @@ export default function Games() {
 
         <div
           className="grid gap-4 w-full px-2"
-          style={{
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            maxWidth: "1000px",
-          }}
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", maxWidth: "1000px" }}
         >
           {games.map((game, i) => (
             <motion.div
@@ -158,9 +96,7 @@ export default function Games() {
               viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6, delay: i * 0.1 }}
               whileHover={{ scale: 1.05 }}
-              style={{
-                minHeight: "160px",
-              }}
+              style={{ minHeight: "160px" }}
             >
               <div className="text-3xl mb-1">{game.icon}</div>
               <h2 className="text-lg font-bold text-yellow-400 mb-1">{game.title}</h2>
@@ -172,10 +108,7 @@ export default function Games() {
                   </button>
                 </Link>
               ) : (
-                <button
-                  className="bg-gray-600 text-gray-300 px-3 py-1 rounded-md font-medium text-xs cursor-not-allowed"
-                  disabled
-                >
+                <button className="bg-gray-600 text-gray-300 px-3 py-1 rounded-md font-medium text-xs cursor-not-allowed" disabled>
                   Coming Soon
                 </button>
               )}

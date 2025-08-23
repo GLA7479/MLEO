@@ -2,6 +2,7 @@
   "name": "MLEO Games",
   "short_name": "MLEO",
   "start_url": "/game",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0A0F1A",
   "theme_color": "#0A0F1A",

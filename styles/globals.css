@@ -2,59 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-/* הגדרות כלליות */
-html,
-body {
-  padding: 0;
-  margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background-color: black;
-  color: white;
-  scroll-behavior: smooth;
-}
-
+/* בסיס */
+html, body { padding: 0; margin: 0; background: #000; color: #fff; scroll-behavior: smooth; }
 * { box-sizing: border-box; }
 
-/* אנימציה - סיבוב איטי ללוגו */
-@keyframes spin-slow { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-.animate-spin-slow { animation: spin-slow 6s linear infinite; }
-
-/* אנימציות פתיחה/סגירה */
-@keyframes fade-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-@keyframes fade-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.95); } }
-.animate-fade-in { animation: fade-in 0.3s ease-in-out forwards; }
-.animate-fade-out { animation: fade-out 0.3s ease-in-out forwards; }
-
-/* קישורים בתפריט */
-a { transition: color 0.2s; }
+/* קישורים */
+a { transition: color .2s; }
 a:hover { color: #ffd700; }
 
-/* מניעת גלילה – לשימוש בעמודי משחק בלבד */
-.no-scroll { overflow: hidden; height: 100vh; }
-
-/* ===== PWA helpers for iOS & Android browsers ===== */
-
-/* 100dvh ביומטרי; נפילה ל-100vh אם לא נתמך */
-:root { --vh: 100dvh; }
+/* ===== PWA / iOS height fixes ===== */
+:root { --vh: 100dvh; --app-vh: 100vh; }    /* --app-vh מתעדכן ב-_app.js לפי innerHeight */
 @supports not (height: 100dvh) { :root { --vh: 100vh; } }
 
-/* עמוד מסך-מלא שמכבד safe-area */
 .fullscreen-page {
-  min-height: var(--vh);
+  min-height: var(--app-vh); /* גובה אמיתי */
   padding-top: calc(env(safe-area-inset-top, 0px));
   padding-bottom: calc(env(safe-area-inset-bottom, 0px));
 }
 
 /* מיקומים בטוחים לכפתורים קבועים */
-.fixed-top-safe {
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-}
-.fixed-bottom-safe {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
-}
+.fixed-top-safe    { top:    calc(env(safe-area-inset-top, 0px) + 56px); }
+.fixed-bottom-safe { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
 
-/* שיפור חוויית מגע ב-iOS */
-html, body {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+html, body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; overscroll-behavior-y: none; }
+
+/* ===== Splash animations for /game ===== */
+@keyframes pulse-slow {
+  0%,100% { transform: scale(1); opacity: .25; }
+  50%     { transform: scale(1.06); opacity: .35; }
 }
+.animate-pulse-slow { animation: pulse-slow 2.6s ease-in-out infinite; }
+
+@keyframes splash-scale {
+  0%   { transform: scale(.65); opacity: 0;   filter: blur(8px); }
+  50%  { transform: scale(1.06); opacity: 1;  filter: blur(0); }
+  100% { transform: scale(1.00); opacity: 0;  filter: blur(6px); }
+}
+.animate-splash-scale { animation: splash-scale 1.6s ease forwards; }

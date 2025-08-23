@@ -1,0 +1,13 @@
+/* ===== Splash animations for /game only ===== */
+@keyframes pulse-slow {
+  0%,100% { transform: scale(1);   opacity: .25; }
+  50%     { transform: scale(1.06); opacity: .35; }
+}
+.animate-pulse-slow { animation: pulse-slow 2.6s ease-in-out infinite; }
+
+@keyframes splash-scale {
+  0%   { transform: scale(.65); opacity: 0;   filter: blur(8px); }
+  50%  { transform: scale(1.06); opacity: 1;  filter: blur(0); }
+  100% { transform: scale(1.00); opacity: 0;  filter: blur(6px); }
+}
+.animate-splash-scale { animation: splash-scale 1.6s ease forwards; }
