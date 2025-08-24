@@ -17,16 +17,20 @@ export default function Games() {
   };
 
   const games = [
-    { title: "Mleo Runner",  description: "Run with Lio and collect points!",            link: "/mleo-runner",  icon: "🏃‍♂️", available: true },
-    { title: "Mleo Flyer",   description: "Fly with Lio and collect coins!",             link: "/mleo-flyer",   icon: "🪂",   available: true },
-    { title: "Mleo Catcher", description: "Catch coins & diamonds, avoid bombs!",        link: "/mleo-catcher", icon: "🎯",   available: true },
-    { title: "Mleo Puzzle",  description: "Match 3 tiles and score points!",             link: "/mleo-puzzle",  icon: "🧩",   available: true },
-    { title: "Mleo Memory",  description: "Flip the cards and find matching pairs!",     link: "/mleo-memory",  icon: "🧠",   available: true },
-    { title: "Mleo Penalty", description: "Score goals in the ultimate penalty shoot!",  link: "/mleo-penalty", icon: "⚽",   available: true },
-    { title: "Coming Soon",  description: "Another fun adventure with Lio is coming!",   link: "#",             icon: "🔥",   available: false },
-    { title: "Coming Soon",  description: "Get ready for a brand new challenge with Lio!", link: "#",           icon: "🎮",   available: false },
-    { title: "Coming Soon",  description: "More fun Lio games are coming soon!",         link: "#",             icon: "⭐",   available: false },
-    { title: "Coming Soon",  description: "A surprise Lio game is coming soon!",         link: "#",             icon: "🎲",   available: false },
+    { title: "Mleo Runner",  description: "Run with Lio and collect points!",            link: "/mleo-runner",   icon: "🏃‍♂️", available: true },
+    { title: "Mleo Flyer",   description: "Fly with Lio and collect coins!",             link: "/mleo-flyer",    icon: "🪂",   available: true },
+    { title: "Mleo Catcher", description: "Catch coins & diamonds, avoid bombs!",        link: "/mleo-catcher",  icon: "🎯",   available: true },
+    { title: "Mleo Puzzle",  description: "Match 3 tiles and score points!",             link: "/mleo-puzzle",   icon: "🧩",   available: true },
+    { title: "Mleo Memory",  description: "Flip the cards and find matching pairs!",     link: "/mleo-memory",   icon: "🧠",   available: true },
+    { title: "Mleo Penalty", description: "Score goals in the ultimate penalty shoot!",  link: "/mleo-penalty",  icon: "⚽",   available: true },
+
+    // ⛏️ NEW: replaces the first Coming Soon slot
+    { title: "Mleo Miners",  description: "Merge miners, break rocks, earn gold!",       link: "/mleo-miners",   icon: "⛏️",   available: true },
+
+    // Remaining Coming Soon cards stay as-is
+    { title: "Coming Soon",  description: "Get ready for a brand new challenge with Lio!", link: "#",             icon: "🎮",   available: false },
+    { title: "Coming Soon",  description: "More fun Lio games are coming soon!",         link: "#",              icon: "⭐",    available: false },
+    { title: "Coming Soon",  description: "A surprise Lio game is coming soon!",         link: "#",              icon: "🎲",    available: false },
   ];
 
   return (
