@@ -37,7 +37,7 @@ const GOLD_FACTOR = 1.0;
 const GIFT_INTERVAL_SEC = 60; // every minute (gameplay). Offline: can accrue max 1 ready gift.
 
 // Auto-dog
-const DOG_INTERVAL_SEC = 120; // every 2 minutes
+const DOG_INTERVAL_SEC = 220; // every 2 minutes (השארתי כמו שנתת)
 const DOG_BANK_CAP = 6;       // can accumulate up to 6 when not playing (and also while playing if board full)
 
 // Rail alignment (fractions of BG height)
@@ -677,7 +677,7 @@ export default function MleoMiners() {
 
     const id = Math.random().toString(36).slice(2);
     setGiftToast({ text: `🎁 ${toastText}`, id });
-    setTimeout(() => { setGiftToast(cur => (cur && cur.id === id ? null : cur)); }, 1600);
+    setTimeout(() => { setGiftToast(cur => (cur && cur.id === id ? null : cur)); }, 3000);
 
     save();
   };
@@ -685,7 +685,6 @@ export default function MleoMiners() {
   // Try to consume auto-dog bank (and/or interval tick) into actual spawns
   const tryAutoDogSpawns = () => {
     const s = stateRef.current; if (!s) return;
-    // While we have bank and capacity — spawn with current spawnLevel (auto-spawn level = same as manual? If תרצה אחר, נשנה)
     while (s.autoDogBank > 0 && countMiners(s) < MAX_MINERS) {
       if (!spawnMiner(s, s.spawnLevel)) break;
       s.autoDogBank--;
@@ -699,18 +698,14 @@ export default function MleoMiners() {
 
     const now = Date.now();
 
-    // Gift timing:
-    // In-play: advance timer towards ready.
-    // Not playing: allow at most 1 pending gift (we set ready if passed).
+    // Gift timing
     if (!s.giftReady) {
       if (!s.paused) {
         if (now >= (s.giftNextAt || now)) {
           s.giftReady = true;
           setGiftReadyFlag(true);
-          // keep giftNextAt for UI progress calc; we reset on claim
         }
       } else {
-        // paused/offline accumulation: flip ready if interval elapsed, but do not accumulate multiple
         if (now >= (s.giftNextAt || now)) {
           s.giftReady = true;
           setGiftReadyFlag(true);
@@ -718,8 +713,7 @@ export default function MleoMiners() {
       }
     }
 
-    // Auto-dog timing:
-    // Always accumulates intervals into bank, even if paused/offline; cap at DOG_BANK_CAP
+    // Auto-dog timing
     if (!s.autoDogLastAt) s.autoDogLastAt = now;
     const elapsedDogMs = Math.max(0, now - s.autoDogLastAt);
     const dogIntervals = Math.floor(elapsedDogMs / (DOG_INTERVAL_SEC * 1000));
@@ -729,10 +723,7 @@ export default function MleoMiners() {
       save();
     }
 
-    // If playing, try to consume bank to spawn miners (respect 16-cap)
-    if (!s.paused) {
-      tryAutoDogSpawns();
-    }
+    if (!s.paused) tryAutoDogSpawns();
 
     if (s.paused) { s.lastSeen = now; return; }
 
@@ -808,7 +799,7 @@ export default function MleoMiners() {
       }
     }
 
-    // HUD coin tween
+    // HUD coin tween to top-left (מתואם עם המיקום החדש של ה-HUD)
     for (const cn of s.anim.coins) {
       const k = cn.t, sx = cn.x, sy = cn.y, tx = 110, ty = 72;
       const x = sx + (tx - sx) * k, y = sy + (ty - sy) * k;
@@ -914,7 +905,9 @@ export default function MleoMiners() {
   }
 
   // ===== UI =====
-  const disabled = !stateRef.current;
+  const circleStyle = (p, active=true) => ({
+    background: `conic-gradient(${active ? '#facc15' : '#94a3b8'} ${Math.floor(p*360)}deg, rgba(255,255,255,0.08) 0)`,
+  });
 
   // Progress helpers for circular timers
   const giftProgress = (() => {
@@ -936,10 +929,6 @@ export default function MleoMiners() {
     return Math.max(0, Math.min(1, elapsed/total));
   })();
 
-  const circleStyle = (p, active=true) => ({
-    background: `conic-gradient(${active ? '#facc15' : '#94a3b8'} ${Math.floor(p*360)}deg, rgba(255,255,255,0.08) 0)`,
-  });
-
   return (
     <Layout>
       <div
@@ -952,48 +941,6 @@ export default function MleoMiners() {
             <div>
               <h2 className="text-2xl font-extrabold mb-3">Please rotate your device to portrait.</h2>
               <p className="opacity-80">Landscape is not supported.</p>
-            </div>
-          </div>
-        )}
-
-        {/* Toast (gift result) */}
-        {giftToast && (
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9998]">
-            <div className="px-4 py-2 rounded-xl bg-emerald-400 text-black font-extrabold shadow-lg animate-[fadeOut_1.6s_ease-out_forwards]">
-              {giftToast.text}
-            </div>
-            <style jsx global>{`
-              @keyframes fadeOut {
-                0% { opacity: 0; transform: translateY(-6px) scale(0.96); }
-                15% { opacity: 1; transform: translateY(0) scale(1); }
-                80% { opacity: 1; }
-                100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
-              }
-            `}</style>
-          </div>
-        )}
-
-        {/* Offline COLLECT overlay */}
-        {showCollect && (
-          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/85 px-6 text-center">
-            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 border border-white/20 shadow-2xl max-w-sm w-full">
-              <div className="flex items-center justify-center gap-2 mb-3">
-                <img src={IMG_COIN} alt="coin" className="w-6 h-6" />
-                <h3 className="text-xl font-extrabold text-white">While you were away…</h3>
-              </div>
-              <p className="text-gray-200 mb-4">
-                Earned{" "}
-                <b className="text-yellow-300">
-                  {(stateRef.current?.pendingOfflineGold || 0).toLocaleString()}
-                </b>{" "}
-                coins in the background.
-              </p>
-              <button
-                onClick={onOfflineCollect}
-                className="mx-auto px-6 py-3 rounded-xl bg-yellow-400 text-black font-extrabold text-lg shadow active:scale-95"
-              >
-                COLLECT
-              </button>
             </div>
           </div>
         )}
@@ -1052,110 +999,146 @@ export default function MleoMiners() {
           </div>
         )}
 
-        {/* Title */}
+        {/* Title (the only thing outside the canvas) */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2">MLEO Miners — v5.4</h1>
 
-        {/* HUD (compact) */}
-        <div className="flex gap-2 flex-wrap justify-center items-center my-2 text-sm">
-          <div className="px-2 py-1 bg-black/60 rounded-lg shadow flex items-center gap-1">
-            <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
-            <b>{stateRef.current?.gold ?? 0}</b>
-          </div>
-          <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🪓 DPS x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
-          <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡 Gold x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
-          <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🐶 Buy LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
-
-          {/* Tiny circular timers */}
-          <div className="flex items-center gap-3 ml-2">
-            {/* Gift timer (ticks only during play; offline can ready 1) */}
-            <div className="relative w-8 h-8 rounded-full grid place-items-center" style={circleStyle(giftProgress, true)} title="Gift every 60s (max 1 offline)">
-              <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">
-                🎁
-              </div>
-            </div>
-
-            {/* Dog timer (always ticks; bank up to 6) */}
-            <div className="relative w-8 h-8 rounded-full grid place-items-center" style={circleStyle(dogProgress, true)} title="Auto-dog every 2m (bank up to 6)">
-              <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">
-                🐶
-
-              </div>
-            </div>
-          </div>
-
-          <button onClick={() => { setUi((u) => ({ ...u, muted: !u.muted })); setTimeout(save, 0); }} className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600">
-            {ui.muted ? "🔇" : "🔊"}
-          </button>
-        </div>
-
-        {/* Actions (compact) */}
-        <div className="flex gap-2 mb-2 flex-wrap justify-center text-sm">
-          <button
-            onClick={addMiner}
-            disabled={!stateRef.current}
-            title={!stateRef.current ? "Loading..." : ""}
-            className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
-          >
-            + Add Miner (LV {stateRef.current?.spawnLevel || 1}) — {stateRef.current?.spawnCost ?? ui.spawnCost}
-          </button>
-
-          <button
-            onClick={upgradeDps}
-            disabled={!stateRef.current}
-            title={!stateRef.current ? "Loading..." : ""}
-            className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
-          >
-            DPS +10% (Cost {getDpsCost()})
-          </button>
-
-          <button
-            onClick={upgradeGold}
-            disabled={!stateRef.current}
-            title={!stateRef.current ? "Loading..." : ""}
-            className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
-          >
-            Gold +10% (Cost {getGoldCost()})
-          </button>
-
-          <button onClick={onAdd} className="px-3 py-1.5 rounded-xl bg-indigo-400 hover:bg-indigo-300 text-slate-900 font-bold shadow">
-            ADD
-          </button>
-          <button onClick={onCollect} className="px-3 py-1.5 rounded-xl bg-fuchsia-400 hover:bg-fuchsia-300 text-slate-900 font-bold shadow">
-            COLLECT
-          </button>
-        </div>
-
-        {/* Canvas wrapper */}
+        {/* ===== Canvas wrapper ===== */}
         <div
           id="miners-canvas-wrap"
-          className="w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl"
+          className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-2"
           style={{ maxWidth: isDesktop ? "1024px" : "680px", aspectRatio: isDesktop ? "4 / 3" : undefined }}
         >
           <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
+
+          {/* ==== TOP HUD inside canvas ==== */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-3 z-[6] w-[calc(100%-16px)] max-w-[980px]">
+            <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow flex items-center gap-1">
+                <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
+                <b>{stateRef.current?.gold ?? 0}</b>
+              </div>
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🪓 DPS x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡 Gold x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🐶 Buy LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
+
+              <div className="flex items-center gap-3 ml-2">
+                <div className="relative w-8 h-8 rounded-full grid place-items-center" style={circleStyle(giftProgress, true)} title="Gift every 60s (max 1 offline)">
+                  <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🎁</div>
+                </div>
+                <div className="relative w-8 h-8 rounded-full grid place-items-center" style={circleStyle(dogProgress, true)} title="Auto-dog every 2m (bank up to 6)">
+                  <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🐶</div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { setUi((u) => ({ ...u, muted: !u.muted })); setTimeout(save, 0); }}
+                className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600"
+              >
+                {ui.muted ? "🔇" : "🔊"}
+              </button>
+            </div>
+
+            {/* Actions row */}
+            <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
+              <button
+                onClick={addMiner}
+                disabled={!stateRef.current}
+                className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
+              >
+                + Add Miner (LV {stateRef.current?.spawnLevel || 1}) — {stateRef.current?.spawnCost ?? ui.spawnCost}
+              </button>
+
+              <button
+                onClick={upgradeDps}
+                disabled={!stateRef.current}
+                className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
+              >
+                DPS +10% (Cost {getDpsCost()})
+              </button>
+
+              <button
+                onClick={upgradeGold}
+                disabled={!stateRef.current}
+                className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
+              >
+                Gold +10% (Cost {getGoldCost()})
+              </button>
+
+              <button onClick={onAdd} className="px-3 py-1.5 rounded-xl bg-indigo-400 hover:bg-indigo-300 text-slate-900 font-bold shadow">
+                ADD
+              </button>
+              <button onClick={onCollect} className="px-3 py-1.5 rounded-xl bg-fuchsia-400 hover:bg-fuchsia-300 text-slate-900 font-bold shadow">
+                COLLECT
+              </button>
+            </div>
+          </div>
+
+          {/* Toast (gift result) — INSIDE canvas & lower */}
+          {giftToast && (
+            <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "100px" }}>
+              <div className="px-4 py-2 rounded-xl bg-emerald-400 text-black font-extrabold shadow-lg animate-[fadeOut_3s_ease-out_forwards]">
+                {giftToast.text}
+              </div>
+              <style jsx global>{`
+                @keyframes fadeOut {
+                  0% { opacity: 0; transform: translateY(-6px) scale(0.96); }
+                  15% { opacity: 1; transform: translateY(0) scale(1); }
+                  80% { opacity: 1; }
+                  100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+                }
+              `}</style>
+            </div>
+          )}
+
+          {/* Center Gift Button — INSIDE canvas */}
+          {!showIntro && !gamePaused && !showCollect && giftReadyFlag && (
+            <div className="absolute inset-0 z-[8] flex items-center justify-center pointer-events-none">
+              <button
+                onClick={grantGift}
+                className="pointer-events-auto px-6 py-4 rounded-2xl font-extrabold text-black shadow-2xl bg-gradient-to-br from-yellow-300 to-amber-400 border border-yellow-200 hover:from-yellow-200 hover:to-amber-300 active:scale-95
+                           animate-[pop_1.2s_ease-in-out_infinite] relative"
+              >
+                🎁 Claim Gift
+                <span className="absolute -inset-2 rounded-3xl blur-xl bg-yellow-400/30 -z-10" />
+              </button>
+              <style jsx global>{`
+                @keyframes pop {
+                  0%   { transform: translateZ(0) scale(1);    box-shadow: 0 8px 30px rgba(251,191,36,0.25); }
+                  50%  { transform: translateZ(0) scale(1.04); box-shadow: 0 10px 45px rgba(251,191,36,0.35); }
+                  100% { transform: translateZ(0) scale(1);    box-shadow: 0 8px 30px rgba(251,191,36,0.25); }
+                }
+              `}</style>
+            </div>
+          )}
         </div>
 
+        {/* Help line (אפשר להשאיר/להסיר) */}
         <p className="opacity-70 text-[11px] mt-2">
           4 lanes • Drag to move/merge • Break rocks → earn gold • Autosave on this device.
         </p>
 
-        {/* Center Gift Button (appears when ready) */}
-        {!showIntro && !gamePaused && !showCollect && giftReadyFlag && (
-          <div className="pointer-events-none fixed inset-0 z-[999] flex items-center justify-center">
-            <button
-              onClick={grantGift}
-              className="pointer-events-auto px-6 py-4 rounded-2xl font-extrabold text-black shadow-2xl bg-gradient-to-br from-yellow-300 to-amber-400 border border-yellow-200 hover:from-yellow-200 hover:to-amber-300 active:scale-95
-                         animate-[pop_1.2s_ease-in-out_infinite] relative"
-            >
-              🎁 Claim Gift
-              <span className="absolute -inset-2 rounded-3xl blur-xl bg-yellow-400/30 -z-10" />
-            </button>
-            <style jsx global>{`
-              @keyframes pop {
-                0%   { transform: translateZ(0) scale(1);    box-shadow: 0 8px 30px rgba(251,191,36,0.25); }
-                50%  { transform: translateZ(0) scale(1.04); box-shadow: 0 10px 45px rgba(251,191,36,0.35); }
-                100% { transform: translateZ(0) scale(1);    box-shadow: 0 8px 30px rgba(251,191,36,0.25); }
-              }
-            `}</style>
+        {/* Offline COLLECT overlay */}
+        {showCollect && (
+          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/85 px-6 text-center">
+            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 border border-white/20 shadow-2xl max-w-sm w-full">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <img src={IMG_COIN} alt="coin" className="w-6 h-6" />
+                <h3 className="text-xl font-extrabold text-white">While you were away…</h3>
+              </div>
+              <p className="text-gray-200 mb-4">
+                Earned{" "}
+                <b className="text-yellow-300">
+                  {(stateRef.current?.pendingOfflineGold || 0).toLocaleString()}
+                </b>{" "}
+                coins in the background.
+              </p>
+              <button
+                onClick={onOfflineCollect}
+                className="mx-auto px-6 py-3 rounded-xl bg-yellow-400 text-black font-extrabold text-lg shadow active:scale-95"
+              >
+                COLLECT
+              </button>
+            </div>
           </div>
         )}
 
