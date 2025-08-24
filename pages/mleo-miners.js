@@ -1,6 +1,7 @@
 // pages/mleo-miners.js
-// v4.5 — Mobile-only fullscreen, portrait lock, aligned to 4-rail BG.
-// Adds coin cost on DPS/Gold buttons, safe guards for stateRef, disables buttons until init.
+// v4.9 — Mobile fullscreen + portrait lock, 4-rail alignment,
+// OFFLINE earnings + center COLLECT overlay, Intro with CONNECT WALLET / SKIP,
+// dynamic costs, safe guards.
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -9,11 +10,11 @@ import Layout from "../components/Layout";
 const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v4_5";
+const LS_KEY = "mleoMiners_v4_9";
 
-// Background with the 4 rails (your image)
+// Assets
 const IMG_BG    = "/images/bg-cave.png";
-const IMG_MINER = "/images/leo-miner-4x.png"; // sprite 4 frames
+const IMG_MINER = "/images/leo-miner-4x.png";
 const IMG_ROCK  = "/images/rock.png";
 const IMG_COIN  = "/images/coin.png";
 
@@ -29,10 +30,13 @@ const ROCK_BASE_HP = 60;
 const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 1.0;
 
-// Exact lane positions (fractions of background height)
+// Rail alignment (fractions of BG height)
 const TRACK_Y_FRACS = [0.305, 0.535, 0.755, 0.935];
 const LANE_H_FRAC_MOBILE = 0.175;
 const LANE_H_FRAC_DESK   = 0.19;
+
+// Offline cap
+const OFFLINE_CAP_HOURS = 12;
 
 // ===== Component =====
 export default function MleoMiners() {
@@ -51,6 +55,9 @@ export default function MleoMiners() {
   const [showIntro, setShowIntro] = useState(true);
   const [playerName, setPlayerName] = useState("");
   const [gamePaused, setGamePaused] = useState(true);
+
+  // Offline collect overlay
+  const [showCollect, setShowCollect] = useState(false);
 
   // ===== Helpers =====
   const play = (src) => { if (ui.muted || !src) return; try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {} };
@@ -78,6 +85,9 @@ export default function MleoMiners() {
     onceSpawned: false,
     portrait: false,
     paused: true,
+    // OFFLINE
+    lastSeen: Date.now(),
+    pendingOfflineGold: 0,
   });
 
   const save = () => {
@@ -86,11 +96,64 @@ export default function MleoMiners() {
       localStorage.setItem(LS_KEY, JSON.stringify({
         lanes: s.lanes, miners: s.miners, nextId: s.nextId,
         gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
-        muted: ui.muted, onceSpawned: s.onceSpawned
+        muted: ui.muted, onceSpawned: s.onceSpawned,
+        lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
       }));
     } catch {}
   };
   const load = () => { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } };
+
+  // ===== OFFLINE helpers =====
+  const laneDpsSum = (s, laneIdx) => {
+    let dps = 0;
+    for (let k = 0; k < SLOTS_PER_LANE; k++) {
+      const cell = s.lanes[laneIdx].slots[k];
+      if (!cell) continue;
+      const m = s.miners[cell.id];
+      dps += BASE_DPS * Math.pow(LEVEL_DPS_MUL, m.level - 1) * s.dpsMult;
+    }
+    return dps;
+  };
+
+  const simulateOffline = (seconds, s) => {
+    if (!s || seconds <= 0) return 0;
+    const capSec = Math.min(seconds, OFFLINE_CAP_HOURS * 3600);
+    let total = 0;
+
+    for (let l = 0; l < LANES; l++) {
+      const dps = laneDpsSum(s, l);
+      if (dps <= 0) continue;
+      let remain = capSec;
+
+      while (remain > 0) {
+        const rock = s.lanes[l].rock;
+        const tToBreak = rock.hp / dps;
+        if (tToBreak <= remain) {
+          total += Math.floor(rock.maxHp * GOLD_FACTOR * s.goldMult);
+          const idx = s.lanes[l].rockCount + 1;
+          s.lanes[l].rockCount = idx;
+          s.lanes[l].rock = newRock(l, idx);
+          remain -= tToBreak;
+        } else {
+          rock.hp = Math.max(1, rock.hp - dps * remain);
+          remain = 0;
+        }
+      }
+    }
+    return Math.floor(total);
+  };
+
+  const onOfflineCollect = () => {
+    const s = stateRef.current; if (!s) return;
+    const add = s.pendingOfflineGold || 0;
+    if (add > 0) {
+      s.gold += add;
+      s.pendingOfflineGold = 0;
+      setUi(u => ({ ...u, gold: s.gold }));
+      save();
+    }
+    setShowCollect(false);
+  };
 
   // ===== Fullscreen + Orientation lock (mobile only) =====
   const enterFullscreenAndLockMobile = async () => {
@@ -106,10 +169,22 @@ export default function MleoMiners() {
 
   // ===== Init & Resize =====
   useEffect(() => {
-    const s = load();
-    const init = s ? { ...newState(), ...s, anim: { t: 0, coins: [], hint: s.onceSpawned ? 0 : 1 } } : newState();
+    const loaded = load();
+    const init = loaded ? { ...newState(), ...loaded, anim: { t: 0, coins: [], hint: loaded.onceSpawned ? 0 : 1 } } : newState();
+
+    // offline on boot
+    const now = Date.now();
+    let reward = 0;
+    if (loaded?.lastSeen) {
+      const elapsedSec = Math.max(0, (now - loaded.lastSeen) / 1000);
+      if (elapsedSec > 1) reward = simulateOffline(elapsedSec, init);
+    }
+    init.lastSeen = now;
+    init.pendingOfflineGold = (init.pendingOfflineGold || 0) + reward;
+
     stateRef.current = init;
-    setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: s?.muted || false }));
+    setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: loaded?.muted || false }));
+    if (reward > 0) setShowCollect(true);
 
     const updateViewportFlags = () => {
       const w = window.innerWidth, h = window.innerHeight;
@@ -131,18 +206,54 @@ export default function MleoMiners() {
     const c = canvasRef.current;
     if (!c) {
       const id = requestAnimationFrame(() => { const c2 = canvasRef.current; if (!c2) return; setupCanvasAndLoop(c2); });
-      return () => cancelAnimationFrame(id);
+      return () => {
+        cancelAnimationFrame(id);
+        window.removeEventListener("resize", updateViewportFlags);
+        window.removeEventListener("orientationchange", updateViewportFlags);
+        document.removeEventListener("fullscreenchange", updateViewportFlags);
+        document.removeEventListener("touchmove", preventTouchScroll);
+      };
     }
     const cleanup = setupCanvasAndLoop(c);
+
+    // visibility handlers for offline
+    const onVisibility = () => {
+      const s = stateRef.current; if (!s) return;
+      if (document.visibilityState === "hidden") {
+        s.lastSeen = Date.now();
+        save();
+      } else if (document.visibilityState === "visible") {
+        const now2 = Date.now();
+        const elapsed = Math.max(0, (now2 - (s.lastSeen || now2)) / 1000);
+        if (elapsed > 1) {
+          const r = simulateOffline(elapsed, s);
+          s.lastSeen = now2;
+          if (r > 0) {
+            s.pendingOfflineGold = (s.pendingOfflineGold || 0) + r;
+            setShowCollect(true);
+            save();
+          }
+        }
+      }
+    };
+    const onHide = () => { const s = stateRef.current; if (s) { s.lastSeen = Date.now(); save(); } };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+
     return () => {
       cleanup && cleanup();
       window.removeEventListener("resize", updateViewportFlags);
       window.removeEventListener("orientationchange", updateViewportFlags);
       document.removeEventListener("fullscreenchange", updateViewportFlags);
       document.removeEventListener("touchmove", preventTouchScroll);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ui.muted, isMobileLandscape, gamePaused, isDesktop, isPortrait]);
+  }, [ui.muted, isMobileLandscape, gamePaused, isDesktop, isPortrait, showIntro]);
 
   function setupCanvasAndLoop(cnv) {
     const ctx = cnv.getContext("2d"); if (!ctx) return;
@@ -153,7 +264,6 @@ export default function MleoMiners() {
       const rect = wrapRef.current.getBoundingClientRect();
 
       if (!isDesktop && isPortrait) {
-        // Mobile portrait: מינימום HUD → כל הגובה למשחק
         const HUD_RESERVED = 140;
         const availableH = Math.max(320, window.innerHeight - HUD_RESERVED);
 
@@ -187,7 +297,7 @@ export default function MleoMiners() {
 
     // input
     const onDown = (e) => {
-      if (isMobileLandscape || gamePaused) return;
+      if (isMobileLandscape || gamePaused || showIntro || showCollect) return;
       const p = pos(e);
       const hit = pickMiner(p.x, p.y);
       if (hit) {
@@ -273,7 +383,6 @@ export default function MleoMiners() {
     return { x:PADDING, y:PADDING, w:(c?.clientWidth||0)-PADDING*2, h:(c?.clientHeight||0)-PADDING*2 };
   };
 
-  // lane height fits the rails in the background
   const laneHeight = () => {
     const b = boardRect();
     return b.h * (isDesktop ? LANE_H_FRAC_DESK : LANE_H_FRAC_MOBILE);
@@ -287,7 +396,6 @@ export default function MleoMiners() {
     return { x:b.x, y, w:b.w, h };
   };
 
-  // rocks slightly smaller so they don't hide the rail
   const rockWidth = (L) => Math.min(L.w * 0.16, Math.max(50, L.h * 0.64));
 
   const slotRect = (lane, slot) => {
@@ -379,13 +487,13 @@ export default function MleoMiners() {
     setUi(u=>({...u, gold:s.gold})); save();
   };
 
-  const onAdd    = () => { play(S_CLICK); alert("ADD (Digital wallet) — coming soon 🤝"); };
-  const onColect = () => { play(S_CLICK); alert("COLECT (Digital wallet) — coming soon 🪙"); };
+  const onAdd     = () => { play(S_CLICK); alert("ADD (Digital wallet) — coming soon 🤝"); };
+  const onCollect = () => { play(S_CLICK); alert("COLLECT (Digital wallet) — coming soon 🪙"); };
 
   const tick = (dt) => {
     const s = stateRef.current; if (!s) return;
     s.anim.t += dt;
-    s.paused = gamePaused;
+    s.paused = gamePaused || showIntro || showCollect;
     if (s.paused) return;
 
     for (let l=0; l<LANES; l++) {
@@ -406,6 +514,7 @@ export default function MleoMiners() {
       }
     }
     s.anim.coins = s.anim.coins.filter(cn=>{ cn.t += dt*1.2; return cn.t < 1; });
+    s.lastSeen = Date.now();
   };
 
   // ===== Drawing (hoisted) =====
@@ -420,7 +529,7 @@ export default function MleoMiners() {
     for (let l=0; l<LANES; l++) {
       const L = laneRect(l);
 
-      // slot pads — minimal, aligned with rails
+      // slot pads
       for (let sidx=0; sidx<SLOTS_PER_LANE; sidx++) {
         const r = slotRect(l, sidx);
         const padY = L.y + L.h * 0.5;
@@ -473,7 +582,6 @@ export default function MleoMiners() {
   function drawBgCover(ctx, b) {
     const img = new Image(); img.src = IMG_BG;
     if (img.complete && img.naturalWidth > 0) {
-      // CSS 'cover'
       const iw = img.naturalWidth, ih = img.naturalHeight;
       const bw = b.w, bh = b.h;
       const ir = iw / ih, br = bw / bh;
@@ -495,7 +603,6 @@ export default function MleoMiners() {
     if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, rect.x+pad, rect.y+pad, rw, rh);
     else { ctx.fillStyle="#6b7280"; ctx.fillRect(rect.x+pad, rect.y+pad, rw, rh); }
 
-    // small HP bar
     const pct = Math.max(0, rock.hp / rock.maxHp);
     const bx = rect.x + pad, by = rect.y + 4, barW = rw, barH = 6;
     ctx.fillStyle="#0ea5e9"; ctx.fillRect(bx, by, barW * pct, barH);
@@ -527,7 +634,6 @@ export default function MleoMiners() {
     ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(cx - w*0.5, cy - w*0.62, 30, 16);
     ctx.fillStyle="#fff"; ctx.font="bold 10px system-ui"; ctx.fillText(m.level, cx - w*0.5 + 9, cy - w*0.62 + 12);
 
-    // pop text
     if (m.pop) {
       const k = Math.max(0, 1 - (stateRef.current.anim.t % 1));
       ctx.globalAlpha = k; ctx.fillStyle="#34d399"; ctx.font="bold 15px system-ui";
@@ -575,10 +681,46 @@ export default function MleoMiners() {
           </div>
         )}
 
-        {/* Intro */}
-        {showIntro && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
-            <img src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-5" />
+        {/* Offline COLLECT overlay */}
+        {showCollect && (
+          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/85 px-6 text-center">
+            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 border border-white/20 shadow-2xl max-w-sm w-full">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <img src={IMG_COIN} alt="coin" className="w-6 h-6" />
+                <h3 className="text-xl font-extrabold text-white">While you were away…</h3>
+              </div>
+              <p className="text-gray-200 mb-4">
+                Earned{" "}
+                <b className="text-yellow-300">
+                  {(stateRef.current?.pendingOfflineGold || 0).toLocaleString()}
+                </b>{" "}
+                coins in the background.
+              </p>
+              <button
+                onClick={onOfflineCollect}
+                className="mx-auto px-6 py-3 rounded-xl bg-yellow-400 text-black font-extrabold text-lg shadow active:scale-95"
+              >
+                COLLECT
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Intro (CONNECT WALLET / SKIP) */}
+{showIntro && (
+  <div
+    className="absolute inset-0 flex flex-col items-center justify-start
+               bg-gray-900 z-[999] text-center p-6 pt-[6vh] sm:pt-[8vh]"
+    style={{ paddingTop: 'max(env(safe-area-inset-top, 16px), 6vh)' }}
+  >
+<img
+  src="/images/leo-intro.png"
+  alt="Leo"
+  width={200}
+  height={200}
+  className="-mt-4 sm:-mt-6 mb-4 sm:mb-5"
+/>
+
             <h1 className="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
             <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
 
@@ -587,31 +729,50 @@ export default function MleoMiners() {
               placeholder="Enter your name"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              className="mb-3 px-4 py-2 rounded text-black w-56 text-center"
+              className="mb-4 px-4 py-2 rounded text-black w-56 text-center"
             />
 
-            <button
-              onClick={async () => {
-                if (!playerName.trim()) return;
-                try { new Audio(S_CLICK).play().then(()=>{}).catch(()=>{}); } catch {}
-                const s = stateRef.current;
-                if (s && !s.onceSpawned) { spawnMiner(s); s.onceSpawned = true; save(); }
-                setShowIntro(false);
-                setGamePaused(false);
-                await enterFullscreenAndLockMobile();
-              }}
-              disabled={!playerName.trim()}
-              className={`px-7 py-3 font-bold rounded-lg text-lg shadow-lg transition ${
-                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
-              }`}
-            >
-              ▶ Start Game
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!playerName.trim()) return;
+                  play(S_CLICK);
+                  alert("CONNECT WALLET — coming soon 🤝");
+                  const s = stateRef.current;
+                  if (s && !s.onceSpawned) { spawnMiner(s); s.onceSpawned = true; save(); }
+                  setShowIntro(false); setGamePaused(false);
+                  await enterFullscreenAndLockMobile();
+                }}
+                disabled={!playerName.trim()}
+                className={`px-5 py-3 font-bold rounded-lg text-base shadow transition ${
+                  playerName.trim() ? "bg-indigo-400 hover:bg-indigo-300 text-black" : "bg-gray-500 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                CONNECT WALLET
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!playerName.trim()) return;
+                  play(S_CLICK);
+                  const s = stateRef.current;
+                  if (s && !s.onceSpawned) { spawnMiner(s); s.onceSpawned = true; save(); }
+                  setShowIntro(false); setGamePaused(false);
+                  await enterFullscreenAndLockMobile();
+                }}
+                disabled={!playerName.trim()}
+                className={`px-5 py-3 font-bold rounded-lg text-base shadow transition ${
+                  playerName.trim() ? "bg-yellow-400 hover:bg-yellow-300 text-black" : "bg-gray-500 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                SKIP
+              </button>
+            </div>
           </div>
         )}
 
         {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2">MLEO Miners — v4.5</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2">MLEO Miners — v4.9</h1>
 
         {/* HUD (compact) */}
         <div className="flex gap-2 flex-wrap justify-center items-center my-2 text-sm">
@@ -658,8 +819,8 @@ export default function MleoMiners() {
           <button onClick={onAdd} className="px-3 py-1.5 rounded-xl bg-indigo-400 hover:bg-indigo-300 text-slate-900 font-bold shadow">
             ADD
           </button>
-          <button onClick={onColect} className="px-3 py-1.5 rounded-xl bg-fuchsia-400 hover:bg-fuchsia-300 text-slate-900 font-bold shadow">
-            COLECT
+          <button onClick={onCollect} className="px-3 py-1.5 rounded-xl bg-fuchsia-400 hover:bg-fuchsia-300 text-slate-900 font-bold shadow">
+            COLLECT
           </button>
         </div>
 
