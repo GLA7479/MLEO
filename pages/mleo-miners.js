@@ -1000,12 +1000,15 @@ export default function MleoMiners() {
         )}
 
         {/* Title (the only thing outside the canvas) */}
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2">MLEO Miners — v5.4</h1>
+<h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
+  MLEO Miners — v5.4
+</h1>
 
         {/* ===== Canvas wrapper ===== */}
         <div
-          id="miners-canvas-wrap"
-          className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-2"
+  id="miners-canvas-wrap"
+  className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-6"
+
           style={{ maxWidth: isDesktop ? "1024px" : "680px", aspectRatio: isDesktop ? "4 / 3" : undefined }}
         >
           <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
@@ -1075,7 +1078,7 @@ export default function MleoMiners() {
 
           {/* Toast (gift result) — INSIDE canvas & lower */}
           {giftToast && (
-            <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "100px" }}>
+            <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "200px" }}>
               <div className="px-4 py-2 rounded-xl bg-emerald-400 text-black font-extrabold shadow-lg animate-[fadeOut_3s_ease-out_forwards]">
                 {giftToast.text}
               </div>
