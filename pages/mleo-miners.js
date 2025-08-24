@@ -1,7 +1,8 @@
 // pages/mleo-miners.js
-// v4.9 — Mobile fullscreen + portrait lock, 4-rail alignment,
-// OFFLINE earnings + center COLLECT overlay, Intro with CONNECT WALLET / SKIP,
-// dynamic costs, safe guards.
+// v5.1 — Per-lane control for perfect BG fit:
+//   • ROCK_TOP_FRACS[4], ROCK_BOTTOM_FRACS[4]
+//   • MINER_Y_FRACS[4], MINER_SIZE_FRACS[4]
+// שחק רק במערכים למטה לכל מסילה. שאר הלוגיקה זהה ל-v5.0 (כולל OFFLINE).
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -10,7 +11,7 @@ import Layout from "../components/Layout";
 const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v4_9";
+const LS_KEY = "mleoMiners_v5_1";
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -31,12 +32,22 @@ const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 1.0;
 
 // Rail alignment (fractions of BG height)
-const TRACK_Y_FRACS = [0.305, 0.535, 0.755, 0.935];
+const TRACK_Y_FRACS = [0.405, 0.535, 0.695, 0.835];
 const LANE_H_FRAC_MOBILE = 0.175;
 const LANE_H_FRAC_DESK   = 0.19;
 
 // Offline cap
 const OFFLINE_CAP_HOURS = 12;
+
+// ====== *** PER-LANE KNOBS (EDIT HERE) *** ======
+// סלעים — רווח מלמעלה/מלמטה לכל מסילה (0..1 מתוך גובה המסילה)
+const ROCK_TOP_FRACS    = [0.06, 0.06, 0.06, 0.06];
+const ROCK_BOTTOM_FRACS = [0.06, 0.06, 0.06, 0.06];
+
+// כלבים — מיקום אנכי (0=למעלה, 1=למטה) + גודל יחסי לכל מסילה
+const MINER_Y_FRACS     = [0.56, 0.56, 0.56, 0.56];
+const MINER_SIZE_FRACS  = [0.84, 0.84, 0.84, 0.84];
+// =================================================
 
 // ===== Component =====
 export default function MleoMiners() {
@@ -61,6 +72,9 @@ export default function MleoMiners() {
 
   // ===== Helpers =====
   const play = (src) => { if (ui.muted || !src) return; try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {} };
+
+  const laneSafe = (arr, lane, fallback) =>
+    Array.isArray(arr) && arr[lane] != null ? arr[lane] : (fallback ?? arr?.[0] ?? 0);
 
   const newRock = (lane, idx) => {
     const hp = Math.floor(ROCK_BASE_HP * Math.pow(ROCK_HP_MUL, idx));
@@ -404,10 +418,16 @@ export default function MleoMiners() {
     const cellW = (L.w - rw) / SLOTS_PER_LANE;
     return { x:L.x + slot * cellW, y:L.y, w:cellW - 4, h:L.h };
   };
+
+  // === Per-lane rock rect with TOP/BOTTOM arrays ===
   const rockRect = (lane) => {
-    const L = laneRect(lane);
+    const L  = laneRect(lane);
     const rw = rockWidth(L);
-    return { x:L.x + L.w - rw - 4, y:L.y + 4, w:rw, h:L.h - 8 };
+    const top    = laneSafe(ROCK_TOP_FRACS, lane, 0.06);
+    const bottom = laneSafe(ROCK_BOTTOM_FRACS, lane, 0.06);
+    const y  = L.y + L.h * top;
+    const h  = L.h * Math.max(0.0, 1 - top - bottom);
+    return { x: L.x + L.w - rw - 4, y, w: rw, h };
   };
 
   const pos = (e) => {
@@ -431,7 +451,8 @@ export default function MleoMiners() {
       for(let s=0;s<SLOTS_PER_LANE;s++){
         const cell = st.lanes[l].slots[s]; if(!cell) continue;
         const r = slotRect(l,s);
-        const cx = r.x + r.w*0.52, cy = r.y + r.h*0.56;
+        const cyFrac = laneSafe(MINER_Y_FRACS, l, 0.56);
+        const cx = r.x + r.w*0.52, cy = r.y + r.h*cyFrac;
         const rad = Math.min(r.w,r.h)*0.33;
         const dx=x-cx, dy=y-cy;
         if (dx*dx + dy*dy < rad*rad) return { id:cell.id, x:cx, y:cy };
@@ -557,8 +578,9 @@ export default function MleoMiners() {
       const m = s2.miners[dragRef.current.id];
       if (m) {
         const r = slotRect(m.lane, m.slot);
+        const cyFrac = laneSafe(MINER_Y_FRACS, m.lane, 0.56);
         const x = dragRef.current.x ?? (r.x + r.w*0.52);
-        const y = dragRef.current.y ?? (r.y + r.h*0.56);
+        const y = dragRef.current.y ?? (r.y + r.h*cyFrac);
         drawMinerGhost(ctx, x, y, m.level);
       }
     }
@@ -616,9 +638,12 @@ export default function MleoMiners() {
   }
 
   function drawMiner(ctx, lane, slot, m) {
-    const r = slotRect(lane, slot);
-    const cx = r.x + r.w*0.52, cy = r.y + r.h*0.56;
-    const w = Math.min(r.w, r.h) * 0.84;
+    const r  = slotRect(lane, slot);
+    const cx = r.x + r.w*0.52;
+    const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
+    const sizeF  = laneSafe(MINER_SIZE_FRACS, lane, 0.84);
+    const cy = r.y + r.h*cyFrac;
+    const w  = Math.min(r.w, r.h) * sizeF;
 
     const img = new Image(); img.src = IMG_MINER;
     const frame = Math.floor((stateRef.current.anim.t * 8) % 4);
@@ -707,20 +732,9 @@ export default function MleoMiners() {
         )}
 
         {/* Intro (CONNECT WALLET / SKIP) */}
-{showIntro && (
-  <div
-    className="absolute inset-0 flex flex-col items-center justify-start
-               bg-gray-900 z-[999] text-center p-6 pt-[6vh] sm:pt-[8vh]"
-    style={{ paddingTop: 'max(env(safe-area-inset-top, 16px), 6vh)' }}
-  >
-<img
-  src="/images/leo-intro.png"
-  alt="Leo"
-  width={200}
-  height={200}
-  className="-mt-4 sm:-mt-6 mb-4 sm:mb-5"
-/>
-
+        {showIntro && (
+          <div className="absolute inset-0 flex flex-col items-center justify-start pt-8 bg-gray-900 z-[999] text-center p-6">
+            <img src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-5" />
             <h1 className="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
             <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
 
@@ -772,7 +786,7 @@ export default function MleoMiners() {
         )}
 
         {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2">MLEO Miners — v4.9</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-2">MLEO Miners — v5.1</h1>
 
         {/* HUD (compact) */}
         <div className="flex gap-2 flex-wrap justify-center items-center my-2 text-sm">
@@ -798,7 +812,7 @@ export default function MleoMiners() {
             + Add Miner ({stateRef.current?.spawnCost ?? ui.spawnCost})
           </button>
 
-          <button
+        <button
             onClick={upgradeDps}
             disabled={disabled}
             title={disabled ? "Loading..." : ""}
