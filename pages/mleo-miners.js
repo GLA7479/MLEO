@@ -32,7 +32,7 @@ const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 1.0;
 
 // Rail alignment (fractions of BG height)
-const TRACK_Y_FRACS = [0.435, 0.545, 0.695, 0.835];
+const TRACK_Y_FRACS = [0.375, 0.525, 0.675, 0.815];
 const LANE_H_FRAC_MOBILE = 0.175;
 const LANE_H_FRAC_DESK   = 0.19;
 
