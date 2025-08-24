@@ -56,6 +56,16 @@ const MINER_Y_FRACS     = [0.56, 0.56, 0.56, 0.56];
 const MINER_SIZE_FRACS  = [0.84, 0.84, 0.84, 0.84];
 // =================================================
 
+// ===== Formatting =====
+const formatShort = (n) => {
+  const abs = Math.abs(n || 0);
+  if (abs >= 1e12) return (n / 1e12).toFixed(abs < 1e13 ? 1 : 0) + "T";
+  if (abs >= 1e9)  return (n / 1e9 ).toFixed(abs < 1e10 ? 1 : 0) + "B";
+  if (abs >= 1e6)  return (n / 1e6 ).toFixed(abs < 1e7  ? 1 : 0) + "M";
+  if (abs >= 1e3)  return (n / 1e3 ).toFixed(abs < 1e4  ? 1 : 0) + "K";
+  return String(Math.floor(n || 0));
+};
+
 export default function MleoMiners() {
   const wrapRef   = useRef(null);
   const canvasRef = useRef(null);
@@ -657,7 +667,7 @@ export default function MleoMiners() {
       const bonus = Math.round(base * (0.75 + Math.random()*0.5));
       s.gold += bonus;
       setUi(u=>({...u, gold:s.gold}));
-      toastText = `+${bonus.toLocaleString()} coins`;
+      toastText = `+${formatShort(bonus)} coins`;
       spawnCoinBurst(cx, cy, 28);
     } else if (roll < 0.85) {
       s.dpsMult = +(s.dpsMult * 1.1).toFixed(3);
@@ -857,7 +867,7 @@ export default function MleoMiners() {
   function drawMiner(ctx, lane, slot, m) {
     const r  = slotRect(lane, slot);
     const cx = r.x + r.w*0.52;
-    const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
+       const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
     const sizeF  = laneSafe(MINER_SIZE_FRACS, lane, 0.84);
     const cy = r.y + r.h*cyFrac;
     const w  = Math.min(r.w, r.h) * sizeF;
@@ -928,6 +938,18 @@ export default function MleoMiners() {
     const elapsed = Math.max(0, now - last);
     return Math.max(0, Math.min(1, elapsed/total));
   })();
+
+  // ===== Buy availability (render-time) =====
+  const sNow = stateRef.current;
+  const spawnCostNow = sNow?.spawnCost ?? ui.spawnCost;
+  const dpsCostNow   = getDpsCost();
+  const goldCostNow  = getGoldCost();
+
+  const canBuyMiner = !!sNow && sNow.gold >= spawnCostNow && countMiners(sNow) < MAX_MINERS;
+  const canBuyDps   = !!sNow && sNow.gold >= dpsCostNow;
+  const canBuyGold  = !!sNow && sNow.gold >= goldCostNow;
+
+  const price = (n) => formatShort(n ?? 0);
 
   return (
     <Layout>
@@ -1000,15 +1022,14 @@ export default function MleoMiners() {
         )}
 
         {/* Title (the only thing outside the canvas) */}
-<h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-  MLEO Miners — v5.4
-</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
+          MLEO Miners — v5.4
+        </h1>
 
         {/* ===== Canvas wrapper ===== */}
         <div
-  id="miners-canvas-wrap"
-  className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-6"
-
+          id="miners-canvas-wrap"
+          className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-6"
           style={{ maxWidth: isDesktop ? "1024px" : "680px", aspectRatio: isDesktop ? "4 / 3" : undefined }}
         >
           <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
@@ -1018,7 +1039,7 @@ export default function MleoMiners() {
             <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow flex items-center gap-1">
                 <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
-                <b>{stateRef.current?.gold ?? 0}</b>
+                <b>{formatShort(stateRef.current?.gold ?? 0)}</b>
               </div>
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🪓 DPS x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡 Gold x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
@@ -1045,26 +1066,35 @@ export default function MleoMiners() {
             <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
               <button
                 onClick={addMiner}
-                disabled={!stateRef.current}
-                className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
+                disabled={!canBuyMiner}
+                className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
+                  ${canBuyMiner
+                    ? "bg-emerald-500 hover:bg-emerald-400 ring-2 ring-emerald-300 shadow-[0_0_18px_rgba(16,185,129,.55)]"
+                    : "bg-emerald-500 opacity-60 cursor-not-allowed"}`}
               >
-                + Add Miner (LV {stateRef.current?.spawnLevel || 1}) — {stateRef.current?.spawnCost ?? ui.spawnCost}
+                + Add Miner (LV {sNow?.spawnLevel || 1}) — {price(spawnCostNow)}
               </button>
 
               <button
                 onClick={upgradeDps}
-                disabled={!stateRef.current}
-                className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
+                disabled={!canBuyDps}
+                className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
+                  ${canBuyDps
+                    ? "bg-sky-500 hover:bg-sky-400 ring-2 ring-sky-300 shadow-[0_0_18px_rgba(56,189,248,.55)]"
+                    : "bg-sky-500 opacity-60 cursor-not-allowed"}`}
               >
-                DPS +10% (Cost {getDpsCost()})
+                DPS +10% (Cost {price(dpsCostNow)})
               </button>
 
               <button
                 onClick={upgradeGold}
-                disabled={!stateRef.current}
-                className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-bold shadow"
+                disabled={!canBuyGold}
+                className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
+                  ${canBuyGold
+                    ? "bg-amber-400 hover:bg-amber-300 ring-2 ring-amber-300 shadow-[0_0_18px_rgba(251,191,36,.6)]"
+                    : "bg-amber-400 opacity-60 cursor-not-allowed"}`}
               >
-                Gold +10% (Cost {getGoldCost()})
+                Gold +10% (Cost {price(goldCostNow)})
               </button>
 
               <button onClick={onAdd} className="px-3 py-1.5 rounded-xl bg-indigo-400 hover:bg-indigo-300 text-slate-900 font-bold shadow">
@@ -1102,7 +1132,7 @@ export default function MleoMiners() {
                            animate-[pop_1.2s_ease-in-out_infinite] relative"
               >
                 🎁 Claim Gift
-                <span className="absolute -inset-2 rounded-3xl blur-xl bg-yellow-400/30 -z-10" />
+                <span className="absolute -inset-2 rounded-3xl blur-3xl bg-yellow-400/30 -z-10" />
               </button>
               <style jsx global>{`
                 @keyframes pop {
@@ -1131,7 +1161,7 @@ export default function MleoMiners() {
               <p className="text-gray-200 mb-4">
                 Earned{" "}
                 <b className="text-yellow-300">
-                  {(stateRef.current?.pendingOfflineGold || 0).toLocaleString()}
+                  {formatShort(stateRef.current?.pendingOfflineGold || 0)}
                 </b>{" "}
                 coins in the background.
               </p>
