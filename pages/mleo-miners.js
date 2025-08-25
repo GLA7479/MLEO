@@ -11,7 +11,7 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE; // 16 cap
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_7"; // keep same key (adds fields without reset)
+const LS_KEY = "mleoMiners_v5_8"; // keep same key (adds fields without reset)
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
