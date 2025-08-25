@@ -1,6 +1,8 @@
 // pages/mleo-miners.js
-// v5.7 — Gifts: Dog(-1), Diamonds, 3x Diamonds => Rare chest (+coins x100/1000/10000 or Dog +3/+5/+7)
-//  • Keeps v5.6 features (empty-slot ADD pills, click-to-spawn at slot, smooth timers, image cache, shrinking rocks)
+// v5.6 — Empty-slot pill buttons (glowing) + click-to-spawn at slot
+//  • Pills on empty slots, with pulse glow when affordable
+//  • Click pill -> spawns miner at that specific slot (if affordable)
+//  • Keeps v5.5 improvements: smooth timers, image cache, shrinking rocks
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -10,7 +12,7 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE; // 16 cap
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_7"; // bump for new save shape
+const LS_KEY = "mleoMiners_v5_6";
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -30,27 +32,6 @@ const LEVEL_DPS_MUL = 1.9;
 const ROCK_BASE_HP = 60;
 const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 1.0;
-
-// ===== Diamond chest prize catalog (for UI) + deterministic "next prize" roll =====
-const DIAMOND_PRIZES = [
-  { key: "coins100",    label: "Coins ×100" },
-  { key: "dog+3",       label: "Dog +3 levels" },
-  { key: "coins1000",   label: "Coins ×1000" },
-  { key: "dog+5",       label: "Dog +5 levels" },
-  { key: "coins10000",  label: "Coins ×10000" },
-  { key: "dog+7",       label: "Dog +7 levels" },
-];
-
-// Weighted roll (not shown to players; only used to pre-roll the NEXT prize)
-function rollDiamondPrize() {
-  const r = Math.random();
-  if (r < 0.25)   return "coins100";
-  if (r < 0.50)   return "dog+3";
-  if (r < 0.675)  return "coins1000";
-  if (r < 0.85)   return "dog+5";
-  if (r < 0.925)  return "coins10000";
-  return "dog+7";
-}
 
 // Gifts
 const GIFT_INTERVAL_SEC = 60; // every minute (gameplay). Offline: can accrue max 1 ready gift.
@@ -114,14 +95,11 @@ export default function MleoMiners() {
   const [gamePaused, setGamePaused] = useState(true);
 
   // Offline collect overlay
-  theStateFix_maybeMigrateLocalStorage(); // ensure migration happens before first load
   const [showCollect, setShowCollect] = useState(false);
 
   // Gift UI
   const [giftReadyFlag, setGiftReadyFlag] = useState(false);
   const [giftToast, setGiftToast] = useState(null); // {text, id}
-  // Diamonds info modal
-  const [showDiamondInfo, setShowDiamondInfo] = useState(false);
 
   // UI pulse to keep timers smooth (re-render ~10Hz)
   const uiPulseAccumRef = useRef(0);
@@ -171,10 +149,6 @@ export default function MleoMiners() {
     giftNextAt: Date.now() + GIFT_INTERVAL_SEC * 1000,
     giftReady: false,
 
-    // Diamonds
-    diamonds: 0, // 0..2; at 3 → rare reward
-    nextDiamondPrize: rollDiamondPrize(), // pre-rolled NEXT diamond-chest reward
-
     // Auto-dog
     autoDogLastAt: Date.now(),
     autoDogBank: 0, // pending auto-spawns (0..6)
@@ -197,9 +171,6 @@ export default function MleoMiners() {
         totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
         // gifts
         giftNextAt: s.giftNextAt, giftReady: s.giftReady,
-        // diamonds
-        diamonds: s.diamonds || 0,
-        nextDiamondPrize: s.nextDiamondPrize,
         // auto-dog
         autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
       }));
@@ -298,11 +269,6 @@ export default function MleoMiners() {
       init.autoDogBank = Math.min(DOG_BANK_CAP, (init.autoDogBank || 0) + dogIntervals);
       init.autoDogLastAt = init.autoDogLastAt + dogIntervals * DOG_INTERVAL_SEC * 1000;
     }
-
-    // diamonds default
-    if (init.diamonds == null) init.diamonds = 0;
-    // ensure there's a pre-rolled next-diamond prize
-    if (!init.nextDiamondPrize) init.nextDiamondPrize = rollDiamondPrize();
 
     stateRef.current = init;
     setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: loaded?.muted || false }));
@@ -441,7 +407,7 @@ export default function MleoMiners() {
       if (isMobileLandscape || gamePaused || showIntro || showCollect) return;
       const p = pos(e);
 
-      // 1) Drag miner?
+      // 1) קודם כל — בדיקת גרירה של Miner
       const hit = pickMiner(p.x, p.y);
       if (hit) {
         dragRef.current = { active:true, id:hit.id, ox:p.x-hit.x, oy:p.y-hit.y };
@@ -449,7 +415,7 @@ export default function MleoMiners() {
         return;
       }
 
-      // 2) Click empty-slot pill → try add miner at that slot
+      // 2) קליק על כפתור-pill ב-slot ריק → מנסה להוסיף Miner שם
       const pill = pickPill(p.x, p.y);
       if (pill) {
         trySpawnAtSlot(pill.lane, pill.slot);
@@ -602,7 +568,7 @@ export default function MleoMiners() {
     const L = laneRect(lane);
     const r = slotRect(lane, slot);
     const padY = L.y + L.h * 0.5;
-    const pw = r.w * 0.22;    // slim & short
+    const pw = r.w * 0.22;    // much shorter
     const ph = L.h * 0.26;    // slim height
     const px = r.x + (r.w - pw) * 0.5;
     const py = padY - ph / 2;
@@ -758,56 +724,7 @@ export default function MleoMiners() {
   const onAdd     = () => { play(S_CLICK); alert("ADD (Digital wallet) — coming soon 🤝"); };
   const onCollect = () => { play(S_CLICK); alert("COLLECT (Digital wallet) — coming soon 🪙"); };
 
-  // ===== GIFT LOGIC =====
-
-  // Helper: convert a "dog gift" to coins if board is full
-  function grantDogOrCoins(s, targetLevel, cx, cy, reasonText) {
-    if (countMiners(s) < MAX_MINERS && spawnMiner(s, targetLevel)) {
-      setGiftToastWithTTL(`🐶 ${reasonText}: Dog LV ${targetLevel}`, 3000);
-      return;
-    }
-    // No space → compensate with coins ~ spawnCost * 1.0
-    const comp = Math.max(50, Math.round((s.spawnCost || 100) * 1.0));
-    s.gold += comp; setUi(u=>({...u, gold:s.gold}));
-    spawnCoinBurst(cx, cy, 26);
-    setGiftToastWithTTL(`🐶 No space — converted to +${formatShort(comp)} coins`, 3200);
-  }
-
-  function setGiftToastWithTTL(text, ttl=3000) {
-    const id = Math.random().toString(36).slice(2);
-    setGiftToast({ text, id });
-    setTimeout(() => { setGiftToast(cur => (cur && cur.id === id ? null : cur)); }, ttl);
-  }
-
-  // Diamond chest resolver: give exactly the pre-rolled NEXT prize, then roll the next one
-  function grantRareDiamondReward(s, cx, cy) {
-    const prize = s.nextDiamondPrize || rollDiamondPrize();
-    const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4)); // base like regular coin-gift
-
-    const giveCoins = (mult, label) => {
-      const gain = base * mult;
-      s.gold += gain; setUi(u=>({...u,gold:s.gold}));
-      spawnCoinBurst(cx, cy, 34);
-      play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${label} +${formatShort(gain)} coins`, 3600);
-    };
-
-    switch (prize) {
-      case "coins100":   giveCoins(100, "Coins ×100"); break;
-      case "coins1000":  giveCoins(1000, "Coins ×1000"); break;
-      case "coins10000": giveCoins(10000, "Coins ×10000"); break;
-      case "dog+3":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+3), cx, cy, "Diamond Chest"); return;
-      case "dog+5":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+5), cx, cy, "Diamond Chest"); return;
-      case "dog+7":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+7), cx, cy, "Diamond Chest"); return;
-      default:           giveCoins(100, "Coins ×100"); break;
-    }
-
-    // roll the next prize for the next 3×💎
-    s.nextDiamondPrize = rollDiamondPrize();
-    save();
-  }
-
-  // Gift resolver (with dog(-1) + diamond)
+  // Gift resolver
   const grantGift = () => {
     const s = stateRef.current; if (!s || !s.giftReady) return;
 
@@ -817,57 +734,33 @@ export default function MleoMiners() {
 
     const roll = Math.random();
     let toastText = "";
-
-    // Probabilities tuned to your description:
-    // Coins (most common) ............... ~62%
-    // Dog (-1 from spawn LVL) ........... ~10%  (more rare than coins, more common than Gold/DPS)
-    // Diamond ........................... ~9%   (between Dog and Gold/DPS)
-    // DPS +10% .......................... ~9%
-    // Gold +10% ......................... ~10%
-    if (roll < 0.62) {
-      // Coins
+    if (roll < 0.7) {
       const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4));
       const bonus = Math.round(base * (0.75 + Math.random()*0.5));
       s.gold += bonus;
       setUi(u=>({...u, gold:s.gold}));
       toastText = `+${formatShort(bonus)} coins`;
       spawnCoinBurst(cx, cy, 28);
-      play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${toastText}`, 3000);
-    } else if (roll < 0.72) {
-      // Dog at LVL (spawnLevel - 1), min 1
-      const target = Math.max(1, (s.spawnLevel || 1) - 1);
-      grantDogOrCoins(s, target, cx, cy, "Gift");
-    } else if (roll < 0.81) {
-      // Diamond
-      s.diamonds = Math.min(3, (s.diamonds || 0) + 1);
-      play(S_GIFT);
-      if (s.diamonds >= 3) {
-        s.diamonds = 0;
-        // trigger diamond chest (deterministic NEXT)
-        grantRareDiamondReward(s, cx, cy);
-      } else {
-        setGiftToastWithTTL(`💎 Diamond ${s.diamonds}/3`, 2800);
-      }
-    } else if (roll < 0.90) {
-      // DPS +10%
+    } else if (roll < 0.85) {
       s.dpsMult = +(s.dpsMult * 1.1).toFixed(3);
       toastText = "DPS +10%";
       spawnCoinBurst(cx, cy, 20);
-      play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${toastText}`, 3000);
     } else {
-      // Gold +10%
       s.goldMult = +(s.goldMult * 1.1).toFixed(3);
       toastText = "Gold +10%";
       spawnCoinBurst(cx, cy, 20);
-      play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${toastText}`, 3000);
     }
+
+    play(S_GIFT);
 
     s.giftReady = false;
     s.giftNextAt = Date.now() + GIFT_INTERVAL_SEC * 1000;
     setGiftReadyFlag(false);
+
+    const id = Math.random().toString(36).slice(2);
+    setGiftToast({ text: `🎁 ${toastText}`, id });
+    setTimeout(() => { setGiftToast(cur => (cur && cur.id === id ? null : cur)); }, 3000);
+
     save();
   };
 
@@ -962,8 +855,8 @@ export default function MleoMiners() {
 
     // gradient
     const g = ctx.createLinearGradient(sx, sy, sx, sy + sh);
-    if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); } // glow on
-    else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); } // off
+    if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); } // צהוב "נדלק"
+    else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); } // כבוי
 
     // outer glow (pulse)
     ctx.save();
@@ -992,133 +885,6 @@ export default function MleoMiners() {
     ctx.fillText(label, cx, cy);
     ctx.restore();
   }
-  // ===== Drawing helpers (MUST exist before draw()) =====
-  function drawBgCover(ctx, b) {
-    const img = getImg(IMG_BG);
-    if (img.complete && img.naturalWidth > 0) {
-      const iw = img.naturalWidth, ih = img.naturalHeight;
-      const bw = b.w, bh = b.h;
-      const ir = iw / ih, br = bw / bh;
-      let dw, dh;
-      if (br > ir) { dw = bw; dh = bw / ir; } else { dh = bh; dw = bh * ir; }
-      const dx = b.x + (bw - dw)/2;
-      const dy = b.y + (bh - dh)/2;
-      ctx.drawImage(img, dx, dy, dw, dh);
-    } else {
-      const g1 = ctx.createLinearGradient(0,b.y,0,b.y+b.h);
-      g1.addColorStop(0,"#0b1220"); g1.addColorStop(1,"#0c1526");
-      ctx.fillStyle=g1; ctx.fillRect(b.x,b.y,b.w,b.h);
-    }
-  }
-
-  function drawRock(ctx, rect, rock) {
-    // shrink with HP%
-    const pct = Math.max(0, rock.hp / rock.maxHp);
-    const scale = 0.35 + 0.65 * pct; // 1.0→0.35 as HP goes 100%→0%
-    const img = getImg(IMG_ROCK);
-
-    const pad = 6;
-    const fullW = rect.w - pad*2;
-    const fullH = rect.h - pad*2;
-    const rw = fullW * scale;
-    const rh = fullH * scale;
-    const cx = rect.x + rect.w/2;
-    const cy = rect.y + rect.h/2;
-    const dx = cx - rw/2;
-    const dy = cy - rh/2;
-
-    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, dx, dy, rw, rh);
-    else { ctx.fillStyle="#6b7280"; ctx.fillRect(dx, dy, rw, rh); }
-
-    // HP bar
-    const bx = rect.x + pad, by = rect.y + 4, barW = fullW, barH = 6;
-    ctx.fillStyle="#0ea5e9"; ctx.fillRect(bx, by, barW * pct, barH);
-    const gloss = ctx.createLinearGradient(0,by,0,by+barH);
-    gloss.addColorStop(0,"rgba(255,255,255,.45)"); gloss.addColorStop(1,"rgba(255,255,255,0)");
-    ctx.fillStyle=gloss; ctx.fillRect(bx, by, barW*pct, barH);
-    ctx.strokeStyle="#082f49"; ctx.lineWidth=1; ctx.strokeRect(bx, by, barW, barH);
-
-    ctx.fillStyle="#e5e7eb"; ctx.font="bold 11px system-ui";
-    ctx.fillText(`Rock ${rock.idx + 1}`, bx, by + 16);
-  }
-
-  function drawMiner(ctx, lane, slot, m) {
-    const r  = slotRect(lane, slot);
-    const cx = r.x + r.w*0.52;
-    theStateFix_maybeMigrateLocalStorage
-    const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
-    const sizeF  = laneSafe(MINER_SIZE_FRACS, lane, 0.84);
-    const cy = r.y + r.h*cyFrac;
-    const w  = Math.min(r.w, r.h) * sizeF;
-
-    const img = getImg(IMG_MINER);
-    const frame = Math.floor((stateRef.current.anim.t * 8) % 4);
-
-    if (img.complete && img.naturalWidth > 0) {
-      const sw = img.width / 4, sh = img.height;
-      ctx.drawImage(img, frame*sw, 0, sw, sh, cx - w/2, cy - w/2, w, w);
-    } else {
-      ctx.fillStyle="#22c55e"; ctx.beginPath(); ctx.arc(cx, cy, w*0.35, 0, Math.PI*2); ctx.fill();
-    }
-
-    // level tag
-    ctx.fillStyle="rgba(0,0,0,.6)";
-    ctx.fillRect(cx - w*0.5, cy - w*0.62, 30, 16);
-    ctx.fillStyle="#fff"; ctx.font="bold 10px system-ui";
-    ctx.fillText(m.level, cx - w*0.5 + 9, cy - w*0.62 + 12);
-
-    if (m.pop) {
-      const k = Math.max(0, 1 - (stateRef.current.anim.t % 1));
-      ctx.globalAlpha = k; ctx.fillStyle="#34d399"; ctx.font="bold 15px system-ui";
-      ctx.fillText(`LV ${m.level}`, cx - 14, cy - w*0.70); ctx.globalAlpha = 1;
-      if (k <= 0.02) delete m.pop;
-    }
-  }
-
-  function drawMinerGhost(ctx, x, y, lvl) {
-    const w = 62; const img = getImg(IMG_MINER);
-    ctx.globalAlpha = 0.75;
-    if (img.complete && img.naturalWidth > 0) {
-      const sw = img.width/4, sh = img.height;
-      ctx.drawImage(img, 0, 0, sw, sh, x - w/2, y - w/2, w, w);
-    } else {
-      ctx.fillStyle="#22c55e"; ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.globalAlpha=1; ctx.fillStyle="#fff"; ctx.font="bold 12px system-ui";
-    ctx.fillText(String(lvl), x - 6, y - 22);
-  }
-
-  function drawCoin(ctx, x, y, a) {
-    const img = getImg(IMG_COIN); const s = 24;
-    ctx.globalAlpha = 0.45 + 0.55 * a;
-    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, x - s/2, y - s/2, s, s);
-    else { ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(x, y, s/2, 0, Math.PI*2); ctx.fill(); }
-    ctx.globalAlpha = 1;
-  }
-
-  function drawFx(ctx) {
-    const s = stateRef.current; if (!s) return;
-    for (const p of s.anim.fx) {
-      const k = Math.min(1, p.t / p.life);
-      const a = 1 - k;
-      ctx.globalAlpha = 0.25 + 0.75 * a;
-
-      if (p.type === "coin") {
-        const img = getImg(IMG_COIN);
-        const sz = p.size * (0.8 + 0.4 * Math.sin(p.t * 8));
-        if (img.complete && img.naturalWidth > 0) {
-          ctx.drawImage(img, p.x - sz/2, p.y - sz/2, sz, sz);
-        } else {
-          ctx.fillStyle = "#fbbf24";
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, sz/2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      ctx.globalAlpha = 1;
-    }
-  }
 
   // ===== Drawing =====
   function draw() {
@@ -1143,6 +909,7 @@ export default function MleoMiners() {
             (s.gold ?? 0) >= (s.spawnCost ?? 0) &&
             countMiners(s) < MAX_MINERS;
           const label = "ADD";
+
 
           const pressed = !!(s.pressedPill &&
                              s.pressedPill.lane === l &&
@@ -1185,25 +952,141 @@ export default function MleoMiners() {
     // Particle FX & pressed-pill fade
     drawFx(ctx);
 
-    // First-play hint
     if (!s.paused && s.anim.hint) {
-      const r = slotRect(0, 0);
-      ctx.strokeStyle = "#22c55e";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([6, 6]);
+      const r = slotRect(0,0);
+      ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 3; ctx.setLineDash([6,6]);
       ctx.strokeRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#c7f9cc";
-      ctx.font = "bold 12px system-ui";
+      ctx.setLineDash([]); ctx.fillStyle = "#c7f9cc"; ctx.font = "bold 12px system-ui";
       ctx.fillText("Drag to merge", r.x + 10, r.y + 21);
     }
-  } // <-- end draw()
+  }
 
-  // ===== UI (React render) =====
-  const circleStyle = (p, active = true) => ({
-    background: `conic-gradient(${active ? "#facc15" : "#94a3b8"} ${Math.floor(
-      p * 360
-    )}deg, rgba(255,255,255,0.08) 0)`,
+  function drawBgCover(ctx, b) {
+    const img = getImg(IMG_BG);
+    if (img.complete && img.naturalWidth > 0) {
+      const iw = img.naturalWidth, ih = img.naturalHeight;
+      const bw = b.w, bh = b.h;
+      const ir = iw / ih, br = bw / bh;
+      let dw, dh;
+      if (br > ir) { dw = bw; dh = bw / ir; } else { dh = bh; dw = bh * ir; }
+      const dx = b.x + (bw - dw)/2;
+      const dy = b.y + (bh - dh)/2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+    } else {
+      const g1 = ctx.createLinearGradient(0,b.y,0,b.y+b.h);
+      g1.addColorStop(0,"#0b1220"); g1.addColorStop(1,"#0c1526");
+      ctx.fillStyle=g1; ctx.fillRect(b.x,b.y,b.w,b.h);
+    }
+  }
+
+  function drawRock(ctx, rect, rock) {
+    // shrink with HP%
+    const pct = Math.max(0, rock.hp / rock.maxHp);
+    const scale = 0.35 + 0.65 * pct; // from 1.0→0.35 as HP goes 100%→0%
+    const img = getImg(IMG_ROCK);
+
+    const pad = 6;
+    const fullW = rect.w - pad*2;
+    const fullH = rect.h - pad*2;
+    const rw = fullW * scale;
+    const rh = fullH * scale;
+    const cx = rect.x + rect.w/2;
+    const cy = rect.y + rect.h/2;
+    const dx = cx - rw/2;
+    const dy = cy - rh/2;
+
+    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, dx, dy, rw, rh);
+    else { ctx.fillStyle="#6b7280"; ctx.fillRect(dx, dy, rw, rh); }
+
+    // HP bar
+    const bx = rect.x + pad, by = rect.y + 4, barW = fullW, barH = 6;
+    ctx.fillStyle="#0ea5e9"; ctx.fillRect(bx, by, barW * pct, barH);
+    const gloss = ctx.createLinearGradient(0,by,0,by+barH);
+    gloss.addColorStop(0,"rgba(255,255,255,.45)"); gloss.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.fillStyle=gloss; ctx.fillRect(bx, by, barW*pct, barH);
+    ctx.strokeStyle="#082f49"; ctx.lineWidth=1; ctx.strokeRect(bx, by, barW, barH);
+
+    ctx.fillStyle="#e5e7eb"; ctx.font="bold 11px system-ui";
+    ctx.fillText(`Rock ${rock.idx + 1}`, bx, by + 16);
+  }
+
+  function drawMiner(ctx, lane, slot, m) {
+    const r  = slotRect(lane, slot);
+    const cx = r.x + r.w*0.52;
+    const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
+    const sizeF  = laneSafe(MINER_SIZE_FRACS, lane, 0.84);
+    const cy = r.y + r.h*cyFrac;
+    const w  = Math.min(r.w, r.h) * sizeF;
+
+    const img = getImg(IMG_MINER);
+    const frame = Math.floor((stateRef.current.anim.t * 8) % 4);
+
+    if (img.complete && img.naturalWidth > 0) {
+      const sw = img.width / 4, sh = img.height;
+      ctx.drawImage(img, frame*sw, 0, sw, sh, cx - w/2, cy - w/2, w, w);
+    } else {
+      ctx.fillStyle="#22c55e"; ctx.beginPath(); ctx.arc(cx, cy, w*0.35, 0, Math.PI*2); ctx.fill();
+    }
+
+    // level tag
+    ctx.fillStyle="rgba(0,0,0,.6)"; ctx.fillRect(cx - w*0.5, cy - w*0.62, 30, 16);
+    ctx.fillStyle="#fff"; ctx.font="bold 10px system-ui"; ctx.fillText(m.level, cx - w*0.5 + 9, cy - w*0.62 + 12);
+
+    if (m.pop) {
+      const k = Math.max(0, 1 - (stateRef.current.anim.t % 1));
+      ctx.globalAlpha = k; ctx.fillStyle="#34d399"; ctx.font="bold 15px system-ui";
+      ctx.fillText(`LV ${m.level}`, cx - 14, cy - w*0.70); ctx.globalAlpha = 1;
+      if (k <= 0.02) delete m.pop;
+    }
+  }
+
+  function drawMinerGhost(ctx, x, y, lvl) {
+    const w = 62; const img = getImg(IMG_MINER);
+    ctx.globalAlpha = 0.75;
+    if (img.complete && img.naturalWidth > 0) {
+      const sw = img.width/4, sh = img.height;
+      ctx.drawImage(img, 0, 0, sw, sh, x - w/2, y - w/2, w, w);
+    } else {
+      ctx.fillStyle="#22c55e"; ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1; ctx.fillStyle="#fff"; ctx.font="bold 12px system-ui"; ctx.fillText(String(lvl), x - 6, y - 22);
+  }
+
+  function drawCoin(ctx, x, y, a) {
+    const img = getImg(IMG_COIN); const s = 24;
+    ctx.globalAlpha = 0.45 + 0.55 * a;
+    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, x - s/2, y - s/2, s, s);
+    else { ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(x, y, s/2, 0, Math.PI*2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+function drawFx(ctx) {
+  const s = stateRef.current; if (!s) return;
+  for (const p of s.anim.fx) {
+    const k = Math.min(1, p.t / p.life);
+    const a = 1 - k;
+    ctx.globalAlpha = 0.25 + 0.75 * a;
+
+    if (p.type === "coin") {
+      const img = new Image(); 
+      img.src = IMG_COIN;
+      const sz = p.size * (0.8 + 0.4 * Math.sin(p.t * 8));
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, p.x - sz/2, p.y - sz/2, sz, sz);
+      } else {
+        ctx.fillStyle = "#fbbf24";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, sz/2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.globalAlpha = 1;
+  }
+}
+
+  // ===== UI =====
+  const circleStyle = (p, active=true) => ({
+    background: `conic-gradient(${active ? '#facc15' : '#94a3b8'} ${Math.floor(p*360)}deg, rgba(255,255,255,0.08) 0)`,
   });
 
   // Progress helpers for circular timers
@@ -1213,7 +1096,7 @@ export default function MleoMiners() {
     const now = Date.now();
     const total = GIFT_INTERVAL_SEC * 1000;
     const remain = Math.max(0, (s.giftNextAt || now) - now);
-    return Math.max(0, Math.min(1, 1 - remain / total));
+    return Math.max(0, Math.min(1, 1 - remain/total));
   })();
 
   const dogProgress = (() => {
@@ -1223,10 +1106,10 @@ export default function MleoMiners() {
     const total = DOG_INTERVAL_SEC * 1000;
     const last = s.autoDogLastAt || now;
     const elapsed = Math.max(0, now - last);
-    return Math.max(0, Math.min(1, elapsed / total));
+    return Math.max(0, Math.min(1, elapsed/total));
   })();
 
-  // ===== Render-time costs & availability =====
+  // ===== Buy availability (render-time) =====
   const sNow = stateRef.current;
   const spawnCostNow = sNow?.spawnCost ?? ui.spawnCost;
   const dpsCostNow   = getDpsCost();
@@ -1310,7 +1193,7 @@ export default function MleoMiners() {
 
         {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-          MLEO Miners — v5.7
+          MLEO Miners — v5.6
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
@@ -1332,31 +1215,11 @@ export default function MleoMiners() {
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡 Gold x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🐶 Buy LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
 
-              {/* Diamonds counter (clickable) */}
-              <button
-                onClick={() => setShowDiamondInfo(true)}
-                className="px-2 py-1 bg-black/70 rounded-lg shadow flex items-center gap-1 hover:bg-black/60 active:scale-95 transition cursor-pointer"
-                aria-label="Diamond rewards info"
-                title="Tap to see Diamond chest rewards"
-              >
-                <span>💎</span>
-                <b>{stateRef.current?.diamonds ?? 0}</b>
-                <span className="opacity-80">/3</span>
-              </button>
-
               <div className="flex items-center gap-3 ml-2">
-                <div
-                  className="relative w-8 h-8 rounded-full grid place-items-center"
-                  style={circleStyle(giftProgress, true)}
-                  title="Gift every 60s (max 1 offline)"
-                >
+                <div className="relative w-8 h-8 rounded-full grid place-items-center" style={circleStyle(giftProgress, true)} title="Gift every 60s (max 1 offline)">
                   <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🎁</div>
                 </div>
-                <div
-                  className="relative w-8 h-8 rounded-full grid place-items-center"
-                  style={circleStyle(dogProgress, true)}
-                  title="Auto-dog every 2m (bank up to 6)"
-                >
+                <div className="relative w-8 h-8 rounded-full grid place-items-center" style={circleStyle(dogProgress, true)} title="Auto-dog every 2m (bank up to 6)">
                   <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🐶</div>
                 </div>
               </div>
@@ -1375,11 +1238,9 @@ export default function MleoMiners() {
                 onClick={addMiner}
                 disabled={!canBuyMiner}
                 className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
-                  ${
-                    canBuyMiner
-                      ? "bg-emerald-500 hover:bg-emerald-400 ring-2 ring-emerald-300 shadow-[0_0_18px_rgba(16,185,129,.55)]"
-                      : "bg-emerald-500 opacity-60 cursor-not-allowed"
-                  }`}
+                  ${canBuyMiner
+                    ? "bg-emerald-500 hover:bg-emerald-400 ring-2 ring-emerald-300 shadow-[0_0_18px_rgba(16,185,129,.55)]"
+                    : "bg-emerald-500 opacity-60 cursor-not-allowed"}`}
               >
                 + Add Miner (LV {sNow?.spawnLevel || 1}) — {price(spawnCostNow)}
               </button>
@@ -1388,11 +1249,9 @@ export default function MleoMiners() {
                 onClick={upgradeDps}
                 disabled={!canBuyDps}
                 className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
-                  ${
-                    canBuyDps
-                      ? "bg-sky-500 hover:bg-sky-400 ring-2 ring-sky-300 shadow-[0_0_18px_rgba(56,189,248,.55)]"
-                      : "bg-sky-500 opacity-60 cursor-not-allowed"
-                  }`}
+                  ${canBuyDps
+                    ? "bg-sky-500 hover:bg-sky-400 ring-2 ring-sky-300 shadow-[0_0_18px_rgba(56,189,248,.55)]"
+                    : "bg-sky-500 opacity-60 cursor-not-allowed"}`}
               >
                 DPS +10% (Cost {price(dpsCostNow)})
               </button>
@@ -1401,11 +1260,9 @@ export default function MleoMiners() {
                 onClick={upgradeGold}
                 disabled={!canBuyGold}
                 className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
-                  ${
-                    canBuyGold
-                      ? "bg-amber-400 hover:bg-amber-300 ring-2 ring-amber-300 shadow-[0_0_18px_rgba(251,191,36,.6)]"
-                      : "bg-amber-400 opacity-60 cursor-not-allowed"
-                  }`}
+                  ${canBuyGold
+                    ? "bg-amber-400 hover:bg-amber-300 ring-2 ring-amber-300 shadow-[0_0_18px_rgba(251,191,36,.6)]"
+                    : "bg-amber-400 opacity-60 cursor-not-allowed"}`}
               >
                 Gold +10% (Cost {price(goldCostNow)})
               </button>
@@ -1460,7 +1317,7 @@ export default function MleoMiners() {
 
         {/* Help line */}
         <p className="opacity-70 text-[11px] mt-2">
-          4 lanes • Drag to move/merge • Break rocks → earn gold • Gifts can award 💎 diamonds • 3×💎 → rare chest!
+          4 lanes • Drag to move/merge • Break rocks → earn gold • Autosave on this device.
         </p>
 
         {/* Offline COLLECT overlay */}
@@ -1488,52 +1345,6 @@ export default function MleoMiners() {
           </div>
         )}
 
-        {/* Diamond Rewards Modal */}
-        {showDiamondInfo && (
-          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/80 px-6 text-center">
-            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 border border-white/20 shadow-2xl max-w-md w-full text-left">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">💎</span>
-                  <h3 className="text-xl font-extrabold text-white">Diamond Chest rewards (3×💎)</h3>
-                </div>
-                <button
-                  onClick={() => setShowDiamondInfo(false)}
-                  className="px-3 py-1.5 bg-yellow-400 text-black font-bold rounded-lg text-sm"
-                >
-                  Close
-                </button>
-              </div>
-
-              <p className="text-gray-200 mb-4">
-                Collect <b className="text-yellow-300">3 diamonds</b> to open a chest with one of these rewards:
-              </p>
-
-              <ul className="space-y-2">
-                {DIAMOND_PRIZES.map(p => {
-                  const isNext = (stateRef.current?.nextDiamondPrize === p.key);
-                  return (
-                    <li
-                      key={p.key}
-                      className={`flex items-center justify-between rounded-lg px-3 py-2
-                        ${isNext ? "bg-yellow-400/15 border border-yellow-400/60" : "bg-white/5 border border-white/10"}`}
-                    >
-                      <span className="text-gray-100 font-medium">{p.label}</span>
-                      {isNext && (
-                        <span className="text-xs font-extrabold text-yellow-300">NEXT</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-
-              <p className="text-gray-300 mt-4 text-sm">
-                If the board is full when a “Dog” reward is granted, it is automatically converted to coins based on the current buy cost.
-              </p>
-            </div>
-          </div>
-        )}
-
         {!showIntro && (
           <button
             onClick={async () => { setShowIntro(true); setGamePaused(true); await exitFullscreenIfAny(); }}
@@ -1545,28 +1356,4 @@ export default function MleoMiners() {
       </div>
     </Layout>
   );
-} // <-- end component
-
-/** ===== Migration helper (v5.6 -> v5.7) =====
- *  If user still has old LS key, migrate to new shape/key.
- *  Called once at module load (top of the component).
- */
-function theStateFix_maybeMigrateLocalStorage() {
-  try {
-    const OLD_KEY = "mleoMiners_v5_6";
-    const rawOld = localStorage.getItem(OLD_KEY);
-    const rawNew = localStorage.getItem(LS_KEY);
-    if (!rawNew && rawOld) {
-      const parsed = JSON.parse(rawOld);
-      // ensure diamonds + nextDiamondPrize exist; keep everything else
-      const migrated = {
-        ...parsed,
-        diamonds: parsed?.diamonds ?? 0,
-        nextDiamondPrize: parsed?.nextDiamondPrize || rollDiamondPrize(),
-      };
-      localStorage.setItem(LS_KEY, JSON.stringify(migrated));
-      // keep old key too (safe), or uncomment next line to remove it:
-      // localStorage.removeItem(OLD_KEY);
-    }
-  } catch {}
 }
