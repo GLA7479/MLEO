@@ -1,6 +1,7 @@
 // pages/mleo-miners.js
-// v5.7 — Gifts: Dog(-1), Diamonds, 3x Diamonds => Rare chest (+coins x100/1000/10000 or Dog +3/+5/+7)
-//  • Keeps v5.6 features (empty-slot ADD pills, click-to-spawn at slot, smooth timers, image cache, shrinking rocks)
+// v5.7+giftCycle — Gift schedule cycles over 3h: 30m@20s, 30m@30s, 30m@40s, 30m@50s, 60m@60s.
+//  • Counts in background. On return, interval adapts to current phase (e.g., after ~2h → 60s).
+//  • Still max 1 ready gift offline (לא משנה התנהגות זו).
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -10,7 +11,7 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE; // 16 cap
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_7"; // bump for new save shape
+const LS_KEY = "mleoMiners_v5_7"; // keep same key (adds fields without reset)
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -41,7 +42,6 @@ const DIAMOND_PRIZES = [
   { key: "dog+7",       label: "Dog +7 levels" },
 ];
 
-// Weighted roll (not shown to players; only used to pre-roll the NEXT prize)
 function rollDiamondPrize() {
   const r = Math.random();
   if (r < 0.25)   return "coins100";
@@ -52,12 +52,20 @@ function rollDiamondPrize() {
   return "dog+7";
 }
 
-// Gifts
-const GIFT_INTERVAL_SEC = 60; // every minute (gameplay). Offline: can accrue max 1 ready gift.
+// ===== NEW: Gift schedule (3-hour cycle) =====
+// 30m every 20s → 30m every 30s → 30m every 40s → 30m every 50s → 60m every 60s
+const GIFT_PHASES = [
+  { durSec: 30 * 60, intervalSec: 20 },
+  { durSec: 30 * 60, intervalSec: 30 },
+  { durSec: 30 * 60, intervalSec: 40 },
+  { durSec: 30 * 60, intervalSec: 50 },
+  { durSec: 60 * 60, intervalSec: 60 },
+];
+const GIFT_CYCLE_SEC = GIFT_PHASES.reduce((a, p) => a + p.durSec, 0); // 3 hours
 
 // Auto-dog
 const DOG_INTERVAL_SEC = 120; // every 2 minutes
-const DOG_BANK_CAP = 6;       // can accumulate up to 6 when not playing (and also while playing if board full)
+const DOG_BANK_CAP = 6;       // can accumulate up to 6
 
 // Rail alignment (fractions of BG height)
 const TRACK_Y_FRACS = [0.375, 0.525, 0.675, 0.815];
@@ -85,7 +93,7 @@ const formatShort = (n) => {
   return String(Math.floor(n || 0));
 };
 
-// ===== Simple image cache (prevents flicker) =====
+// ===== Simple image cache =====
 const IMG_CACHE = {};
 function getImg(src) {
   if (!IMG_CACHE[src]) {
@@ -94,6 +102,41 @@ function getImg(src) {
     IMG_CACHE[src] = img;
   }
   return IMG_CACHE[src];
+}
+
+// ===== Helpers for the new gift schedule =====
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+function normalizeCycleStart(s, now) {
+  if (!s.cycleStartAt) { s.cycleStartAt = now; return; }
+  // advance forward so that (now - cycleStartAt) < cycle length
+  const diffSec = Math.max(0, Math.floor((now - s.cycleStartAt) / 1000));
+  if (diffSec >= GIFT_CYCLE_SEC) {
+    const n = Math.floor(diffSec / GIFT_CYCLE_SEC);
+    s.cycleStartAt += n * GIFT_CYCLE_SEC * 1000;
+  }
+}
+
+function getCycleOffsetSec(s, now) {
+  normalizeCycleStart(s, now);
+  return Math.max(0, Math.floor((now - s.cycleStartAt) / 1000));
+}
+
+function currentGiftIntervalSec(s, now = Date.now()) {
+  const off = getCycleOffsetSec(s, now);
+  let acc = 0;
+  for (const ph of GIFT_PHASES) {
+    if (off < acc + ph.durSec) return ph.intervalSec;
+    acc += ph.durSec;
+  }
+  // Fallback (shouldn't happen): last phase
+  return GIFT_PHASES[GIFT_PHASES.length - 1].intervalSec;
+}
+
+function scheduleNextGiftFromNow(s, now = Date.now()) {
+  const sec = currentGiftIntervalSec(s, now);
+  s.giftNextAt = now + sec * 1000;
+  s.lastGiftIntervalSec = sec; // store used interval for progress calc convenience
 }
 
 export default function MleoMiners() {
@@ -114,7 +157,7 @@ export default function MleoMiners() {
   const [gamePaused, setGamePaused] = useState(true);
 
   // Offline collect overlay
-  theStateFix_maybeMigrateLocalStorage(); // ensure migration happens before first load
+  theStateFix_maybeMigrateLocalStorage();
   const [showCollect, setShowCollect] = useState(false);
 
   // Gift UI
@@ -127,7 +170,7 @@ export default function MleoMiners() {
   const uiPulseAccumRef = useRef(0);
   const [, forceUiPulse] = useState(0);
 
-  // ===== Helpers =====
+  // ===== Sound helper =====
   const play = (src) => { if (ui.muted || !src) return; try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {} };
 
   const laneSafe = (arr, lane, fallback) =>
@@ -141,47 +184,52 @@ export default function MleoMiners() {
 
   const countMiners = (s) => Object.keys(s.miners).length;
 
-  const newState = () => ({
-    lanes: Array.from({ length: LANES }, (_, lane) => ({
-      slots: Array(SLOTS_PER_LANE).fill(null),
-      rock: newRock(lane, 0),
-      rockCount: 0,
-      beltShift: 0,
-    })),
-    miners: {},
-    nextId: 1,
-    gold: 0,
-    spawnCost: 50,
-    dpsMult: 1,
-    goldMult: 1,
-    anim: { t: 0, coins: [], hint: 1, fx: [] },
-    onceSpawned: false,
-    portrait: false,
-    paused: true,
+  const newState = () => {
+    const now = Date.now();
+    return {
+      lanes: Array.from({ length: LANES }, (_, lane) => ({
+        slots: Array(SLOTS_PER_LANE).fill(null),
+        rock: newRock(lane, 0),
+        rockCount: 0,
+        beltShift: 0,
+      })),
+      miners: {},
+      nextId: 1,
+      gold: 0,
+      spawnCost: 50,
+      dpsMult: 1,
+      goldMult: 1,
+      anim: { t: 0, coins: [], hint: 1, fx: [] },
+      onceSpawned: false,
+      portrait: false,
+      paused: true,
 
-    // Purchasing & levels
-    totalPurchased: 0,
-    spawnLevel: 1, // 1 + floor(totalPurchased / 30)
+      // Purchasing & levels
+      totalPurchased: 0,
+      spawnLevel: 1,
 
-    // OFFLINE
-    lastSeen: Date.now(),
-    pendingOfflineGold: 0,
+      // OFFLINE
+      lastSeen: now,
+      pendingOfflineGold: 0,
 
-    // Gifts
-    giftNextAt: Date.now() + GIFT_INTERVAL_SEC * 1000,
-    giftReady: false,
+      // Gifts – NEW fields
+      cycleStartAt: now,              // anchor for 3h cycle
+      lastGiftIntervalSec: 20,        // for progress UI; updated on each schedule
+      giftNextAt: now + 20 * 1000,    // first gift ~20s by default (phase 1)
+      giftReady: false,
 
-    // Diamonds
-    diamonds: 0, // 0..2; at 3 → rare reward
-    nextDiamondPrize: rollDiamondPrize(), // pre-rolled NEXT diamond-chest reward
+      // Diamonds
+      diamonds: 0,
+      nextDiamondPrize: rollDiamondPrize(),
 
-    // Auto-dog
-    autoDogLastAt: Date.now(),
-    autoDogBank: 0, // pending auto-spawns (0..6)
+      // Auto-dog
+      autoDogLastAt: now,
+      autoDogBank: 0,
 
-    // UI pressed feedback
-    pressedPill: null, // {lane, slot, t}
-  });
+      // UI pressed feedback
+      pressedPill: null, // {lane, slot, t}
+    };
+  };
 
   const save = () => {
     const s = stateRef.current; if (!s) return;
@@ -195,7 +243,9 @@ export default function MleoMiners() {
         lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
         // buy-level
         totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
-        // gifts
+        // gifts (include new fields)
+        cycleStartAt: s.cycleStartAt,
+        lastGiftIntervalSec: s.lastGiftIntervalSec,
         giftNextAt: s.giftNextAt, giftReady: s.giftReady,
         // diamonds
         diamonds: s.diamonds || 0,
@@ -263,7 +313,7 @@ export default function MleoMiners() {
   const enterFullscreenAndLockMobile = async () => {
     try {
       const w = window.innerWidth, desktop = w >= 1024;
-      if (desktop) return; // Mobile only
+      if (desktop) return;
       const el = wrapRef.current;
       if (el?.requestFullscreen) await el.requestFullscreen();
       if (screen.orientation?.lock) { try { await screen.orientation.lock("portrait-primary"); } catch {} }
@@ -286,11 +336,17 @@ export default function MleoMiners() {
     init.lastSeen = now;
     init.pendingOfflineGold = (init.pendingOfflineGold || 0) + reward;
 
-    // ===== OFFLINE accruals for gift & auto-dog =====
+    // normalize cycle & recompute current interval
+    normalizeCycleStart(init, now);
+    if (!init.lastGiftIntervalSec) init.lastGiftIntervalSec = currentGiftIntervalSec(init, now);
+
+    // Gifts (max 1 ready offline)
     if (!init.giftReady && now >= (init.giftNextAt || now)) {
       init.giftReady = true;
+      // don't reschedule here; next schedule occurs after claiming
     }
 
+    // Auto-dog offline bank
     if (!init.autoDogLastAt) init.autoDogLastAt = now;
     const elapsedDogMs = Math.max(0, now - init.autoDogLastAt);
     const dogIntervals = Math.floor(elapsedDogMs / (DOG_INTERVAL_SEC * 1000));
@@ -301,7 +357,6 @@ export default function MleoMiners() {
 
     // diamonds default
     if (init.diamonds == null) init.diamonds = 0;
-    // ensure there's a pre-rolled next-diamond prize
     if (!init.nextDiamondPrize) init.nextDiamondPrize = rollDiamondPrize();
 
     stateRef.current = init;
@@ -359,7 +414,8 @@ export default function MleoMiners() {
           }
         }
 
-        // Gift
+        // normalize cycle and check gift
+        normalizeCycleStart(s, now2);
         if (!s.giftReady && now2 >= (s.giftNextAt || now2)) {
           s.giftReady = true;
           setGiftReadyFlag(true);
@@ -602,8 +658,8 @@ export default function MleoMiners() {
     const L = laneRect(lane);
     const r = slotRect(lane, slot);
     const padY = L.y + L.h * 0.5;
-    const pw = r.w * 0.22;    // slim & short
-    const ph = L.h * 0.26;    // slim height
+    const pw = r.w * 0.22;
+    const ph = L.h * 0.26;
     const px = r.x + (r.w - pw) * 0.5;
     const py = padY - ph / 2;
     return { x: px, y: py, w: pw, h: ph };
@@ -615,7 +671,7 @@ export default function MleoMiners() {
     for (let l=0; l<LANES; l++) {
       for (let sl=0; sl<SLOTS_PER_LANE; sl++) {
         const cell = s.lanes[l].slots[sl];
-        if (cell) continue; // only empty slots have a pill
+        if (cell) continue;
         const pr = pillRect(l, sl);
         if (pointInRect(x, y, pr)) return { lane: l, slot: sl };
       }
@@ -661,7 +717,6 @@ export default function MleoMiners() {
       return p.t < p.life;
     });
 
-    // pressed pill feedback timer
     if (s.pressedPill) {
       s.pressedPill.t -= dt;
       if (s.pressedPill.t <= 0) s.pressedPill = null;
@@ -683,7 +738,7 @@ export default function MleoMiners() {
   };
 
   const spawnMinerAt = (s, lane, slot, level = 1) => {
-    if (s.lanes[lane].slots[slot]) return false; // occupied
+    if (s.lanes[lane].slots[slot]) return false;
     const id = s.nextId++;
     const m = { id, level, lane, slot, pop: 1 };
     s.miners[id] = m;
@@ -705,12 +760,10 @@ export default function MleoMiners() {
     const ok = spawnMinerAt(s, lane, slot, s.spawnLevel);
     if (!ok) return;
 
-    // charge
     s.gold -= s.spawnCost;
     s.spawnCost = Math.ceil(s.spawnCost * 1.12);
     afterPurchaseBump(s);
 
-    // pressed-pill feedback
     s.pressedPill = { lane, slot, t: 0.15 };
 
     s.anim.hint = 0;
@@ -760,13 +813,11 @@ export default function MleoMiners() {
 
   // ===== GIFT LOGIC =====
 
-  // Helper: convert a "dog gift" to coins if board is full
   function grantDogOrCoins(s, targetLevel, cx, cy, reasonText) {
     if (countMiners(s) < MAX_MINERS && spawnMiner(s, targetLevel)) {
       setGiftToastWithTTL(`🐶 ${reasonText}: Dog LV ${targetLevel}`, 3000);
       return;
     }
-    // No space → compensate with coins ~ spawnCost * 1.0
     const comp = Math.max(50, Math.round((s.spawnCost || 100) * 1.0));
     s.gold += comp; setUi(u=>({...u, gold:s.gold}));
     spawnCoinBurst(cx, cy, 26);
@@ -779,10 +830,9 @@ export default function MleoMiners() {
     setTimeout(() => { setGiftToast(cur => (cur && cur.id === id ? null : cur)); }, ttl);
   }
 
-  // Diamond chest resolver: give exactly the pre-rolled NEXT prize, then roll the next one
   function grantRareDiamondReward(s, cx, cy) {
     const prize = s.nextDiamondPrize || rollDiamondPrize();
-    const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4)); // base like regular coin-gift
+    const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4));
 
     const giveCoins = (mult, label) => {
       const gain = base * mult;
@@ -801,13 +851,10 @@ export default function MleoMiners() {
       case "dog+7":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+7), cx, cy, "Diamond Chest"); return;
       default:           giveCoins(100, "Coins ×100"); break;
     }
-
-    // roll the next prize for the next 3×💎
     s.nextDiamondPrize = rollDiamondPrize();
     save();
   }
 
-  // Gift resolver (with dog(-1) + diamond)
   const grantGift = () => {
     const s = stateRef.current; if (!s || !s.giftReady) return;
 
@@ -816,62 +863,46 @@ export default function MleoMiners() {
     const cy = b.y + b.h / 2;
 
     const roll = Math.random();
-    let toastText = "";
 
-    // Probabilities tuned to your description:
-    // Coins (most common) ............... ~62%
-    // Dog (-1 from spawn LVL) ........... ~10%  (more rare than coins, more common than Gold/DPS)
-    // Diamond ........................... ~9%   (between Dog and Gold/DPS)
-    // DPS +10% .......................... ~9%
-    // Gold +10% ......................... ~10%
     if (roll < 0.62) {
-      // Coins
       const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4));
       const bonus = Math.round(base * (0.75 + Math.random()*0.5));
       s.gold += bonus;
       setUi(u=>({...u, gold:s.gold}));
-      toastText = `+${formatShort(bonus)} coins`;
       spawnCoinBurst(cx, cy, 28);
       play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${toastText}`, 3000);
+      setGiftToastWithTTL(`🎁 +${formatShort(bonus)} coins`, 3000);
     } else if (roll < 0.72) {
-      // Dog at LVL (spawnLevel - 1), min 1
       const target = Math.max(1, (s.spawnLevel || 1) - 1);
       grantDogOrCoins(s, target, cx, cy, "Gift");
     } else if (roll < 0.81) {
-      // Diamond
       s.diamonds = Math.min(3, (s.diamonds || 0) + 1);
       play(S_GIFT);
       if (s.diamonds >= 3) {
         s.diamonds = 0;
-        // trigger diamond chest (deterministic NEXT)
         grantRareDiamondReward(s, cx, cy);
       } else {
         setGiftToastWithTTL(`💎 Diamond ${s.diamonds}/3`, 2800);
       }
     } else if (roll < 0.90) {
-      // DPS +10%
       s.dpsMult = +(s.dpsMult * 1.1).toFixed(3);
-      toastText = "DPS +10%";
       spawnCoinBurst(cx, cy, 20);
       play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${toastText}`, 3000);
+      setGiftToastWithTTL(`🎁 DPS +10%`, 3000);
     } else {
-      // Gold +10%
       s.goldMult = +(s.goldMult * 1.1).toFixed(3);
-      toastText = "Gold +10%";
       spawnCoinBurst(cx, cy, 20);
       play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${toastText}`, 3000);
+      setGiftToastWithTTL(`🎁 Gold +10%`, 3000);
     }
 
     s.giftReady = false;
-    s.giftNextAt = Date.now() + GIFT_INTERVAL_SEC * 1000;
+    // Schedule next by CURRENT phase (adapts if phase changed while playing)
+    scheduleNextGiftFromNow(s, Date.now());
     setGiftReadyFlag(false);
     save();
   };
 
-  // Try to consume auto-dog bank (and/or interval tick) into actual spawns
   const tryAutoDogSpawns = () => {
     const s = stateRef.current; if (!s) return;
     while (s.autoDogBank > 0 && countMiners(s) < MAX_MINERS) {
@@ -885,7 +916,7 @@ export default function MleoMiners() {
     s.anim.t += dt;
     s.paused = gamePaused || showIntro || showCollect;
 
-    // === UI pulse: keep React timers smooth (about 10Hz) ===
+    // smooth UI
     uiPulseAccumRef.current += dt;
     if (uiPulseAccumRef.current >= 0.1) {
       uiPulseAccumRef.current = 0;
@@ -894,12 +925,18 @@ export default function MleoMiners() {
 
     const now = Date.now();
 
-    // Gift timing
-    if (!s.giftReady) {
-      if (now >= (s.giftNextAt || now)) {
-        s.giftReady = true;
-        setGiftReadyFlag(true);
-      }
+    // normalize 3h cycle regularly
+    normalizeCycleStart(s, now);
+
+    // Gift timing: when due, mark ready (max 1)
+    if (!s.giftReady && now >= (s.giftNextAt || now)) {
+      s.giftReady = true;
+      setGiftReadyFlag(true);
+      // don't schedule next until the player claims
+    } else {
+      // keep the stored "lastGiftIntervalSec" roughly in sync with the active phase (purely for progress UI)
+      const curInt = currentGiftIntervalSec(s, now);
+      s.lastGiftIntervalSec = curInt;
     }
 
     // Auto-dog timing
@@ -941,57 +978,6 @@ export default function MleoMiners() {
     s.lastSeen = now;
   };
 
-  // ===== Drawing helpers for pills =====
-  function roundRectPath(ctx, x, y, w, h, r) {
-    const rr = Math.min(r, h/2, w/2);
-    ctx.beginPath();
-    ctx.moveTo(x + rr, y);
-    ctx.arcTo(x + w, y,     x + w, y + h, rr);
-    ctx.arcTo(x + w, y + h, x,     y + h, rr);
-    ctx.arcTo(x,     y + h, x,     y,     rr);
-    ctx.arcTo(x,     y,     x + w, y,     rr);
-    ctx.closePath();
-  }
-
-  function drawPillButton(ctx, x, y, w, h, label, enabled=true, pulse=0, pressed=false) {
-    // pressed → scale slightly
-    const scale = pressed ? 0.96 : 1.0;
-    const cx = x + w/2, cy = y + h/2;
-    const sw = w * scale, sh = h * scale;
-    const sx = cx - sw/2, sy = cy - sh/2;
-
-    // gradient
-    const g = ctx.createLinearGradient(sx, sy, sx, sy + sh);
-    if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); } // glow on
-    else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); } // off
-
-    // outer glow (pulse)
-    ctx.save();
-    roundRectPath(ctx, sx, sy, sw, sh, sh/2);
-    ctx.fillStyle = g;
-    ctx.shadowColor = enabled ? "rgba(250,204,21," + (0.35 + 0.25 * pulse).toFixed(3) + ")" : "rgba(148,163,184,0.25)";
-    ctx.shadowBlur = enabled ? 16 + 16 * pulse : 10;
-    ctx.shadowOffsetY = 2;
-    ctx.fill();
-    ctx.restore();
-
-    // border
-    ctx.save();
-    roundRectPath(ctx, sx, sy, sw, sh, sh/2);
-    ctx.strokeStyle = enabled ? "#a16207" : "#475569";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.restore();
-
-    // label
-    ctx.save();
-    ctx.fillStyle = enabled ? "#111827" : "#cbd5e1";
-    ctx.font = `bold ${Math.max(12, Math.floor(sh*0.45))}px system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, cx, cy);
-    ctx.restore();
-  }
   // ===== Drawing helpers (MUST exist before draw()) =====
   function drawBgCover(ctx, b) {
     const img = getImg(IMG_BG);
@@ -1012,9 +998,8 @@ export default function MleoMiners() {
   }
 
   function drawRock(ctx, rect, rock) {
-    // shrink with HP%
     const pct = Math.max(0, rock.hp / rock.maxHp);
-    const scale = 0.35 + 0.65 * pct; // 1.0→0.35 as HP goes 100%→0%
+    const scale = 0.35 + 0.65 * pct;
     const img = getImg(IMG_ROCK);
 
     const pad = 6;
@@ -1045,7 +1030,6 @@ export default function MleoMiners() {
   function drawMiner(ctx, lane, slot, m) {
     const r  = slotRect(lane, slot);
     const cx = r.x + r.w*0.52;
-    theStateFix_maybeMigrateLocalStorage
     const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
     const sizeF  = laneSafe(MINER_SIZE_FRACS, lane, 0.84);
     const cy = r.y + r.h*cyFrac;
@@ -1120,6 +1104,57 @@ export default function MleoMiners() {
     }
   }
 
+// ===== Drawing helpers for pills =====
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, h / 2, w / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x,     y + h, rr);
+  ctx.arcTo(x,     y + h, x,     y,     rr);
+  ctx.arcTo(x,     y,     x + w, y,     rr);
+  ctx.closePath();
+}
+
+function drawPillButton(ctx, x, y, w, h, label, enabled = true, pulse = 0, pressed = false) {
+  const scale = pressed ? 0.96 : 1.0;
+  const cx = x + w / 2, cy = y + h / 2;
+  const sw = w * scale, sh = h * scale;
+  const sx = cx - sw / 2, sy = cy - sh / 2;
+
+  // רקע כפתור
+  const g = ctx.createLinearGradient(sx, sy, sx, sy + sh);
+  if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); }
+  else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); }
+
+  ctx.save();
+  roundRectPath(ctx, sx, sy, sw, sh, sh / 2);
+  ctx.fillStyle = g;
+  ctx.shadowColor = enabled ? `rgba(250,204,21,${0.35 + 0.25 * pulse})` : "rgba(148,163,184,0.25)";
+  ctx.shadowBlur = enabled ? 16 + 16 * pulse : 10;
+  ctx.shadowOffsetY = 2;
+  ctx.fill();
+  ctx.restore();
+
+  // קו מתאר
+  ctx.save();
+  roundRectPath(ctx, sx, sy, sw, sh, sh / 2);
+  ctx.strokeStyle = enabled ? "#a16207" : "#475569";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // טקסט
+  ctx.save();
+  ctx.fillStyle = enabled ? "#111827" : "#cbd5e1";
+  ctx.font = `bold ${Math.max(12, Math.floor(sh * 0.45))}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, cx, cy);
+  ctx.restore();
+}
+
+
   // ===== Drawing =====
   function draw() {
     const c = canvasRef.current; if (!c) return;
@@ -1132,31 +1167,19 @@ export default function MleoMiners() {
     drawBgCover(ctx, b);
 
     for (let l=0; l<LANES; l++) {
-      const L = laneRect(l);
-
-      // slot “buttons” (only on empty slots)
       for (let sidx=0; sidx<SLOTS_PER_LANE; sidx++) {
         const cell = s.lanes[l].slots[sidx];
         if (!cell) {
           const { x, y, w, h } = pillRect(l, sidx);
-          const canAfford =
-            (s.gold ?? 0) >= (s.spawnCost ?? 0) &&
-            countMiners(s) < MAX_MINERS;
-          const label = "ADD";
-
-          const pressed = !!(s.pressedPill &&
-                             s.pressedPill.lane === l &&
-                             s.pressedPill.slot === sidx);
-
-          drawPillButton(ctx, x, y, w, h, label, canAfford, canAfford ? pulse : 0, pressed);
+          const canAfford = (s.gold ?? 0) >= (s.spawnCost ?? 0) && countMiners(s) < MAX_MINERS;
+          const pressed = !!(s.pressedPill && s.pressedPill.lane === l && s.pressedPill.slot === sidx);
+          drawPillButton(ctx, x, y, w, h, "ADD", canAfford, canAfford ? pulse : 0, pressed);
         }
       }
 
-      // rock
       const rk = s.lanes[l]?.rock;
       if (rk) drawRock(ctx, rockRect(l), rk);
 
-      // miners
       for (let sidx=0; sidx<SLOTS_PER_LANE; sidx++) {
         const cell = s.lanes[l].slots[sidx]; if (!cell) continue;
         const m = s.miners[cell.id]; if (m) drawMiner(ctx, l, sidx, m);
@@ -1164,8 +1187,8 @@ export default function MleoMiners() {
     }
 
     if (dragRef.current.active) {
-      const s2 = stateRef.current;
-      const m = s2.miners[dragRef.current.id];
+      const st = stateRef.current;
+      const m = st.miners[dragRef.current.id];
       if (m) {
         const r = slotRect(m.lane, m.slot);
         const cyFrac = laneSafe(MINER_Y_FRACS, m.lane, 0.56);
@@ -1175,17 +1198,14 @@ export default function MleoMiners() {
       }
     }
 
-    // HUD coin tween to top-left
     for (const cn of s.anim.coins) {
       const k = cn.t, sx = cn.x, sy = cn.y, tx = 110, ty = 72;
       const x = sx + (tx - sx) * k, y = sy + (ty - sy) * k;
       drawCoin(ctx, x, y, 1 - k);
     }
 
-    // Particle FX & pressed-pill fade
     drawFx(ctx);
 
-    // First-play hint
     if (!s.paused && s.anim.hint) {
       const r = slotRect(0, 0);
       ctx.strokeStyle = "#22c55e";
@@ -1199,21 +1219,37 @@ export default function MleoMiners() {
     }
   } // <-- end draw()
 
-  // ===== UI (React render) =====
-  const circleStyle = (p, active = true) => ({
-    background: `conic-gradient(${active ? "#facc15" : "#94a3b8"} ${Math.floor(
-      p * 360
-    )}deg, rgba(255,255,255,0.08) 0)`,
-  });
+  // ===== Phase helpers (for HUD) =====
+  function getPhaseInfo(s, now=Date.now()) {
+    normalizeCycleStart(s, now);
+    let off = getCycleOffsetSec(s, now);
+    let acc = 0;
+    for (let i=0; i<GIFT_PHASES.length; i++) {
+      const ph = GIFT_PHASES[i];
+      if (off < acc + ph.durSec) {
+        const into = off - acc;
+        const remain = ph.durSec - into;
+        return { index: i, into, remain, intervalSec: ph.intervalSec };
+      }
+      acc += ph.durSec;
+    }
+    const last = GIFT_PHASES[GIFT_PHASES.length-1];
+    return { index: GIFT_PHASES.length-1, into: last.durSec, remain: 0, intervalSec: last.intervalSec };
+  }
 
-  // Progress helpers for circular timers
+  const phaseNow = (() => {
+    const s = stateRef.current; if (!s) return { index:0, intervalSec:20, remain:GIFT_CYCLE_SEC };
+    return getPhaseInfo(s, Date.now());
+  })();
+
+  // ===== UI progress helpers =====
   const giftProgress = (() => {
     const s = stateRef.current; if (!s) return 0;
     if (s.giftReady) return 1;
     const now = Date.now();
-    const total = GIFT_INTERVAL_SEC * 1000;
+    const total = (s.lastGiftIntervalSec || currentGiftIntervalSec(s, now)) * 1000;
     const remain = Math.max(0, (s.giftNextAt || now) - now);
-    return Math.max(0, Math.min(1, 1 - remain / total));
+    return clamp01(1 - remain / total);
   })();
 
   const dogProgress = (() => {
@@ -1223,7 +1259,7 @@ export default function MleoMiners() {
     const total = DOG_INTERVAL_SEC * 1000;
     const last = s.autoDogLastAt || now;
     const elapsed = Math.max(0, now - last);
-    return Math.max(0, Math.min(1, elapsed / total));
+    return clamp01(elapsed / total);
   })();
 
   // ===== Render-time costs & availability =====
@@ -1236,8 +1272,22 @@ export default function MleoMiners() {
   const canBuyDps   = !!sNow && sNow.gold >= dpsCostNow;
   const canBuyGold  = !!sNow && sNow.gold >= goldCostNow;
 
-  const price = (n) => formatShort(n ?? 0);
+const price = (n) => formatShort(n ?? 0);
+const phaseLabel = `Phase ${ (phaseNow.index+1) }/5 • ${phaseNow.intervalSec}s gifts`;
 
+// ===== Circle progress style helper =====
+function circleStyle(progress, withBg = true) {
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  const deg = Math.round(360 * p);
+  const base = withBg ? "radial-gradient(circle at 50% 50%, rgba(0,0,0,0.35) 55%, transparent 56%)" : "transparent";
+  return {
+    backgroundImage: `${base}, conic-gradient(#facc15 ${deg}deg, rgba(255,255,255,0.14) 0deg)`,
+    transition: "background-image 0.2s linear",
+  };
+}
+
+
+  // ===== RETURN (inside component!) =====
   return (
     <Layout>
       <div
@@ -1310,7 +1360,7 @@ export default function MleoMiners() {
 
         {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-          MLEO Miners — v5.7
+          MLEO Miners — v5.7 + giftCycle
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
@@ -1344,11 +1394,13 @@ export default function MleoMiners() {
                 <span className="opacity-80">/3</span>
               </button>
 
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">{phaseLabel}</div>
+
               <div className="flex items-center gap-3 ml-2">
                 <div
                   className="relative w-8 h-8 rounded-full grid place-items-center"
                   style={circleStyle(giftProgress, true)}
-                  title="Gift every 60s (max 1 offline)"
+                  title={phaseLabel}
                 >
                   <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🎁</div>
                 </div>
@@ -1419,7 +1471,7 @@ export default function MleoMiners() {
             </div>
           </div>
 
-          {/* Toast (gift result) — INSIDE canvas & lower */}
+          {/* Toast (gift result) */}
           {giftToast && (
             <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "200px" }}>
               <div className="px-4 py-2 rounded-xl bg-emerald-400 text-black font-extrabold shadow-lg animate-[fadeOut_3s_ease-out_forwards]">
@@ -1436,7 +1488,7 @@ export default function MleoMiners() {
             </div>
           )}
 
-          {/* Center Gift Button — INSIDE canvas */}
+          {/* Center Gift Button */}
           {!showIntro && !gamePaused && !showCollect && giftReadyFlag && (
             <div className="absolute inset-0 z-[8] flex items-center justify-center pointer-events-none">
               <button
@@ -1460,7 +1512,7 @@ export default function MleoMiners() {
 
         {/* Help line */}
         <p className="opacity-70 text-[11px] mt-2">
-          4 lanes • Drag to move/merge • Break rocks → earn gold • Gifts can award 💎 diamonds • 3×💎 → rare chest!
+          3h gift cycle: 30m@20s → 30m@30s → 30m@40s → 30m@50s → 60m@60s • Max 1 offline-ready gift.
         </p>
 
         {/* Offline COLLECT overlay */}
@@ -1547,26 +1599,22 @@ export default function MleoMiners() {
   );
 } // <-- end component
 
-/** ===== Migration helper (v5.6 -> v5.7) =====
- *  If user still has old LS key, migrate to new shape/key.
- *  Called once at module load (top of the component).
- */
+/** ===== Migration helper (v5.7 -> v5.7+giftCycle) ===== */
 function theStateFix_maybeMigrateLocalStorage() {
   try {
-    const OLD_KEY = "mleoMiners_v5_6";
-    const rawOld = localStorage.getItem(OLD_KEY);
-    const rawNew = localStorage.getItem(LS_KEY);
-    if (!rawNew && rawOld) {
-      const parsed = JSON.parse(rawOld);
-      // ensure diamonds + nextDiamondPrize exist; keep everything else
-      const migrated = {
-        ...parsed,
-        diamonds: parsed?.diamonds ?? 0,
-        nextDiamondPrize: parsed?.nextDiamondPrize || rollDiamondPrize(),
-      };
-      localStorage.setItem(LS_KEY, JSON.stringify(migrated));
-      // keep old key too (safe), or uncomment next line to remove it:
-      // localStorage.removeItem(OLD_KEY);
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    let changed = false;
+    if (s.cycleStartAt == null) { s.cycleStartAt = Date.now(); changed = true; }
+    if (s.lastGiftIntervalSec == null) {
+      s.lastGiftIntervalSec = currentGiftIntervalSec(s, Date.now());
+      changed = true;
     }
+    if (s.giftNextAt == null) {
+      s.giftNextAt = Date.now() + (s.lastGiftIntervalSec || 20) * 1000;
+      changed = true;
+    }
+    if (changed) localStorage.setItem(LS_KEY, JSON.stringify(s));
   } catch {}
 }
