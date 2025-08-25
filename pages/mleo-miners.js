@@ -1,8 +1,8 @@
 // pages/mleo-miners.js
-// v5.4 — Auto-dog every 2 min (+offline bank up to 6), dual circular timers, gift offline cap 1
-//  • Auto-dog: accumulates also when not playing (bank up to 6), spawns on return/while playing
-//  • Gift timer: ticks in play; when not playing can accrue at most 1 ready gift
-//  • Keeps: 30-buys spawnLevel, 16 miners cap, centered gift popup & FX
+// v5.5 — Smooth UI timers, image cache (no flicker), rocks shrink with HP
+//  • Smooth circular timers: steady UI pulse (~10Hz) from game loop
+//  • Image cache: no per-frame new Image(), no green-dot flickers
+//  • Rocks scale down with HP until break, then respawn next stage
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -12,7 +12,7 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE; // 16 cap
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_4";
+const LS_KEY = "mleoMiners_v5_5";
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -37,7 +37,7 @@ const GOLD_FACTOR = 1.0;
 const GIFT_INTERVAL_SEC = 60; // every minute (gameplay). Offline: can accrue max 1 ready gift.
 
 // Auto-dog
-const DOG_INTERVAL_SEC = 220; // every 2 minutes (השארתי כמו שנתת)
+const DOG_INTERVAL_SEC = 120; // every 2 minutes
 const DOG_BANK_CAP = 6;       // can accumulate up to 6 when not playing (and also while playing if board full)
 
 // Rail alignment (fractions of BG height)
@@ -66,6 +66,17 @@ const formatShort = (n) => {
   return String(Math.floor(n || 0));
 };
 
+// ===== Simple image cache (prevents flicker) =====
+const IMG_CACHE = {};
+function getImg(src) {
+  if (!IMG_CACHE[src]) {
+    const img = new Image();
+    img.src = src;
+    IMG_CACHE[src] = img;
+  }
+  return IMG_CACHE[src];
+}
+
 export default function MleoMiners() {
   const wrapRef   = useRef(null);
   const canvasRef = useRef(null);
@@ -89,6 +100,10 @@ export default function MleoMiners() {
   // Gift UI
   const [giftReadyFlag, setGiftReadyFlag] = useState(false);
   const [giftToast, setGiftToast] = useState(null); // {text, id}
+
+  // Small UI pulse to keep timers smooth (re-render ~10Hz)
+  const uiPulseAccumRef = useRef(0);
+  const [, forceUiPulse] = useState(0);
 
   // ===== Helpers =====
   const play = (src) => { if (ui.muted || !src) return; try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {} };
@@ -243,7 +258,6 @@ export default function MleoMiners() {
     // Gift: while away, allow at most 1 ready gift
     if (!init.giftReady && now >= (init.giftNextAt || now)) {
       init.giftReady = true;
-      // don't shift giftNextAt forward yet; we reset it only after claiming
     }
 
     // Auto-dog: accumulate intervals into bank up to DOG_BANK_CAP
@@ -579,15 +593,15 @@ export default function MleoMiners() {
 
   const drawFx = (ctx) => {
     const s = stateRef.current; if (!s) return;
+    const coinImg = getImg(IMG_COIN);
     for (const p of s.anim.fx) {
       const k = Math.min(1, p.t / p.life);
       const a = 1 - k;
       ctx.globalAlpha = 0.25 + 0.75 * a;
       if (p.type === "coin") {
-        const img = new Image(); img.src = IMG_COIN;
         const sz = p.size * (0.8 + 0.4*Math.sin(p.t*8));
-        if (img.complete && img.naturalWidth > 0) {
-          ctx.drawImage(img, p.x - sz/2, p.y - sz/2, sz, sz);
+        if (coinImg.complete && coinImg.naturalWidth > 0) {
+          ctx.drawImage(coinImg, p.x - sz/2, p.y - sz/2, sz, sz);
         } else {
           ctx.fillStyle="#fbbf24";
           ctx.beginPath(); ctx.arc(p.x, p.y, sz/2, 0, Math.PI*2); ctx.fill();
@@ -706,20 +720,21 @@ export default function MleoMiners() {
     s.anim.t += dt;
     s.paused = gamePaused || showIntro || showCollect;
 
+    // === UI pulse: keep React timers smooth (about 10Hz) ===
+    uiPulseAccumRef.current += dt;
+    if (uiPulseAccumRef.current >= 0.1) {
+      uiPulseAccumRef.current = 0;
+      // bump a dummy state to re-render
+      forceUiPulse(x => (x + 1) % 1000000);
+    }
+
     const now = Date.now();
 
     // Gift timing
     if (!s.giftReady) {
-      if (!s.paused) {
-        if (now >= (s.giftNextAt || now)) {
-          s.giftReady = true;
-          setGiftReadyFlag(true);
-        }
-      } else {
-        if (now >= (s.giftNextAt || now)) {
-          s.giftReady = true;
-          setGiftReadyFlag(true);
-        }
+      if (now >= (s.giftNextAt || now)) {
+        s.giftReady = true;
+        setGiftReadyFlag(true);
       }
     }
 
@@ -809,7 +824,7 @@ export default function MleoMiners() {
       }
     }
 
-    // HUD coin tween to top-left (מתואם עם המיקום החדש של ה-HUD)
+    // HUD coin tween to top-left
     for (const cn of s.anim.coins) {
       const k = cn.t, sx = cn.x, sy = cn.y, tx = 110, ty = 72;
       const x = sx + (tx - sx) * k, y = sy + (ty - sy) * k;
@@ -829,7 +844,7 @@ export default function MleoMiners() {
   }
 
   function drawBgCover(ctx, b) {
-    const img = new Image(); img.src = IMG_BG;
+    const img = getImg(IMG_BG);
     if (img.complete && img.naturalWidth > 0) {
       const iw = img.naturalWidth, ih = img.naturalHeight;
       const bw = b.w, bh = b.h;
@@ -847,13 +862,26 @@ export default function MleoMiners() {
   }
 
   function drawRock(ctx, rect, rock) {
-    const img = new Image(); img.src = IMG_ROCK;
-    const pad = 6; const rw = rect.w - pad*2; const rh = rect.h - pad*2;
-    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, rect.x+pad, rect.y+pad, rw, rh);
-    else { ctx.fillStyle="#6b7280"; ctx.fillRect(rect.x+pad, rect.y+pad, rw, rh); }
-
+    // shrink with HP%
     const pct = Math.max(0, rock.hp / rock.maxHp);
-    const bx = rect.x + pad, by = rect.y + 4, barW = rw, barH = 6;
+    const scale = 0.35 + 0.65 * pct; // from 1.0→0.35 as HP goes 100%→0%
+    const img = getImg(IMG_ROCK);
+
+    const pad = 6;
+    const fullW = rect.w - pad*2;
+    const fullH = rect.h - pad*2;
+    const rw = fullW * scale;
+    const rh = fullH * scale;
+    const cx = rect.x + rect.w/2;
+    const cy = rect.y + rect.h/2;
+    const dx = cx - rw/2;
+    const dy = cy - rh/2;
+
+    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, dx, dy, rw, rh);
+    else { ctx.fillStyle="#6b7280"; ctx.fillRect(dx, dy, rw, rh); }
+
+    // HP bar
+    const bx = rect.x + pad, by = rect.y + 4, barW = fullW, barH = 6;
     ctx.fillStyle="#0ea5e9"; ctx.fillRect(bx, by, barW * pct, barH);
     const gloss = ctx.createLinearGradient(0,by,0,by+barH);
     gloss.addColorStop(0,"rgba(255,255,255,.45)"); gloss.addColorStop(1,"rgba(255,255,255,0)");
@@ -867,12 +895,12 @@ export default function MleoMiners() {
   function drawMiner(ctx, lane, slot, m) {
     const r  = slotRect(lane, slot);
     const cx = r.x + r.w*0.52;
-       const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
+    const cyFrac = laneSafe(MINER_Y_FRACS, lane, 0.56);
     const sizeF  = laneSafe(MINER_SIZE_FRACS, lane, 0.84);
     const cy = r.y + r.h*cyFrac;
     const w  = Math.min(r.w, r.h) * sizeF;
 
-    const img = new Image(); img.src = IMG_MINER;
+    const img = getImg(IMG_MINER);
     const frame = Math.floor((stateRef.current.anim.t * 8) % 4);
 
     if (img.complete && img.naturalWidth > 0) {
@@ -895,7 +923,7 @@ export default function MleoMiners() {
   }
 
   function drawMinerGhost(ctx, x, y, lvl) {
-    const w = 62; const img = new Image(); img.src = IMG_MINER;
+    const w = 62; const img = getImg(IMG_MINER);
     ctx.globalAlpha = 0.75;
     if (img.complete && img.naturalWidth > 0) {
       const sw = img.width/4, sh = img.height;
@@ -907,7 +935,7 @@ export default function MleoMiners() {
   }
 
   function drawCoin(ctx, x, y, a) {
-    const img = new Image(); img.src = IMG_COIN; const s = 24;
+    const img = getImg(IMG_COIN); const s = 24;
     ctx.globalAlpha = 0.45 + 0.55 * a;
     if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, x - s/2, y - s/2, s, s);
     else { ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(x, y, s/2, 0, Math.PI*2); ctx.fill(); }
@@ -1021,9 +1049,9 @@ export default function MleoMiners() {
           </div>
         )}
 
-        {/* Title (the only thing outside the canvas) */}
+        {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-          MLEO Miners — v5.4
+          MLEO Miners — v5.5
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
@@ -1145,7 +1173,7 @@ export default function MleoMiners() {
           )}
         </div>
 
-        {/* Help line (אפשר להשאיר/להסיר) */}
+        {/* Help line */}
         <p className="opacity-70 text-[11px] mt-2">
           4 lanes • Drag to move/merge • Break rocks → earn gold • Autosave on this device.
         </p>
