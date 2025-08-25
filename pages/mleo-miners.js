@@ -1,8 +1,8 @@
 // pages/mleo-miners.js
-// v5.5 — Smooth UI timers, image cache (no flicker), rocks shrink with HP
-//  • Smooth circular timers: steady UI pulse (~10Hz) from game loop
-//  • Image cache: no per-frame new Image(), no green-dot flickers
-//  • Rocks scale down with HP until break, then respawn next stage
+// v5.6 — Empty-slot pill buttons (glowing) + click-to-spawn at slot
+//  • Pills on empty slots, with pulse glow when affordable
+//  • Click pill -> spawns miner at that specific slot (if affordable)
+//  • Keeps v5.5 improvements: smooth timers, image cache, shrinking rocks
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -12,7 +12,7 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE; // 16 cap
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_5";
+const LS_KEY = "mleoMiners_v5_6";
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -101,7 +101,7 @@ export default function MleoMiners() {
   const [giftReadyFlag, setGiftReadyFlag] = useState(false);
   const [giftToast, setGiftToast] = useState(null); // {text, id}
 
-  // Small UI pulse to keep timers smooth (re-render ~10Hz)
+  // UI pulse to keep timers smooth (re-render ~10Hz)
   const uiPulseAccumRef = useRef(0);
   const [, forceUiPulse] = useState(0);
 
@@ -152,6 +152,9 @@ export default function MleoMiners() {
     // Auto-dog
     autoDogLastAt: Date.now(),
     autoDogBank: 0, // pending auto-spawns (0..6)
+
+    // UI pressed feedback
+    pressedPill: null, // {lane, slot, t}
   });
 
   const save = () => {
@@ -255,12 +258,10 @@ export default function MleoMiners() {
     init.pendingOfflineGold = (init.pendingOfflineGold || 0) + reward;
 
     // ===== OFFLINE accruals for gift & auto-dog =====
-    // Gift: while away, allow at most 1 ready gift
     if (!init.giftReady && now >= (init.giftNextAt || now)) {
       init.giftReady = true;
     }
 
-    // Auto-dog: accumulate intervals into bank up to DOG_BANK_CAP
     if (!init.autoDogLastAt) init.autoDogLastAt = now;
     const elapsedDogMs = Math.max(0, now - init.autoDogLastAt);
     const dogIntervals = Math.floor(elapsedDogMs / (DOG_INTERVAL_SEC * 1000));
@@ -324,13 +325,13 @@ export default function MleoMiners() {
           }
         }
 
-        // Gift: allow at most one pending gift from away-time
+        // Gift
         if (!s.giftReady && now2 >= (s.giftNextAt || now2)) {
           s.giftReady = true;
           setGiftReadyFlag(true);
         }
 
-        // Auto-dog: accumulate into bank
+        // Auto-dog
         if (!s.autoDogLastAt) s.autoDogLastAt = now2;
         const elapsedDogMs2 = Math.max(0, now2 - s.autoDogLastAt);
         const dogIntervals2 = Math.floor(elapsedDogMs2 / (DOG_INTERVAL_SEC * 1000));
@@ -405,10 +406,20 @@ export default function MleoMiners() {
     const onDown = (e) => {
       if (isMobileLandscape || gamePaused || showIntro || showCollect) return;
       const p = pos(e);
+
+      // 1) קודם כל — בדיקת גרירה של Miner
       const hit = pickMiner(p.x, p.y);
       if (hit) {
         dragRef.current = { active:true, id:hit.id, ox:p.x-hit.x, oy:p.y-hit.y };
         stateRef.current.anim.hint = 0; play(S_CLICK);
+        return;
+      }
+
+      // 2) קליק על כפתור-pill ב-slot ריק → מנסה להוסיף Miner שם
+      const pill = pickPill(p.x, p.y);
+      if (pill) {
+        trySpawnAtSlot(pill.lane, pill.slot);
+        return;
       }
     };
     const onMove = (e) => {
@@ -552,6 +563,32 @@ export default function MleoMiners() {
     return null;
   };
 
+  // ===== Pill geometry + picking =====
+  const pillRect = (lane, slot) => {
+    const L = laneRect(lane);
+    const r = slotRect(lane, slot);
+    const padY = L.y + L.h * 0.5;
+    const pw = r.w * 0.22;    // much shorter
+    const ph = L.h * 0.26;    // slim height
+    const px = r.x + (r.w - pw) * 0.5;
+    const py = padY - ph / 2;
+    return { x: px, y: py, w: pw, h: ph };
+  };
+  const pointInRect = (x, y, rect) => (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h);
+
+  const pickPill = (x, y) => {
+    const s = stateRef.current; if (!s) return null;
+    for (let l=0; l<LANES; l++) {
+      for (let sl=0; sl<SLOTS_PER_LANE; sl++) {
+        const cell = s.lanes[l].slots[sl];
+        if (cell) continue; // only empty slots have a pill
+        const pr = pillRect(l, sl);
+        if (pointInRect(x, y, pr)) return { lane: l, slot: sl };
+      }
+    }
+    return null;
+  };
+
   // ===== Costs (dynamic) =====
   const getDpsCost = () => {
     const s = stateRef.current; if (!s) return 160;
@@ -589,25 +626,11 @@ export default function MleoMiners() {
       p.vy += 120 * dt * 0.6;
       return p.t < p.life;
     });
-  };
 
-  const drawFx = (ctx) => {
-    const s = stateRef.current; if (!s) return;
-    const coinImg = getImg(IMG_COIN);
-    for (const p of s.anim.fx) {
-      const k = Math.min(1, p.t / p.life);
-      const a = 1 - k;
-      ctx.globalAlpha = 0.25 + 0.75 * a;
-      if (p.type === "coin") {
-        const sz = p.size * (0.8 + 0.4*Math.sin(p.t*8));
-        if (coinImg.complete && coinImg.naturalWidth > 0) {
-          ctx.drawImage(coinImg, p.x - sz/2, p.y - sz/2, sz, sz);
-        } else {
-          ctx.fillStyle="#fbbf24";
-          ctx.beginPath(); ctx.arc(p.x, p.y, sz/2, 0, Math.PI*2); ctx.fill();
-        }
-      }
-      ctx.globalAlpha = 1;
+    // pressed pill feedback timer
+    if (s.pressedPill) {
+      s.pressedPill.t -= dt;
+      if (s.pressedPill.t <= 0) s.pressedPill = null;
     }
   };
 
@@ -623,6 +646,42 @@ export default function MleoMiners() {
       }
     }
     return false;
+  };
+
+  const spawnMinerAt = (s, lane, slot, level = 1) => {
+    if (s.lanes[lane].slots[slot]) return false; // occupied
+    const id = s.nextId++;
+    const m = { id, level, lane, slot, pop: 1 };
+    s.miners[id] = m;
+    s.lanes[lane].slots[slot] = { id };
+    return true;
+  };
+
+  const afterPurchaseBump = (s) => {
+    s.totalPurchased = (s.totalPurchased || 0) + 1;
+    s.spawnLevel = 1 + Math.floor((s.totalPurchased) / 30);
+  };
+
+  const trySpawnAtSlot = (lane, slot) => {
+    const s = stateRef.current; if (!s) return;
+
+    if (countMiners(s) >= MAX_MINERS) { play(S_CLICK); alert("Maximum 16 miners on the board."); return; }
+    if (s.spawnCost == null || s.gold < s.spawnCost) { play(S_CLICK); return; }
+
+    const ok = spawnMinerAt(s, lane, slot, s.spawnLevel);
+    if (!ok) return;
+
+    // charge
+    s.gold -= s.spawnCost;
+    s.spawnCost = Math.ceil(s.spawnCost * 1.12);
+    afterPurchaseBump(s);
+
+    // pressed-pill feedback
+    s.pressedPill = { lane, slot, t: 0.15 };
+
+    s.anim.hint = 0;
+    setUi(u=>({...u, gold:s.gold, spawnCost:s.spawnCost}));
+    play(S_CLICK); save();
   };
 
   const addMiner = () => {
@@ -641,8 +700,7 @@ export default function MleoMiners() {
     s.gold -= s.spawnCost;
     s.spawnCost = Math.ceil(s.spawnCost*1.12);
 
-    s.totalPurchased = (s.totalPurchased || 0) + 1;
-    s.spawnLevel = 1 + Math.floor((s.totalPurchased) / 30);
+    afterPurchaseBump(s);
 
     s.anim.hint = 0;
     setUi(u=>({...u, gold:s.gold, spawnCost:s.spawnCost}));
@@ -724,7 +782,6 @@ export default function MleoMiners() {
     uiPulseAccumRef.current += dt;
     if (uiPulseAccumRef.current >= 0.1) {
       uiPulseAccumRef.current = 0;
-      // bump a dummy state to re-render
       forceUiPulse(x => (x + 1) % 1000000);
     }
 
@@ -777,6 +834,58 @@ export default function MleoMiners() {
     s.lastSeen = now;
   };
 
+  // ===== Drawing helpers for pills =====
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, h/2, w/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x,     y + h, rr);
+    ctx.arcTo(x,     y + h, x,     y,     rr);
+    ctx.arcTo(x,     y,     x + w, y,     rr);
+    ctx.closePath();
+  }
+
+  function drawPillButton(ctx, x, y, w, h, label, enabled=true, pulse=0, pressed=false) {
+    // pressed → scale slightly
+    const scale = pressed ? 0.96 : 1.0;
+    const cx = x + w/2, cy = y + h/2;
+    const sw = w * scale, sh = h * scale;
+    const sx = cx - sw/2, sy = cy - sh/2;
+
+    // gradient
+    const g = ctx.createLinearGradient(sx, sy, sx, sy + sh);
+    if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); } // צהוב "נדלק"
+    else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); } // כבוי
+
+    // outer glow (pulse)
+    ctx.save();
+    roundRectPath(ctx, sx, sy, sw, sh, sh/2);
+    ctx.fillStyle = g;
+    ctx.shadowColor = enabled ? "rgba(250,204,21," + (0.35 + 0.25 * pulse).toFixed(3) + ")" : "rgba(148,163,184,0.25)";
+    ctx.shadowBlur = enabled ? 16 + 16 * pulse : 10;
+    ctx.shadowOffsetY = 2;
+    ctx.fill();
+    ctx.restore();
+
+    // border
+    ctx.save();
+    roundRectPath(ctx, sx, sy, sw, sh, sh/2);
+    ctx.strokeStyle = enabled ? "#a16207" : "#475569";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // label
+    ctx.save();
+    ctx.fillStyle = enabled ? "#111827" : "#cbd5e1";
+    ctx.font = `bold ${Math.max(12, Math.floor(sh*0.45))}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, cx, cy);
+    ctx.restore();
+  }
+
   // ===== Drawing =====
   function draw() {
     const c = canvasRef.current; if (!c) return;
@@ -784,21 +893,30 @@ export default function MleoMiners() {
     const s = stateRef.current; if (!s) return;
     const b = boardRect();
 
+    const pulse = 0.5 + 0.5 * Math.sin((s.anim.t || 0) * 4.0);
+
     drawBgCover(ctx, b);
 
     for (let l=0; l<LANES; l++) {
       const L = laneRect(l);
 
-      // slot pads
+      // slot “buttons” (only on empty slots)
       for (let sidx=0; sidx<SLOTS_PER_LANE; sidx++) {
-        const r = slotRect(l, sidx);
-        const padY = L.y + L.h * 0.5;
-        ctx.fillStyle   = "rgba(15,23,42,.65)";
-        ctx.strokeStyle = "#20304a";
-        const pw = r.w - 14, ph = Math.max(10, L.h * 0.18);
-        const px = r.x + (r.w - pw) * 0.5, py = padY - ph/2;
-        ctx.fillRect(px, py, pw, ph);
-        ctx.strokeRect(px, py, pw, ph);
+        const cell = s.lanes[l].slots[sidx];
+        if (!cell) {
+          const { x, y, w, h } = pillRect(l, sidx);
+          const canAfford =
+            (s.gold ?? 0) >= (s.spawnCost ?? 0) &&
+            countMiners(s) < MAX_MINERS;
+          const label = "ADD";
+
+
+          const pressed = !!(s.pressedPill &&
+                             s.pressedPill.lane === l &&
+                             s.pressedPill.slot === sidx);
+
+          drawPillButton(ctx, x, y, w, h, label, canAfford, canAfford ? pulse : 0, pressed);
+        }
       }
 
       // rock
@@ -831,7 +949,7 @@ export default function MleoMiners() {
       drawCoin(ctx, x, y, 1 - k);
     }
 
-    // Particle FX
+    // Particle FX & pressed-pill fade
     drawFx(ctx);
 
     if (!s.paused && s.anim.hint) {
@@ -941,6 +1059,30 @@ export default function MleoMiners() {
     else { ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(x, y, s/2, 0, Math.PI*2); ctx.fill(); }
     ctx.globalAlpha = 1;
   }
+function drawFx(ctx) {
+  const s = stateRef.current; if (!s) return;
+  for (const p of s.anim.fx) {
+    const k = Math.min(1, p.t / p.life);
+    const a = 1 - k;
+    ctx.globalAlpha = 0.25 + 0.75 * a;
+
+    if (p.type === "coin") {
+      const img = new Image(); 
+      img.src = IMG_COIN;
+      const sz = p.size * (0.8 + 0.4 * Math.sin(p.t * 8));
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, p.x - sz/2, p.y - sz/2, sz, sz);
+      } else {
+        ctx.fillStyle = "#fbbf24";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, sz/2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.globalAlpha = 1;
+  }
+}
 
   // ===== UI =====
   const circleStyle = (p, active=true) => ({
@@ -1051,7 +1193,7 @@ export default function MleoMiners() {
 
         {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-          MLEO Miners — v5.5
+          MLEO Miners — v5.6
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
