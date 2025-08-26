@@ -1,27 +1,40 @@
 // components/BackButton.js
 import { useRouter } from "next/router";
 
-export default function BackButton({ topOffset = 76, leftOffsetPx = 16 }) {
+export default function BackButton({
+  topOffset = 76,
+  leftOffsetPx = 16,
+  onClick,
+}) {
   const router = useRouter();
+
+  const handle = () => {
+    if (onClick) return onClick();
+    // חזרה רגילה
+    if (window.history.length > 1) router.back();
+    else router.push("/game");
+  };
 
   return (
     <button
-      onClick={() => router.back()}
-      title="Back"
       aria-label="Back"
-      className="fixed z-[1200] rounded-full shadow-lg active:scale-95 transition
-                 bg-yellow-400 hover:bg-yellow-300 border border-yellow-300"
-      style={{
-        top: `${topOffset}px`,
-        left: `${leftOffsetPx}px`,
-        width: 40,
-        height: 40,
-      }}
+      onClick={handle}
+      className="fixed z-[10000] w-10 h-10 flex items-center justify-center
+                 rounded-full bg-yellow-400 shadow hover:bg-yellow-300 active:scale-95
+                 focus:outline-none"
+      style={{ top: `${topOffset}px`, left: `${leftOffsetPx}px` }}
     >
-      {/* אייקון חץ — שחור, עבה ובולט */}
-      <svg viewBox="0 0 24 24" width="22" height="22" className="mx-auto"
-           fill="none" stroke="#111827" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M15 19l-7-7 7-7" />
+      {/* חץ שחור עבה */}
+      <svg
+        viewBox="0 0 24 24"
+        className="w-7 h-7"
+        fill="none"
+        stroke="black"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M15 5l-7 7 7 7" />
       </svg>
     </button>
   );
