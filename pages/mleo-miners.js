@@ -30,7 +30,7 @@ const BASE_DPS = 2;
 const LEVEL_DPS_MUL = 1.9;
 const ROCK_BASE_HP = 60;
 const ROCK_HP_MUL = 2.15;
-const GOLD_FACTOR = 1.0;
+const GOLD_FACTOR = 0.12;
 
 // ===== Diamond chest prize catalog (for UI) + deterministic "next prize" roll =====
 const DIAMOND_PRIZES = [
@@ -156,6 +156,13 @@ export default function MleoMiners() {
   const [playerName, setPlayerName] = useState("");
   const [gamePaused, setGamePaused] = useState(true);
 
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [adWatching, setAdWatching] = useState(false);
+  const [adCooldownUntil, setAdCooldownUntil] = useState(0);
+
+const [showAdModal, setShowAdModal] = useState(false);
+const [adVideoEnded, setAdVideoEnded] = useState(false);
+
   // Offline collect overlay
   theStateFix_maybeMigrateLocalStorage();
   const [showCollect, setShowCollect] = useState(false);
@@ -183,6 +190,32 @@ export default function MleoMiners() {
   const minerDps = (lvl, mul) => BASE_DPS * Math.pow(LEVEL_DPS_MUL, lvl - 1) * mul;
 
   const countMiners = (s) => Object.keys(s.miners).length;
+
+  const boardHasMergeablePair = (s) => {
+    const seen = {};
+    for (let l=0;l<LANES;l++){
+      for (let k=0;k<SLOTS_PER_LANE;k++){
+        const cell = s.lanes[l].slots[k];
+        if (!cell) continue;
+        const m = s.miners[cell.id]; if (!m) continue;
+        seen[m.level] = (seen[m.level]||0)+1;
+        if (seen[m.level] >= 2) return true;
+      }
+    }
+    return false;
+  };
+  const lowestLevelOnBoard = (s) => {
+    let min = Infinity;
+    for (let l=0;l<LANES;l++){
+      for (let k=0;k<SLOTS_PER_LANE;k++){
+        const cell = s.lanes[l].slots[k];
+        if (!cell) continue;
+        const m = s.miners[cell.id]; if (!m) continue;
+        if (m.level < min) min = m.level;
+      }
+    }
+    return min === Infinity ? 1 : min;
+  };
 
   const newState = () => {
     const now = Date.now();
@@ -252,6 +285,9 @@ export default function MleoMiners() {
         nextDiamondPrize: s.nextDiamondPrize,
         // auto-dog
         autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
+        // ad
+        adCooldownUntil,
+
       }));
     } catch {}
   };
@@ -658,8 +694,8 @@ export default function MleoMiners() {
     const L = laneRect(lane);
     const r = slotRect(lane, slot);
     const padY = L.y + L.h * 0.5;
-    const pw = r.w * 0.22;
-    const ph = L.h * 0.26;
+    const pw = r.w * 0.36;
+    const ph = L.h * 0.18;
     const px = r.x + (r.w - pw) * 0.5;
     const py = padY - ph / 2;
     return { x: px, y: py, w: pw, h: ph };
@@ -808,7 +844,20 @@ export default function MleoMiners() {
     setUi(u=>({...u, gold:s.gold})); save();
   };
 
-  const onAdd     = () => { play(S_CLICK); alert("ADD (Digital wallet) — coming soon 🤝"); };
+const onAdd = () => {
+  play(S_CLICK);
+  const now = Date.now();
+  if (now < adCooldownUntil) {
+    const remain = Math.ceil((adCooldownUntil - now)/1000);
+    const m = Math.floor(remain/60), sec = String(remain%60).padStart(2,"0");
+    setGiftToastWithTTL(`Ad bonus in ${m}:${sec}`, 2000);
+    return;
+  }
+  // פותח מודאל וידאו; האיסוף יקרה בלחצן COLLECT אחרי סיום הווידאו
+  setAdVideoEnded(false);
+  setShowAdModal(true);
+};
+
   const onCollect = () => { play(S_CLICK); alert("COLLECT (Digital wallet) — coming soon 🪙"); };
 
   // ===== GIFT LOGIC =====
@@ -832,7 +881,7 @@ export default function MleoMiners() {
 
   function grantRareDiamondReward(s, cx, cy) {
     const prize = s.nextDiamondPrize || rollDiamondPrize();
-    const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4));
+    const base = Math.max(20, Math.round((s.spawnCost || 80) * 0.18));
 
     const giveCoins = (mult, label) => {
       const gain = base * mult;
@@ -843,13 +892,13 @@ export default function MleoMiners() {
     };
 
     switch (prize) {
-      case "coins100":   giveCoins(100, "Coins ×100"); break;
-      case "coins1000":  giveCoins(1000, "Coins ×1000"); break;
-      case "coins10000": giveCoins(10000, "Coins ×10000"); break;
+      case "coins100":   giveCoins(25, "Coins ×25"); break;
+      case "coins1000":  giveCoins(60, "Coins ×60"); break;
+      case "coins10000": giveCoins(120, "Coins ×120"); break;
       case "dog+3":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+3), cx, cy, "Diamond Chest"); return;
       case "dog+5":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+5), cx, cy, "Diamond Chest"); return;
       case "dog+7":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+7), cx, cy, "Diamond Chest"); return;
-      default:           giveCoins(100, "Coins ×100"); break;
+      default:           giveCoins(25, "Coins ×25"); break;
     }
     s.nextDiamondPrize = rollDiamondPrize();
     save();
@@ -864,8 +913,11 @@ export default function MleoMiners() {
 
     const roll = Math.random();
 
-    if (roll < 0.62) {
-      const base = Math.max(50, Math.round((s.spawnCost || 100) * 0.4));
+    if (!boardHasMergeablePair(s)) {
+      const lvl = Math.max(1, lowestLevelOnBoard(s));
+      grantDogOrCoins(s, lvl, cx, cy, "Anti-stuck");
+    } else if (roll < 0.62) {
+      const base = Math.max(20, Math.round((s.spawnCost || 80) * 0.18));
       const bonus = Math.round(base * (0.75 + Math.random()*0.5));
       s.gold += bonus;
       setUi(u=>({...u, gold:s.gold}));
@@ -1261,6 +1313,20 @@ function drawPillButton(ctx, x, y, w, h, label, enabled = true, pulse = 0, press
     const elapsed = Math.max(0, now - last);
     return clamp01(elapsed / total);
   })();
+// ADD cooldown progress (0..1) + תווית זמן
+const addRemainMs = Math.max(0, adCooldownUntil - Date.now());
+const addProgress = (() => {
+  const total = 10 * 60 * 1000; // 10 דקות
+  return 1 - Math.min(1, addRemainMs / total);
+})();
+const addRemainLabel = (() => {
+  if (addRemainMs <= 0) return "READY";
+  const m = Math.floor(addRemainMs / 60000);
+  const s = Math.floor((addRemainMs % 60000) / 1000);
+  return `${m}:${String(s).padStart(2,"0")}`;
+})();
+const addDisabled = addRemainMs > 0 || adWatching;
+
 
   // ===== Render-time costs & availability =====
   const sNow = stateRef.current;
@@ -1304,59 +1370,132 @@ function circleStyle(progress, withBg = true) {
           </div>
         )}
 
-        {/* Intro (CONNECT WALLET / SKIP) */}
-        {showIntro && (
-          <div className="absolute inset-0 flex flex-col items-center justify-start pt-8 bg-gray-900 z-[999] text-center p-6">
-            <img src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-5" />
-            <h1 className="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
-            <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
+{/* Intro Overlay + HOW TO as siblings (no CONTACT button) */}
+<>
+  {/* Intro Overlay */}
+  {showIntro && (
+    <div className="absolute inset-0 flex flex-col items-center justify-start pt-10 bg-black/80 z-[50] text-center p-6">
+      <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
+      <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
+      <p className="text-sm sm:text-base text-gray-200 mb-6">Merge miners, break rocks, earn gold.</p>
 
-            <input
-              type="text"
-              placeholder="Enter your name"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              className="mb-4 px-4 py-2 rounded text-black w-56 text-center"
-            />
+      <div className="flex gap-3 flex-wrap justify-center">
+        <button
+          onClick={async () => {
+  try { play?.(S_CLICK); } catch {}
+  const s = stateRef.current;
+  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+  setShowIntro(false);
+  setGamePaused(false);
+  if (typeof enterFullscreenAndLockMobile === "function") { try { await enterFullscreenAndLockMobile(); } catch {} }
+}}
 
-            <div className="flex gap-3">
-              <button
-                onClick={async () => {
-                  if (!playerName.trim()) return;
-                  play(S_CLICK);
-                  alert("CONNECT WALLET — coming soon 🤝");
-                  const s = stateRef.current;
-                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-                  setShowIntro(false); setGamePaused(false);
-                  await enterFullscreenAndLockMobile();
-                }}
-                disabled={!playerName.trim()}
-                className={`px-5 py-3 font-bold rounded-lg text-base shadow transition ${
-                  playerName.trim() ? "bg-indigo-400 hover:bg-indigo-300 text-black" : "bg-gray-500 text-gray-300 cursor-not-allowed"
-                }`}
-              >
-                CONNECT WALLET
-              </button>
+          className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
+        >
+          CONNECT WALLET
+        </button>
 
-              <button
-                onClick={async () => {
-                  if (!playerName.trim()) return;
-                  play(S_CLICK);
-                  const s = stateRef.current;
-                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-                  setShowIntro(false); setGamePaused(false);
-                  await enterFullscreenAndLockMobile();
-                }}
-                disabled={!playerName.trim()}
-                className={`px-5 py-3 font-bold rounded-lg text-base shadow transition ${
-                  playerName.trim() ? "bg-yellow-400 hover:bg-yellow-300 text-black" : "bg-gray-500 text-gray-300 cursor-not-allowed"
-                }`}
-              >
-                SKIP
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          onClick={async () => {
+  try { play?.(S_CLICK); } catch {}
+  const s = stateRef.current;
+  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+  setShowIntro(false);
+  setGamePaused(false);
+  if (typeof enterFullscreenAndLockMobile === "function") { try { await enterFullscreenAndLockMobile(); } catch {} }
+}}
+
+          className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
+        >
+          SKIP
+        </button>
+
+        <button
+          onClick={() => setShowHowTo(true)}
+          className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
+        >
+          HOW TO PLAY
+        </button>
+      </div>
+    </div>
+  )}
+
+  {/* HOW TO PLAY Modal */}
+  {showHowTo && (
+    <div className="fixed inset-0 z-[10000] bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
+        <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
+        <ul className="list-disc pl-5 space-y-2 text-sm">
+          <li>Merge two same-level miners to upgrade.</li>
+          <li>Miners auto-damage the rock; breaking it yields coins (reduced amounts).</li>
+          <li>If no merges are possible, the next gift spawns a low-level dog to unlock merging.</li>
+          <li><b>ADD</b> grants +50% of a base gift (simulated ad). Available every 10 minutes.</li>
+          <li>Upgrades boost <b>DPS</b> or <b>Gold</b> multiplier.</li>
+          <li>Reference: $2.5 per 1M in-game coins.</li>
+        </ul>
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => setShowHowTo(false)}
+            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+</>
+
+{/* ADD Ad Modal */}
+{showAdModal && (
+  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
+      <h2 className="text-2xl font-extrabold mb-3">Watch to Earn</h2>
+
+      {/* ▶️ איפה לשים את הסרטון:
+          שים את הקובץ ב- /public/ads/ad1.mp4 ואז הנתיב יעבוד כ-/ads/ad1.mp4 */}
+      <video
+        src="/ads/ad1.mp4"
+        className="w-full rounded-lg bg-black"
+        controls
+        autoPlay
+        onEnded={() => setAdVideoEnded(true)}
+      />
+
+      <div className="flex justify-between items-center mt-4">
+        <button
+          onClick={() => { setShowAdModal(false); setAdVideoEnded(false); }}
+          className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900"
+        >
+          Close
+        </button>
+
+        <button
+          onClick={() => {
+            const s = stateRef.current; if (!s) return;
+            // פרס: 50% מעל מתנה בסיסית
+            const base = Math.max(20, Math.round((s.spawnCost || 80) * 0.18));
+            const gain = Math.round(base * 1.5);
+            s.gold += gain; setUi(u=>({...u, gold:s.gold}));
+            setAdCooldownUntil(Date.now() + 10*60*1000); // 10 דקות קולדאון
+            setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
+            save();
+            setShowAdModal(false);
+            setAdVideoEnded(false);
+          }}
+          disabled={!adVideoEnded}
+          className={`px-4 py-2 rounded-lg font-bold ${
+            adVideoEnded ? "bg-yellow-400 hover:bg-yellow-300 text-black" : "bg-slate-300 text-slate-500 cursor-not-allowed"
+          }`}
+          title={adVideoEnded ? "Collect your reward" : "Watch until the end to unlock"}
+        >
+          COLLECT
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
         {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
@@ -1462,9 +1601,39 @@ function circleStyle(progress, withBg = true) {
                 Gold +10% (Cost {price(goldCostNow)})
               </button>
 
-              <button onClick={onAdd} className="px-3 py-1.5 rounded-xl bg-indigo-400 hover:bg-indigo-300 text-slate-900 font-bold shadow">
-                ADD
-              </button>
+<div className="relative inline-block">
+  {/* טבעת עבה שמכסה את הכפתור כולו (ללא מספרים) */}
+  <span
+    aria-hidden
+    className="pointer-events-none absolute rounded-xl"
+    style={{
+      inset: "-6px",                                 // כמה רחוק הטבעת מהכפתור
+      backgroundImage: `conic-gradient(#facc15 ${Math.round(360 * addProgress)}deg, rgba(255,255,255,0.25) 0deg)`,
+      WebkitMask: "radial-gradient(circle, transparent calc(100% - 10px), black 0)", // עובי טבעת ~10px
+      mask: "radial-gradient(circle, transparent calc(100% - 10px), black 0)",
+      borderRadius: "12px",                          // תואם ל-rounded-xl של הכפתור
+      transition: "background-image .2s linear",
+      zIndex: 2,                                     // הטבעת מעל הרקע ומתחת לכפתור
+      boxShadow: addDisabled ? "none" : "0 0 22px rgba(250,204,21,.35)", // הילה עדינה כשהכפתור מוכן
+    }}
+  />
+
+  {/* כפתור ADD עצמו */}
+  <button
+    onClick={onAdd}
+    disabled={addDisabled}
+    className={`px-3 py-1.5 rounded-xl font-bold shadow relative z-[3]
+      ${addDisabled
+        ? "bg-indigo-400/60 text-slate-900/70 cursor-not-allowed"
+        : "bg-indigo-400 hover:bg-indigo-300 text-slate-900"}`}
+    title={addRemainMs > 0 ? "Ad bonus on cooldown" : "Watch ad to earn"}
+  >
+    {adWatching ? "Watching..." : "ADD"}
+  </button>
+</div>
+
+
+
               <button onClick={onCollect} className="px-3 py-1.5 rounded-xl bg-fuchsia-400 hover:bg-fuchsia-300 text-slate-900 font-bold shadow">
                 COLLECT
               </button>
