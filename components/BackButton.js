@@ -1,24 +1,28 @@
-import React from "react";
+// components/BackButton.js
 import { useRouter } from "next/router";
 
-export default function BackButton() {
+export default function BackButton({ topOffset = 76, leftOffsetPx = 16 }) {
   const router = useRouter();
-
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      router.replace("/"); // אם אין היסטוריה – חזרה לדף הבית
-    }
-  };
 
   return (
     <button
-      onClick={handleBack}
-      className="fixed left-4 top-[calc(env(safe-area-inset-top,0px)+8px)] 
-                 z-50 rounded-xl bg-yellow-400 px-4 py-2 font-semibold shadow"
+      onClick={() => router.back()}
+      title="Back"
+      aria-label="Back"
+      className="fixed z-[1200] rounded-full shadow-lg active:scale-95 transition
+                 bg-yellow-400 hover:bg-yellow-300 border border-yellow-300"
+      style={{
+        top: `${topOffset}px`,
+        left: `${leftOffsetPx}px`,
+        width: 40,
+        height: 40,
+      }}
     >
-      ← Back
+      {/* אייקון חץ — שחור, עבה ובולט */}
+      <svg viewBox="0 0 24 24" width="22" height="22" className="mx-auto"
+           fill="none" stroke="#111827" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 19l-7-7 7-7" />
+      </svg>
     </button>
   );
 }
