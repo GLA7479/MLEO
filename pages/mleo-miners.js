@@ -1,9 +1,9 @@
 // pages/mleo-miners.js
-// v5.8 — Balanced gifts & economy:
+// v5.8 — Gifts & economy:
 // • Regular Gift = 10% of current rock-break coins; Ad Gift = 50%.
-// • Gift weights: Coins 60% • Dog (LVL-1) 20% • DPS +10% 10% • GOLD +10% 10%.
+// • Gift weights: Coins 70% • Dog (LVL-1) 20% • DPS +10% 5% • GOLD +10% 5%.
 // • Diamond Chest (3×💎): 55% → ×1000% or Dog+3 • 30% → ×10000% or Dog+5 • 15% → ×100000% or Dog+7.
-// • DPS/GOLD costs scale from expected next-rock coin reward.
+// • DPS/GOLD costs use anchored base (costBase) — no per-rock price jumps.
 // • Keeps 3h gift cycle with adaptive intervals and offline cap 1 gift.
 
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +14,8 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE; // 16 cap
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_8"; // keep same key (adds fields without reset)
+const LS_KEY = "mleoMiners_v5_81_reset1"; // bump key to force a fresh save for everyone
+
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -196,6 +197,10 @@ useEffect(() => {
   const [giftToast, setGiftToast] = useState(null); // {text, id}
   // Diamonds info modal
   const [showDiamondInfo, setShowDiamondInfo] = useState(false);
+// --- SSR guard so ADD doesn't light before LS loads ---
+const [mounted, setMounted] = useState(false);
+useEffect(() => { setMounted(true); }, []);
+
 
   // UI pulse to keep timers smooth (re-render ~10Hz)
   const uiPulseAccumRef = useRef(0);
@@ -241,80 +246,83 @@ useEffect(() => {
     return min === Infinity ? 1 : min;
   };
 
-  const newState = () => {
-    const now = Date.now();
-    return {
-      lanes: Array.from({ length: LANES }, (_, lane) => ({
-        slots: Array(SLOTS_PER_LANE).fill(null),
-        rock: newRock(lane, 0),
-        rockCount: 0,
-        beltShift: 0,
-      })),
-      miners: {},
-      nextId: 1,
-      gold: 0,
-      spawnCost: 50,
-      dpsMult: 1,
-      goldMult: 1,
-      anim: { t: 0, coins: [], hint: 1, fx: [] },
-      onceSpawned: false,
-      portrait: false,
-      paused: true,
+const newState = () => {
+  const now = Date.now();
+  return {
+    lanes: Array.from({ length: LANES }, (_, lane) => ({
+      slots: Array(SLOTS_PER_LANE).fill(null),
+      rock: newRock(lane, 0),
+      rockCount: 0,
+      beltShift: 0,
+    })),
+    miners: {},
+    nextId: 1,
+    gold: 0,
+    spawnCost: 50,
+    dpsMult: 1,
+    goldMult: 1,
+    anim: { t: 0, coins: [], hint: 1, fx: [] },
+    onceSpawned: false,
+    portrait: false,
+    paused: true,
 
-      // Purchasing & levels
-      totalPurchased: 0,
-      spawnLevel: 1,
+    // Purchasing & levels
+    totalPurchased: 0,
+    spawnLevel: 1,
 
-      // OFFLINE
-      lastSeen: now,
-      pendingOfflineGold: 0,
+    // OFFLINE
+    lastSeen: now,
+    pendingOfflineGold: 0,
 
-      // Gifts – NEW fields
-      cycleStartAt: now,              // anchor for 3h cycle
-      lastGiftIntervalSec: 20,        // for progress UI; updated on each schedule
-      giftNextAt: now + 20 * 1000,    // first gift ~20s by default (phase 1)
-      giftReady: false,
+    // Gifts
+    cycleStartAt: now,
+    lastGiftIntervalSec: 20,
+    giftNextAt: now + 20 * 1000, // first gift ~20s
+    giftReady: false,
 
-      // Diamonds
-      diamonds: 0,
-      nextDiamondPrize: rollDiamondPrize(),
+    // Diamonds
+    diamonds: 0,
+    nextDiamondPrize: rollDiamondPrize(),
 
-      // Auto-dog
-      autoDogLastAt: now,
-      autoDogBank: 0,
+    // Auto-dog
+    autoDogLastAt: now,
+    autoDogBank: 0,
 
-      // UI pressed feedback
-      pressedPill: null, // {lane, slot, t}
-    };
+    // UI pressed feedback
+    pressedPill: null,
   };
+};   // ← ← ← פה נסגר האובייקט וגם הפונקציה
 
-  const save = () => {
-    const s = stateRef.current; if (!s) return;
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify({
-        // core
-        lanes: s.lanes, miners: s.miners, nextId: s.nextId,
-        gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
-        muted: ui.muted, onceSpawned: s.onceSpawned,
-        // offline
-        lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
-        // buy-level
-        totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
-        // gifts (include new fields)
-        cycleStartAt: s.cycleStartAt,
-        lastGiftIntervalSec: s.lastGiftIntervalSec,
-        giftNextAt: s.giftNextAt, giftReady: s.giftReady,
-        // diamonds
-        diamonds: s.diamonds || 0,
-        nextDiamondPrize: s.nextDiamondPrize,
-        // auto-dog
-        autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
-        // ad
-        adCooldownUntil,
 
-      }));
-    } catch {}
-  };
+const save = () => {
+  const s = stateRef.current; if (!s) return;
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      // core
+      lanes: s.lanes, miners: s.miners, nextId: s.nextId,
+      gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
+      muted: ui.muted, onceSpawned: s.onceSpawned,
+      // offline
+      lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
+      // buy-level
+      totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
+      // gifts
+      cycleStartAt: s.cycleStartAt,
+      lastGiftIntervalSec: s.lastGiftIntervalSec,
+      giftNextAt: s.giftNextAt, giftReady: s.giftReady,
+      // diamonds
+      diamonds: s.diamonds || 0,
+      nextDiamondPrize: s.nextDiamondPrize,
+      // auto-dog
+      autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
+      // ad
+      adCooldownUntil,
+      // pricing
+      costBase: s.costBase,
+    }));
+  } catch {}
+};
+
   const load = () => { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } };
 
   // ===== OFFLINE helpers =====
@@ -439,9 +447,14 @@ useEffect(() => {
       init.autoDogLastAt = init.autoDogLastAt + dogIntervals * DOG_INTERVAL_SEC * 1000;
     }
 
-    // diamonds default
-    if (init.diamonds == null) init.diamonds = 0;
-    if (!init.nextDiamondPrize) init.nextDiamondPrize = rollDiamondPrize();
+      // diamonds default
+     if (init.diamonds == null) init.diamonds = 0;
+     if (!init.nextDiamondPrize) init.nextDiamondPrize = rollDiamondPrize();
+
+    // Anchor לבסיס עלויות שדרוג — מונע קפיצות מחיר בכל שבירת סלע
+    if (init.costBase == null) {
+      init.costBase = Math.max(80, expectedRockCoinReward(init));
+    }
 
     stateRef.current = init;
     setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: loaded?.muted || false }));
@@ -763,18 +776,18 @@ useEffect(() => {
   };
 
   // ===== Costs (dynamic; scale from expected next-rock reward) =====
-  const getDpsCost = () => {
-    const s = stateRef.current; if (!s) return 160;
-    const base = Math.max(80, expectedRockCoinReward(s));
-    const steps = Math.max(0, Math.round((s.dpsMult - 1) * 10));
-    return Math.ceil(base * 2.0 * Math.pow(1.18, steps));
-  };
-  const getGoldCost = () => {
-    const s = stateRef.current; if (!s) return 160;
-    const base = Math.max(80, expectedRockCoinReward(s));
-    const steps = Math.max(0, Math.round((s.goldMult - 1) * 10));
-    return Math.ceil(base * 2.2 * Math.pow(1.18, steps));
-  };
+const getDpsCost = () => {
+  const s = stateRef.current; if (!s) return 160;
+  const base = Math.max(80, s.costBase || 120);
+  const steps = Math.max(0, Math.round((s.dpsMult - 1) * 10)); // כל +10% = צעד
+  return Math.ceil(base * 2.0 * Math.pow(1.18, steps));
+};
+const getGoldCost = () => {
+  const s = stateRef.current; if (!s) return 160;
+  const base = Math.max(80, s.costBase || 120);
+  const steps = Math.max(0, Math.round((s.goldMult - 1) * 10));
+  return Math.ceil(base * 2.2 * Math.pow(1.18, steps));
+};
 
   // ===== Gift particles =====
   const spawnCoinBurst = (cx, cy, n = 24) => {
@@ -962,37 +975,65 @@ useEffect(() => {
     const cx = b.x + b.w / 2;
     const cy = b.y + b.h / 2;
 
-    const roll = Math.random();
     const rockGain = Math.max(20, expectedRockCoinReward(s));
-    const giftCoin = Math.round(rockGain * 0.10); // 10% מסכום השבירה
+    const giftCoin  = Math.round(rockGain * 0.10); // 10% מסכום השבירה
 
-    // אנטי-תקיעה
-    if (!boardHasMergeablePair(s)) {
-      const lvl = Math.max(1, lowestLevelOnBoard(s));
-      grantDogOrCoins(s, lvl, cx, cy, "Anti-stuck");
-    } else if (roll < 0.60) {
-      // 60% מטבעות
-      s.gold += giftCoin;
-      setUi(u=>({...u, gold:s.gold}));
-      spawnCoinBurst(cx, cy, 28);
+    // ---- 10% Diamond ----
+    const rollTop = Math.random();
+    if (rollTop < 0.10) {
+      s.diamonds = (s.diamonds || 0) + 1;
+      setUi(u => ({ ...u })); // רענון HUD
       play(S_GIFT);
-      setGiftToastWithTTL(`🎁 +${formatShort(giftCoin)} coins`, 3000);
-    } else if (roll < 0.80) {
-      // 20% כלב ברמה מתחת ל-LVL
-      const target = Math.max(1, (s.spawnLevel || 1) - 1);
-      grantDogOrCoins(s, target, cx, cy, "Gift");
-    } else if (roll < 0.90) {
-      // 10% DPS
-      s.dpsMult = +(s.dpsMult * 1.1).toFixed(3);
-      spawnCoinBurst(cx, cy, 16);
-      play(S_GIFT);
-      setGiftToastWithTTL(`🎁 DPS +10%`, 3000);
+      setGiftToastWithTTL(`💎 +1 Diamond (${s.diamonds}/3)`, 3200);
+
+      if (s.diamonds >= 3) {
+        s.diamonds -= 3;
+        grantRareDiamondReward(s, cx, cy); // פותח תיבה
+      }
+
     } else {
-      // 10% GOLD
-      s.goldMult = +(s.goldMult * 1.1).toFixed(3);
-      spawnCoinBurst(cx, cy, 16);
-      play(S_GIFT);
-      setGiftToastWithTTL(`🎁 Gold +10%`, 3000);
+      // ---- 60/20/5/5 ----
+      let r = Math.random();
+      let outcome;
+      if (r < 0.60)       outcome = "coins";
+      else if (r < 0.80)  outcome = "dog";
+      else if (r < 0.85)  outcome = "dps";
+      else                outcome = "gold";
+
+      // Anti-stuck רך: אם אין זוגות למיזוג, יש 40% להפוך לכלב
+      if (!boardHasMergeablePair(s) && outcome !== "dog") {
+        if (Math.random() < 0.40) outcome = "dog";
+      }
+
+      switch (outcome) {
+        case "coins": {
+          s.gold += giftCoin;
+          setUi(u => ({ ...u, gold: s.gold }));
+          spawnCoinBurst(cx, cy, 28);
+          play(S_GIFT);
+          setGiftToastWithTTL(`🎁 +${formatShort(giftCoin)} coins`, 3000);
+          break;
+        }
+        case "dog": {
+          const target = Math.max(1, (s.spawnLevel || 1) - 1);
+          grantDogOrCoins(s, target, cx, cy, "Gift");
+          break;
+        }
+        case "dps": {
+          s.dpsMult = +(s.dpsMult * 1.1).toFixed(3);
+          spawnCoinBurst(cx, cy, 16);
+          play(S_GIFT);
+          setGiftToastWithTTL(`🎁 DPS +10%`, 3000);
+          break;
+        }
+        case "gold": {
+          s.goldMult = +(s.goldMult * 1.1).toFixed(3);
+          spawnCoinBurst(cx, cy, 16);
+          play(S_GIFT);
+          setGiftToastWithTTL(`🎁 Gold +10%`, 3000);
+          break;
+        }
+      }
     }
 
     s.giftReady = false;
@@ -1000,6 +1041,8 @@ useEffect(() => {
     setGiftReadyFlag(false);
     save();
   };
+
+
 
   const tryAutoDogSpawns = () => {
     const s = stateRef.current; if (!s) return;
@@ -1355,17 +1398,21 @@ useEffect(() => {
   })();
 
   // ADD cooldown progress + label
-  const addRemainMs = Math.max(0, adCooldownUntil - Date.now());
-  const addProgress = (() => {
-    const total = 10 * 60 * 1000; // 10 דקות
-    return 1 - Math.min(1, addRemainMs / total);
-  })();
-  const addRemainLabel = (() => {
-    if (addRemainMs <= 0) return "READY";
-    const m = Math.floor(addRemainMs / 60000);
-    const s = Math.floor((addRemainMs % 60000) / 1000);
-    return `${m}:${String(s).padStart(2,"0")}`;
-  })();
+const addRemainMs = Math.max(0, adCooldownUntil - Date.now());
+const addProgress = (() => {
+  if (!mounted) return 0; // לפני mount, אל תדליק טבעת
+  const total = 10 * 60 * 1000; // 10 דקות
+  return 1 - Math.min(1, addRemainMs / total);
+})();
+
+ const addRemainLabel = (() => {
+  if (!mounted) return "…";
+  if (addRemainMs <= 0) return "READY";
+  const m = Math.floor(addRemainMs / 60000);
+  const s = Math.floor((addRemainMs % 60000) / 1000);
+  return `${m}:${String(s).padStart(2,"0")}`;
+})();
+
   const addDisabled = addRemainMs > 0 || adWatching;
 
   // ===== Render-time costs & availability =====
@@ -1468,7 +1515,7 @@ useEffect(() => {
                   <li>Breaking rocks yields coins that scale with rock level.</li>
                   <li>Regular Gift = <b>10%</b> of the current rock-break coins.</li>
                   <li>Ad Gift (after video) = <b>50%</b> of the rock-break coins.</li>
-                  <li>Gift weights: Coins 60% • Dog (LVL-1) 20% • DPS +10% 10% • GOLD +10% 10%.</li>
+<li>Gift weights: Coins 70% • Dog (LVL-1) 20% • DPS +10% 5% • GOLD +10% 5%.</li>
                   <li>Diamond Chest (3×💎): 55% ×1000% / Dog+3 • 30% ×10000% / Dog+5 • 15% ×100000% / Dog+7.</li>
                   <li>Upgrades (DPS/GOLD) costs scale with the expected next-rock reward.</li>
                 </ul>
@@ -1544,7 +1591,7 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
 
         {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-          MLEO Miners — v5.8 (Balanced gifts & economy)
+          MLEO Miners — v5.8
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
@@ -1655,32 +1702,21 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
                 Gold +10% (Cost {price(goldCostNow)})
               </button>
 
-              {/* ADD with circular progress ring */}
-              <div className="relative inline-block">
-                <span
-                  aria-hidden
-                  className="absolute inset-0 rounded-xl pointer-events-none"
-                  style={{
-                    padding: "3px",
-                    background: `conic-gradient(#facc15 ${Math.round(360 * addProgress)}deg, rgba(255,255,255,.18) 0deg)`,
-                    WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-                    WebkitMaskComposite: "xor",
-                    maskComposite: "exclude",
-                    transition: "background .2s linear",
-                    filter: addDisabled ? undefined : "drop-shadow(0 0 8px rgba(250,204,21,.35))",
-                  }}
-                />
-                <button
-                  onClick={onAdd}
-                  disabled={addDisabled}
-                  className={`px-3 py-1.5 rounded-xl font-bold shadow relative z-[3]
-                    ${addDisabled ? "bg-indigo-400/60 text-slate-900/70 cursor-not-allowed"
-                                  : "bg-indigo-400 hover:bg-indigo-300 text-slate-900"}`}
-                  title={addRemainMs > 0 ? "Ad bonus on cooldown" : "Watch ad to earn"}
-                >
-                  {adWatching ? "Watching..." : "ADD"}
-                </button>
-              </div>
+{/* EARN – same style as DPS/GOLD */}
+<button
+  onClick={onAdd}
+  disabled={addDisabled}
+  className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
+    ${
+      addDisabled
+        ? "bg-indigo-400 opacity-60 cursor-not-allowed"
+        : "bg-indigo-400 hover:bg-indigo-300 ring-2 ring-indigo-300 shadow-[0_0_18px_rgba(129,140,248,.45)]"
+    }`}
+  title={addRemainMs > 0 ? `Ad bonus in ${addRemainLabel}` : "Watch ad to earn"}
+>
+  GAIN {addRemainMs > 0 ? `(${addRemainLabel})` : ""}
+</button>
+
 
 <button
   disabled
@@ -1826,6 +1862,7 @@ function theStateFix_maybeMigrateLocalStorage() {
     if (!raw) return;
     const s = JSON.parse(raw);
     let changed = false;
+
     if (s.cycleStartAt == null) { s.cycleStartAt = Date.now(); changed = true; }
     if (s.lastGiftIntervalSec == null) {
       s.lastGiftIntervalSec = currentGiftIntervalSec(s, Date.now());
@@ -1836,6 +1873,14 @@ function theStateFix_maybeMigrateLocalStorage() {
       changed = true;
     }
     if (typeof s.adCooldownUntil !== "number") { s.adCooldownUntil = 0; changed = true; }
+
+    // עוגן לבסיס המחיר כדי למנוע קפיצות אחרי כל שבירת סלע
+    if (s.costBase == null) {
+      try { s.costBase = Math.max(80, expectedRockCoinReward(s)); }
+      catch { s.costBase = 120; }
+      changed = true;
+    }
+
     if (changed) localStorage.setItem(LS_KEY, JSON.stringify(s));
   } catch {}
 }
