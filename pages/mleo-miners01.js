@@ -171,18 +171,15 @@ export default function MleoMiners() {
 });
 
 
-// Persist cooldown whenever it changes (skip first mount to avoid overwriting LS with 0)
-const didInitCooldown = useRef(false);
-useEffect(() => {
-  if (!didInitCooldown.current) { didInitCooldown.current = true; return; }
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    const data = raw ? JSON.parse(raw) : {};
-    data.adCooldownUntil = adCooldownUntil;
-    localStorage.setItem(LS_KEY, JSON.stringify(data));
-  } catch {}
-}, [adCooldownUntil]);
-
+  // Persist cooldown whenever it changes
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const data = raw ? JSON.parse(raw) : {};
+      data.adCooldownUntil = adCooldownUntil;
+      localStorage.setItem(LS_KEY, JSON.stringify(data));
+    } catch {}
+  }, [adCooldownUntil]);
 
   const [showAdModal, setShowAdModal] = useState(false);
   const [adVideoEnded, setAdVideoEnded] = useState(false);
@@ -1514,17 +1511,9 @@ useEffect(() => {
                     const gain = Math.round(rockGain * 0.50); // 50% משבירת סלע
                     s.gold += gain; setUi(u => ({ ...u, gold: s.gold }));
 
- const until = Date.now() + 10*60*1000; // 10 דקות קולדאון
-setAdCooldownUntil(until);
-// כתיבה מיידית ל-LS כדי שלא ילך לאיבוד בין רענונים
-try {
-  const raw = localStorage.getItem(LS_KEY);
-  const data = raw ? JSON.parse(raw) : {};
-  data.adCooldownUntil = until;
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
-} catch {}
-setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
-
+                    const until = Date.now() + 10*60*1000; // 10 דקות קולדאון
+                    setAdCooldownUntil(until);
+                    setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
 
                     setShowAdModal(false);
                     setAdVideoEnded(false);
