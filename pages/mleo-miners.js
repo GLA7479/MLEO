@@ -1593,14 +1593,12 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
         )}
 
         {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-0 mb-1">
+<h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-8 mb-8 leading-none">
           MLEO Miners — v5.8
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
-<div
-  id="miners-canvas-wrap"
-  className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-4"
+<div id="miners-canvas-wrap" className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-1"
   style={{ maxWidth: isDesktop ? "1024px" : "680px", aspectRatio: isDesktop ? "4 / 3" : undefined }}
 >
 
@@ -1622,9 +1620,9 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
                 <b>{formatShort(stateRef.current?.gold ?? 0)}</b>
               </div>
 
-              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🪓 DPS x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
-              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡 Gold x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
-              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🐶 Buy LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡  x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🐶  LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
 
               {/* Diamonds counter (clickable) */}
               <button
@@ -1772,11 +1770,7 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
           )}
         </div>
 
-        {/* Help line */}
-        <p className="opacity-70 text-[11px] mt-2">
-          3h gift cycle: 30m@20s → 30m@30s → 30m@40s → 30m@50s → 60m@60s • Max 1 offline-ready gift.
-        </p>
-
+ 
         {/* Offline COLLECT overlay */}
         {showCollect && (
           <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/85 px-6 text-center">
