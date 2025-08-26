@@ -43,4 +43,70 @@ html, body { -webkit-tap-highlight-color: transparent; touch-action: manipulatio
   animation: introTextIn 1.8s ease-out both; /* כניסה איטית יותר */
   text-shadow: 0 2px 12px rgba(0,0,0,.55);
 }
+/* ===== Fixed top HUD (stable on all devices) ===== */
+
+/* גובה ברירת־מחדל של ה־HUD (אפשר לכוון אם צריך) */
+:root { --hud-h: 68px; }
+
+/* בר עליון קבוע, עם safe-area ו־backdrop, לא מושפע מ־100vh/מקלדת */
+.hud-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(env(safe-area-inset-top, 0px));
+  z-index: 60;
+  padding: 8px 8px 10px;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* מסילה חד־שורתית שלא נשברת. אם אין מקום — גלילה אופקית עדינה. */
+.hud-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content; /* כל צ'יפ תופס את המינימום שלו */
+  gap: 8px;
+  align-items: center;
+  justify-content: center;       /* ממורכז במסכים רחבים */
+  max-width: 980px;              /* כמו בתמונה שלך */
+  margin: 0 auto;
+  padding: 0 6px;
+  overflow-x: auto;              /* במקום שבירה לשורה 2 */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;         /* מסתיר scroll במספר דפדפנים */
+}
+.hud-row::-webkit-scrollbar { display: none; }
+
+/* צ'יפים קבועים בגובה ומרווחים — לא קופצים ולא נשברים */
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;                  /* גובה קבוע כדי למנוע "קפיצות" */
+  padding: 0 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.65);
+  border: 1px solid rgba(255,255,255,.08);
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* וריאציות קטנות אם תרצה צבעים שונים לצ'יפים (אופציונלי) */
+.hud-chip--stat { background: rgba(0,0,0,.65); }
+.hud-chip--phase { background: rgba(17,24,39,.65); }
+.hud-chip--action { background: rgba(250,204,21,.22); border-color: rgba(250,204,21,.5); }
+
+/* כדי שהתוכן לא יכנס מתחת ל־HUD: עוטפים את המשחק במחלקה הזו */
+.with-hud-pad {
+  padding-top: calc(var(--hud-h) + env(safe-area-inset-top, 0px) + 8px);
+}
+
+/* במסכים מאוד קטנים נוריד קצת גובה כדי להרוויח מקום */
+@media (max-width: 360px) {
+  :root { --hud-h: 60px; }
+  .hud-chip { height: 36px; font-size: 13px; }
+}
 

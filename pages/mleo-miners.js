@@ -1442,10 +1442,13 @@ const addProgress = (() => {
   // ===== RETURN (JSX) =====
   return (
     <Layout>
-      <div
-        ref={wrapRef}
-        className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative overflow-hidden select-none"
-      >
+ <div
+   ref={wrapRef}
+   className="flex flex-col items-center justify-start bg-gray-900 text-white min-h-screen w-full relative overflow-hidden select-none pt-0 -mt-0"
+ >
+
+
+
         {/* Landscape overlay on mobile */}
         {isMobileLandscape && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white text-center p-6">
@@ -1590,21 +1593,22 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
         )}
 
         {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-0 mb-1">
           MLEO Miners — v5.8
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
-        <div
-          id="miners-canvas-wrap"
-          className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-6"
-          style={{ maxWidth: isDesktop ? "1024px" : "680px", aspectRatio: isDesktop ? "4 / 3" : undefined }}
-        >
+<div
+  id="miners-canvas-wrap"
+  className="relative w-full border border-slate-700 rounded-2xl overflow-hidden shadow-2xl mt-4"
+  style={{ maxWidth: isDesktop ? "1024px" : "680px", aspectRatio: isDesktop ? "4 / 3" : undefined }}
+>
+
           <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
 
           {/* ==== TOP HUD ==== */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-3 z-[6] w-[calc(100%-16px)] max-w-[980px]">
-            <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
+<div className="absolute left-1/2 -translate-x-1/2 top-1 z-[30] w-[calc(100%-16px)] max-w-[980px]">
+<div className="flex gap-2 flex-wrap justify-center items-center text-sm">
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow flex items-center gap-2">
                 <div
                   className="relative w-8 h-8 rounded-full grid place-items-center"
