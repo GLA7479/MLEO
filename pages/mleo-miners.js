@@ -197,6 +197,8 @@ useEffect(() => {
   const [giftToast, setGiftToast] = useState(null); // {text, id}
   // Diamonds info modal
   const [showDiamondInfo, setShowDiamondInfo] = useState(false);
+// Reset confirm modal
+const [showResetConfirm, setShowResetConfirm] = useState(false);
 // --- SSR guard so ADD doesn't light before LS loads ---
 const [mounted, setMounted] = useState(false);
 useEffect(() => { setMounted(true); }, []);
@@ -397,6 +399,39 @@ const save = () => {
     }
     setShowCollect(false);
   };
+// Full reset (wipe save + go back to intro)
+const resetGame = async () => {
+  try { play?.(S_CLICK); } catch {}
+  // remove persisted save
+  try { localStorage.removeItem(LS_KEY); } catch {}
+
+  // rebuild fresh state
+  const s = newState();
+  stateRef.current = s;
+
+  // reset UI mirrors
+  setUi((u) => ({
+    ...u,
+    gold: s.gold,
+    spawnCost: s.spawnCost,
+    dpsMult: s.dpsMult,
+    goldMult: s.goldMult,
+  }));
+
+  // clear other UI flags
+  setAdCooldownUntil(0);
+  setGiftReadyFlag(false);
+  setShowCollect(false);
+  setShowAdModal(false);
+  setShowDiamondInfo(false);
+  setShowResetConfirm(false);
+
+  // go back to intro / pause
+  setShowIntro(true);
+  setGamePaused(true);
+  try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {}
+};
+
 
   // ===== Fullscreen + Orientation lock (mobile only) =====
   const enterFullscreenAndLockMobile = async () => {
@@ -1426,7 +1461,7 @@ const addProgress = (() => {
   const canBuyGold  = !!sNow && sNow.gold >= goldCostNow;
 
   const price = (n) => formatShort(n ?? 0);
-  const phaseLabel = `Phase ${ (phaseNow.index+1) }/5 • ${phaseNow.intervalSec}s gifts`;
+const phaseLabel = `⏳ ${phaseNow.intervalSec}s gifts`;
 
   // ===== Circle progress style helper =====
   function circleStyle(progress, withBg = true) {
@@ -1670,20 +1705,22 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
                       : "bg-emerald-500 opacity-60 cursor-not-allowed"
                   }`}
               >
-                + Add Miner (LV {sNow?.spawnLevel || 1}) — {price(spawnCostNow)}
+                + 🐶 Miner (LV {sNow?.spawnLevel || 1}) — {price(spawnCostNow)}
               </button>
 
               <button
                 onClick={upgradeDps}
                 disabled={!canBuyDps}
-                className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold shadow transition
+ className={`h-8 px-2.5 rounded-lg text-[13px] leading-none inline-flex items-center
+  text-slate-900 font-bold shadow-sm transition
+  text-slate-900 font-bold shadow-sm transition
                   ${
                     canBuyDps
                       ? "bg-sky-500 hover:bg-sky-400 ring-2 ring-sky-300 shadow-[0_0_18px_rgba(56,189,248,.55)]"
                       : "bg-sky-500 opacity-60 cursor-not-allowed"
                   }`}
               >
-                DPS +10% (Cost {price(dpsCostNow)})
+                🪓 +10% (Cost {price(dpsCostNow)})
               </button>
 
               <button
@@ -1696,7 +1733,7 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
                       : "bg-amber-400 opacity-60 cursor-not-allowed"
                   }`}
               >
-                Gold +10% (Cost {price(goldCostNow)})
+                🟡 +10% (Cost {price(goldCostNow)})
               </button>
 
 {/* EARN – same style as DPS/GOLD */}
@@ -1716,11 +1753,11 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
 
 
 <button
-  disabled
-  className="px-3 py-1.5 rounded-xl bg-fuchsia-400/50 text-slate-900/60 font-bold shadow cursor-not-allowed"
-  title="Disabled for now"
+  onClick={() => setShowResetConfirm(true)}
+  className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold shadow transition ring-2 ring-rose-300"
+  title="Reset all progress"
 >
-  COLLECT
+  RESET
 </button>
 
             </div>
@@ -1790,6 +1827,32 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
             </div>
           </div>
         )}
+{showResetConfirm && (
+  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
+      <h2 className="text-2xl font-extrabold mb-2">Reset Progress?</h2>
+      <p className="text-sm text-slate-700 mb-4">
+        This will permanently delete your save and send you back to the start.
+        You will lose all miners, coins, upgrades, gifts and diamonds.
+      </p>
+
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={() => setShowResetConfirm(false)}
+          className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 font-semibold"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={resetGame}
+          className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold"
+        >
+          Yes, reset
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
         {/* Diamond Rewards Modal */}
         {showDiamondInfo && (
