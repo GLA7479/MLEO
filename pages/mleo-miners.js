@@ -1,7 +1,10 @@
 // pages/mleo-miners.js
-// v5.7+giftCycle — Gift schedule cycles over 3h: 30m@20s, 30m@30s, 30m@40s, 30m@50s, 60m@60s.
-//  • Counts in background. On return, interval adapts to current phase (e.g., after ~2h → 60s).
-//  • Still max 1 ready gift offline (לא משנה התנהגות זו).
+// v5.8 — Balanced gifts & economy:
+// • Regular Gift = 10% of current rock-break coins; Ad Gift = 50%.
+// • Gift weights: Coins 60% • Dog (LVL-1) 20% • DPS +10% 10% • GOLD +10% 10%.
+// • Diamond Chest (3×💎): 55% → ×1000% or Dog+3 • 30% → ×10000% or Dog+5 • 15% → ×100000% or Dog+7.
+// • DPS/GOLD costs scale from expected next-rock coin reward.
+// • Keeps 3h gift cycle with adaptive intervals and offline cap 1 gift.
 
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
@@ -32,24 +35,22 @@ const ROCK_BASE_HP = 60;
 const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 0.12;
 
-// ===== Diamond chest prize catalog (for UI) + deterministic "next prize" roll =====
+// ===== Diamond chest prize catalog (for UI) =====
 const DIAMOND_PRIZES = [
-  { key: "coins100",    label: "Coins ×100" },
-  { key: "dog+3",       label: "Dog +3 levels" },
-  { key: "coins1000",   label: "Coins ×1000" },
-  { key: "dog+5",       label: "Dog +5 levels" },
-  { key: "coins10000",  label: "Coins ×10000" },
-  { key: "dog+7",       label: "Dog +7 levels" },
+  { key: "coins_x10",    label: "Coins ×1000% (×10 gift)" },
+  { key: "dog+3",        label: "Dog +3 levels" },
+  { key: "coins_x100",   label: "Coins ×10000% (×100 gift)" },
+  { key: "dog+5",        label: "Dog +5 levels" },
+  { key: "coins_x1000",  label: "Coins ×100000% (×1000 gift)" },
+  { key: "dog+7",        label: "Dog +7 levels" },
 ];
 
+// שכבות לפי שכיחות: 55% (×1000%/Dog+3), 30% (×10000%/Dog+5), 15% (×100000%/Dog+7)
 function rollDiamondPrize() {
   const r = Math.random();
-  if (r < 0.25)   return "coins100";
-  if (r < 0.50)   return "dog+3";
-  if (r < 0.675)  return "coins1000";
-  if (r < 0.85)   return "dog+5";
-  if (r < 0.925)  return "coins10000";
-  return "dog+7";
+  if (r < 0.55)       return Math.random() < 0.5 ? "coins_x10"   : "dog+3";    // 1000% = ×10 gift
+  if (r < 0.85)       return Math.random() < 0.5 ? "coins_x100"  : "dog+5";    // 10000% = ×100 gift
+  /* 0.85..1 */       return Math.random() < 0.5 ? "coins_x1000" : "dog+7";    // 100000% = ×1000 gift
 }
 
 // ===== NEW: Gift schedule (3-hour cycle) =====
@@ -158,10 +159,30 @@ export default function MleoMiners() {
 
   const [showHowTo, setShowHowTo] = useState(false);
   const [adWatching, setAdWatching] = useState(false);
-  const [adCooldownUntil, setAdCooldownUntil] = useState(0);
+  const [adCooldownUntil, setAdCooldownUntil] = useState(() => {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return 0;
+    const data = JSON.parse(raw);
+    return typeof data.adCooldownUntil === "number" ? data.adCooldownUntil : 0;
+  } catch {
+    return 0;
+  }
+});
 
-const [showAdModal, setShowAdModal] = useState(false);
-const [adVideoEnded, setAdVideoEnded] = useState(false);
+
+  // Persist cooldown whenever it changes
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const data = raw ? JSON.parse(raw) : {};
+      data.adCooldownUntil = adCooldownUntil;
+      localStorage.setItem(LS_KEY, JSON.stringify(data));
+    } catch {}
+  }, [adCooldownUntil]);
+
+  const [showAdModal, setShowAdModal] = useState(false);
+  const [adVideoEnded, setAdVideoEnded] = useState(false);
 
   // Offline collect overlay
   theStateFix_maybeMigrateLocalStorage();
@@ -305,6 +326,27 @@ const [adVideoEnded, setAdVideoEnded] = useState(false);
     return dps;
   };
 
+  // === Expected coin reward for the next rock break (scales with rock level) ===
+  function expectedRockCoinReward(s) {
+    if (!s) return 0;
+    let bestLane = 0, bestDps = 0;
+    for (let l = 0; l < LANES; l++) {
+      const dps = laneDpsSum(s, l);
+      if (dps > bestDps) { bestDps = dps; bestLane = l; }
+    }
+    // אם אין עדיין DPS על הלוח – קח ממוצע
+    if (bestDps <= 0) {
+      let sum = 0;
+      for (let l = 0; l < LANES; l++) {
+        const rk = s.lanes[l].rock;
+        sum += Math.floor(rk.maxHp * GOLD_FACTOR * (s.goldMult || 1));
+      }
+      return Math.floor(sum / LANES);
+    }
+    const rock = s.lanes[bestLane].rock;
+    return Math.floor(rock.maxHp * GOLD_FACTOR * (s.goldMult || 1));
+  }
+
   const simulateOffline = (seconds, s) => {
     if (!s || seconds <= 0) return 0;
     const capSec = Math.min(seconds, OFFLINE_CAP_HOURS * 3600);
@@ -361,6 +403,10 @@ const [adVideoEnded, setAdVideoEnded] = useState(false);
   useEffect(() => {
     const loaded = load();
     const init = loaded ? { ...newState(), ...loaded, anim: { t: 0, coins: [], hint: loaded.onceSpawned ? 0 : 1, fx: [] } } : newState();
+    // --- ad cooldown from LS on boot ---
+    if (typeof loaded?.adCooldownUntil === "number") {
+      setAdCooldownUntil(loaded.adCooldownUntil);
+    }
 
     // offline on boot
     const now = Date.now();
@@ -379,7 +425,6 @@ const [adVideoEnded, setAdVideoEnded] = useState(false);
     // Gifts (max 1 ready offline)
     if (!init.giftReady && now >= (init.giftNextAt || now)) {
       init.giftReady = true;
-      // don't reschedule here; next schedule occurs after claiming
     }
 
     // Auto-dog offline bank
@@ -619,7 +664,6 @@ const [adVideoEnded, setAdVideoEnded] = useState(false);
       cnv.removeEventListener("touchend", onUp);
     };
   }
-
   // ===== Geometry aligned to background =====
   const boardRect = () => {
     const c = canvasRef.current;
@@ -715,14 +759,18 @@ const [adVideoEnded, setAdVideoEnded] = useState(false);
     return null;
   };
 
-  // ===== Costs (dynamic) =====
+  // ===== Costs (dynamic; scale from expected next-rock reward) =====
   const getDpsCost = () => {
     const s = stateRef.current; if (!s) return 160;
-    return Math.ceil(160 * Math.pow(1.22, Math.round((s.dpsMult - 1) * 10)));
+    const base = Math.max(80, expectedRockCoinReward(s));
+    const steps = Math.max(0, Math.round((s.dpsMult - 1) * 10));
+    return Math.ceil(base * 2.0 * Math.pow(1.18, steps));
   };
   const getGoldCost = () => {
     const s = stateRef.current; if (!s) return 160;
-    return Math.ceil(160 * Math.pow(1.22, Math.round((s.goldMult - 1) * 10)));
+    const base = Math.max(80, expectedRockCoinReward(s));
+    const steps = Math.max(0, Math.round((s.goldMult - 1) * 10));
+    return Math.ceil(base * 2.2 * Math.pow(1.18, steps));
   };
 
   // ===== Gift particles =====
@@ -844,19 +892,18 @@ const [adVideoEnded, setAdVideoEnded] = useState(false);
     setUi(u=>({...u, gold:s.gold})); save();
   };
 
-const onAdd = () => {
-  play(S_CLICK);
-  const now = Date.now();
-  if (now < adCooldownUntil) {
-    const remain = Math.ceil((adCooldownUntil - now)/1000);
-    const m = Math.floor(remain/60), sec = String(remain%60).padStart(2,"0");
-    setGiftToastWithTTL(`Ad bonus in ${m}:${sec}`, 2000);
-    return;
-  }
-  // פותח מודאל וידאו; האיסוף יקרה בלחצן COLLECT אחרי סיום הווידאו
-  setAdVideoEnded(false);
-  setShowAdModal(true);
-};
+  const onAdd = () => {
+    play(S_CLICK);
+    const now = Date.now();
+    if (now < adCooldownUntil) {
+      const remain = Math.ceil((adCooldownUntil - now)/1000);
+      const m = Math.floor(remain/60), sec = String(remain%60).padStart(2,"0");
+      setGiftToastWithTTL(`Ad bonus in ${m}:${sec}`, 2000);
+      return;
+    }
+    setAdVideoEnded(false);
+    setShowAdModal(true);
+  };
 
   const onCollect = () => { play(S_CLICK); alert("COLLECT (Digital wallet) — coming soon 🪙"); };
 
@@ -881,24 +928,25 @@ const onAdd = () => {
 
   function grantRareDiamondReward(s, cx, cy) {
     const prize = s.nextDiamondPrize || rollDiamondPrize();
-    const base = Math.max(20, Math.round((s.spawnCost || 80) * 0.18));
+    const rockGain = Math.max(20, expectedRockCoinReward(s));
+    const giftCoin = Math.round(rockGain * 0.10); // בסיס מתנה רגילה
 
-    const giveCoins = (mult, label) => {
-      const gain = base * mult;
+    const giveCoins = (multLabel, mult) => {
+      const gain = Math.max(1, Math.round(giftCoin * mult));
       s.gold += gain; setUi(u=>({...u,gold:s.gold}));
       spawnCoinBurst(cx, cy, 34);
       play(S_GIFT);
-      setGiftToastWithTTL(`🎁 ${label} +${formatShort(gain)} coins`, 3600);
+      setGiftToastWithTTL(`💎 ${multLabel} +${formatShort(gain)} coins`, 3600);
     };
 
     switch (prize) {
-      case "coins100":   giveCoins(25, "Coins ×25"); break;
-      case "coins1000":  giveCoins(60, "Coins ×60"); break;
-      case "coins10000": giveCoins(120, "Coins ×120"); break;
-      case "dog+3":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+3), cx, cy, "Diamond Chest"); return;
-      case "dog+5":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+5), cx, cy, "Diamond Chest"); return;
-      case "dog+7":      grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+7), cx, cy, "Diamond Chest"); return;
-      default:           giveCoins(25, "Coins ×25"); break;
+      case "coins_x10":   giveCoins("1000% gift",   10);   break; // ×10
+      case "coins_x100":  giveCoins("10000% gift",  100);  break; // ×100
+      case "coins_x1000": giveCoins("100000% gift", 1000); break; // ×1000
+      case "dog+3":       grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+3), cx, cy, "Diamond Chest"); break;
+      case "dog+5":       grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+5), cx, cy, "Diamond Chest"); break;
+      case "dog+7":       grantDogOrCoins(s, Math.max(1, (s.spawnLevel||1)+7), cx, cy, "Diamond Chest"); break;
+      default:            giveCoins("1000% gift",   10);   break;
     }
     s.nextDiamondPrize = rollDiamondPrize();
     save();
@@ -912,44 +960,39 @@ const onAdd = () => {
     const cy = b.y + b.h / 2;
 
     const roll = Math.random();
+    const rockGain = Math.max(20, expectedRockCoinReward(s));
+    const giftCoin = Math.round(rockGain * 0.10); // 10% מסכום השבירה
 
+    // אנטי-תקיעה
     if (!boardHasMergeablePair(s)) {
       const lvl = Math.max(1, lowestLevelOnBoard(s));
       grantDogOrCoins(s, lvl, cx, cy, "Anti-stuck");
-    } else if (roll < 0.62) {
-      const base = Math.max(20, Math.round((s.spawnCost || 80) * 0.18));
-      const bonus = Math.round(base * (0.75 + Math.random()*0.5));
-      s.gold += bonus;
+    } else if (roll < 0.60) {
+      // 60% מטבעות
+      s.gold += giftCoin;
       setUi(u=>({...u, gold:s.gold}));
       spawnCoinBurst(cx, cy, 28);
       play(S_GIFT);
-      setGiftToastWithTTL(`🎁 +${formatShort(bonus)} coins`, 3000);
-    } else if (roll < 0.72) {
+      setGiftToastWithTTL(`🎁 +${formatShort(giftCoin)} coins`, 3000);
+    } else if (roll < 0.80) {
+      // 20% כלב ברמה מתחת ל-LVL
       const target = Math.max(1, (s.spawnLevel || 1) - 1);
       grantDogOrCoins(s, target, cx, cy, "Gift");
-    } else if (roll < 0.81) {
-      s.diamonds = Math.min(3, (s.diamonds || 0) + 1);
-      play(S_GIFT);
-      if (s.diamonds >= 3) {
-        s.diamonds = 0;
-        grantRareDiamondReward(s, cx, cy);
-      } else {
-        setGiftToastWithTTL(`💎 Diamond ${s.diamonds}/3`, 2800);
-      }
     } else if (roll < 0.90) {
+      // 10% DPS
       s.dpsMult = +(s.dpsMult * 1.1).toFixed(3);
-      spawnCoinBurst(cx, cy, 20);
+      spawnCoinBurst(cx, cy, 16);
       play(S_GIFT);
       setGiftToastWithTTL(`🎁 DPS +10%`, 3000);
     } else {
+      // 10% GOLD
       s.goldMult = +(s.goldMult * 1.1).toFixed(3);
-      spawnCoinBurst(cx, cy, 20);
+      spawnCoinBurst(cx, cy, 16);
       play(S_GIFT);
       setGiftToastWithTTL(`🎁 Gold +10%`, 3000);
     }
 
     s.giftReady = false;
-    // Schedule next by CURRENT phase (adapts if phase changed while playing)
     scheduleNextGiftFromNow(s, Date.now());
     setGiftReadyFlag(false);
     save();
@@ -980,13 +1023,11 @@ const onAdd = () => {
     // normalize 3h cycle regularly
     normalizeCycleStart(s, now);
 
-    // Gift timing: when due, mark ready (max 1)
+    // Gift timing
     if (!s.giftReady && now >= (s.giftNextAt || now)) {
       s.giftReady = true;
       setGiftReadyFlag(true);
-      // don't schedule next until the player claims
     } else {
-      // keep the stored "lastGiftIntervalSec" roughly in sync with the active phase (purely for progress UI)
       const curInt = currentGiftIntervalSec(s, now);
       s.lastGiftIntervalSec = curInt;
     }
@@ -1156,56 +1197,52 @@ const onAdd = () => {
     }
   }
 
-// ===== Drawing helpers for pills =====
-function roundRectPath(ctx, x, y, w, h, r) {
-  const rr = Math.min(r, h / 2, w / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y,     x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x,     y + h, rr);
-  ctx.arcTo(x,     y + h, x,     y,     rr);
-  ctx.arcTo(x,     y,     x + w, y,     rr);
-  ctx.closePath();
-}
+  // ===== Drawing helpers for pills =====
+  function roundRectPath(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, h / 2, w / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x,     y + h, rr);
+    ctx.arcTo(x,     y + h, x,     y,     rr);
+    ctx.arcTo(x,     y,     x + w, y,     rr);
+    ctx.closePath();
+  }
 
-function drawPillButton(ctx, x, y, w, h, label, enabled = true, pulse = 0, pressed = false) {
-  const scale = pressed ? 0.96 : 1.0;
-  const cx = x + w / 2, cy = y + h / 2;
-  const sw = w * scale, sh = h * scale;
-  const sx = cx - sw / 2, sy = cy - sh / 2;
+  function drawPillButton(ctx, x, y, w, h, label, enabled = true, pulse = 0, pressed = false) {
+    const scale = pressed ? 0.96 : 1.0;
+    const cx = x + w / 2, cy = y + h / 2;
+    const sw = w * scale, sh = h * scale;
+    const sx = cx - sw / 2, sy = cy - sh / 2;
 
-  // רקע כפתור
-  const g = ctx.createLinearGradient(sx, sy, sx, sy + sh);
-  if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); }
-  else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); }
+    const g = ctx.createLinearGradient(sx, sy, sx, sy + sh);
+    if (enabled) { g.addColorStop(0, "#fef08a"); g.addColorStop(1, "#facc15"); }
+    else         { g.addColorStop(0, "#475569"); g.addColorStop(1, "#334155"); }
 
-  ctx.save();
-  roundRectPath(ctx, sx, sy, sw, sh, sh / 2);
-  ctx.fillStyle = g;
-  ctx.shadowColor = enabled ? `rgba(250,204,21,${0.35 + 0.25 * pulse})` : "rgba(148,163,184,0.25)";
-  ctx.shadowBlur = enabled ? 16 + 16 * pulse : 10;
-  ctx.shadowOffsetY = 2;
-  ctx.fill();
-  ctx.restore();
+    ctx.save();
+    roundRectPath(ctx, sx, sy, sw, sh, sh / 2);
+    ctx.fillStyle = g;
+    ctx.shadowColor = enabled ? `rgba(250,204,21,${0.35 + 0.25 * pulse})` : "rgba(148,163,184,0.25)";
+    ctx.shadowBlur = enabled ? 16 + 16 * pulse : 10;
+    ctx.shadowOffsetY = 2;
+    ctx.fill();
+    ctx.restore();
 
-  // קו מתאר
-  ctx.save();
-  roundRectPath(ctx, sx, sy, sw, sh, sh / 2);
-  ctx.strokeStyle = enabled ? "#a16207" : "#475569";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
+    ctx.save();
+    roundRectPath(ctx, sx, sy, sw, sh, sh / 2);
+    ctx.strokeStyle = enabled ? "#a16207" : "#475569";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
 
-  // טקסט
-  ctx.save();
-  ctx.fillStyle = enabled ? "#111827" : "#cbd5e1";
-  ctx.font = `bold ${Math.max(12, Math.floor(sh * 0.45))}px system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, cx, cy);
-  ctx.restore();
-}
-
+    ctx.save();
+    ctx.fillStyle = enabled ? "#111827" : "#cbd5e1";
+    ctx.font = `bold ${Math.max(12, Math.floor(sh * 0.45))}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, cx, cy);
+    ctx.restore();
+  }
 
   // ===== Drawing =====
   function draw() {
@@ -1269,7 +1306,7 @@ function drawPillButton(ctx, x, y, w, h, label, enabled = true, pulse = 0, press
       ctx.font = "bold 12px system-ui";
       ctx.fillText("Drag to merge", r.x + 10, r.y + 21);
     }
-  } // <-- end draw()
+  } // end draw()
 
   // ===== Phase helpers (for HUD) =====
   function getPhaseInfo(s, now=Date.now()) {
@@ -1313,20 +1350,20 @@ function drawPillButton(ctx, x, y, w, h, label, enabled = true, pulse = 0, press
     const elapsed = Math.max(0, now - last);
     return clamp01(elapsed / total);
   })();
-// ADD cooldown progress (0..1) + תווית זמן
-const addRemainMs = Math.max(0, adCooldownUntil - Date.now());
-const addProgress = (() => {
-  const total = 10 * 60 * 1000; // 10 דקות
-  return 1 - Math.min(1, addRemainMs / total);
-})();
-const addRemainLabel = (() => {
-  if (addRemainMs <= 0) return "READY";
-  const m = Math.floor(addRemainMs / 60000);
-  const s = Math.floor((addRemainMs % 60000) / 1000);
-  return `${m}:${String(s).padStart(2,"0")}`;
-})();
-const addDisabled = addRemainMs > 0 || adWatching;
 
+  // ADD cooldown progress + label
+  const addRemainMs = Math.max(0, adCooldownUntil - Date.now());
+  const addProgress = (() => {
+    const total = 10 * 60 * 1000; // 10 דקות
+    return 1 - Math.min(1, addRemainMs / total);
+  })();
+  const addRemainLabel = (() => {
+    if (addRemainMs <= 0) return "READY";
+    const m = Math.floor(addRemainMs / 60000);
+    const s = Math.floor((addRemainMs % 60000) / 1000);
+    return `${m}:${String(s).padStart(2,"0")}`;
+  })();
+  const addDisabled = addRemainMs > 0 || adWatching;
 
   // ===== Render-time costs & availability =====
   const sNow = stateRef.current;
@@ -1338,22 +1375,21 @@ const addDisabled = addRemainMs > 0 || adWatching;
   const canBuyDps   = !!sNow && sNow.gold >= dpsCostNow;
   const canBuyGold  = !!sNow && sNow.gold >= goldCostNow;
 
-const price = (n) => formatShort(n ?? 0);
-const phaseLabel = `Phase ${ (phaseNow.index+1) }/5 • ${phaseNow.intervalSec}s gifts`;
+  const price = (n) => formatShort(n ?? 0);
+  const phaseLabel = `Phase ${ (phaseNow.index+1) }/5 • ${phaseNow.intervalSec}s gifts`;
 
-// ===== Circle progress style helper =====
-function circleStyle(progress, withBg = true) {
-  const p = Math.max(0, Math.min(1, Number(progress) || 0));
-  const deg = Math.round(360 * p);
-  const base = withBg ? "radial-gradient(circle at 50% 50%, rgba(0,0,0,0.35) 55%, transparent 56%)" : "transparent";
-  return {
-    backgroundImage: `${base}, conic-gradient(#facc15 ${deg}deg, rgba(255,255,255,0.14) 0deg)`,
-    transition: "background-image 0.2s linear",
-  };
-}
+  // ===== Circle progress style helper =====
+  function circleStyle(progress, withBg = true) {
+    const p = Math.max(0, Math.min(1, Number(progress) || 0));
+    const deg = Math.round(360 * p);
+    const base = withBg ? "radial-gradient(circle at 50% 50%, rgba(0,0,0,0.35) 55%, transparent 56%)" : "transparent";
+    return {
+      backgroundImage: `${base}, conic-gradient(#facc15 ${deg}deg, rgba(255,255,255,0.14) 0deg)`,
+      transition: "background-image 0.2s linear",
+    };
+  }
 
-
-  // ===== RETURN (inside component!) =====
+  // ===== RETURN (JSX) =====
   return (
     <Layout>
       <div
@@ -1370,136 +1406,134 @@ function circleStyle(progress, withBg = true) {
           </div>
         )}
 
-{/* Intro Overlay + HOW TO as siblings (no CONTACT button) */}
-<>
-  {/* Intro Overlay */}
-  {showIntro && (
-    <div className="absolute inset-0 flex flex-col items-center justify-start pt-10 bg-black/80 z-[50] text-center p-6">
-      <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
-      <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
-      <p className="text-sm sm:text-base text-gray-200 mb-6">Merge miners, break rocks, earn gold.</p>
+        {/* Intro Overlay + HOW TO */}
+        <>
+          {showIntro && (
+            <div className="absolute inset-0 flex flex-col items-center justify-start pt-10 bg-black/80 z-[50] text-center p-6">
+              <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
+<h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">
+ ⛏️ MLEO Miners
+</h1>
 
-      <div className="flex gap-3 flex-wrap justify-center">
-        <button
-          onClick={async () => {
-  try { play?.(S_CLICK); } catch {}
-  const s = stateRef.current;
-  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-  setShowIntro(false);
-  setGamePaused(false);
-  if (typeof enterFullscreenAndLockMobile === "function") { try { await enterFullscreenAndLockMobile(); } catch {} }
-}}
+              <p className="text-sm sm:text-base text-gray-200 mb-6">Merge miners, break rocks, earn gold.</p>
 
-          className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
-        >
-          CONNECT WALLET
-        </button>
+              <div className="flex gap-3 flex-wrap justify-center">
+                <button
+                  onClick={async () => {
+                    try { play?.(S_CLICK); } catch {}
+                    const s = stateRef.current;
+                    if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+                    setShowIntro(false);
+                    setGamePaused(false);
+                    if (typeof enterFullscreenAndLockMobile === "function") { try { await enterFullscreenAndLockMobile(); } catch {} }
+                  }}
+                  className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
+                >
+                  CONNECT WALLET
+                </button>
 
-        <button
-          onClick={async () => {
-  try { play?.(S_CLICK); } catch {}
-  const s = stateRef.current;
-  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-  setShowIntro(false);
-  setGamePaused(false);
-  if (typeof enterFullscreenAndLockMobile === "function") { try { await enterFullscreenAndLockMobile(); } catch {} }
-}}
+                <button
+                  onClick={async () => {
+                    try { play?.(S_CLICK); } catch {}
+                    const s = stateRef.current;
+                    if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+                    setShowIntro(false);
+                    setGamePaused(false);
+                    if (typeof enterFullscreenAndLockMobile === "function") { try { await enterFullscreenAndLockMobile(); } catch {} }
+                  }}
+                  className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
+                >
+                  SKIP
+                </button>
 
-          className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
-        >
-          SKIP
-        </button>
+                <button
+                  onClick={() => setShowHowTo(true)}
+                  className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
+                >
+                  HOW TO PLAY
+                </button>
+              </div>
+            </div>
+          )}
 
-        <button
-          onClick={() => setShowHowTo(true)}
-          className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
-        >
-          HOW TO PLAY
-        </button>
-      </div>
-    </div>
-  )}
+          {showHowTo && (
+            <div className="fixed inset-0 z-[10000] bg-black/70 flex items-center justify-center p-4">
+              <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
+                <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
+                <ul className="list-disc pl-5 space-y-2 text-sm">
+                  <li>Merge two same-level miners to upgrade.</li>
+                  <li>Breaking rocks yields coins that scale with rock level.</li>
+                  <li>Regular Gift = <b>10%</b> of the current rock-break coins.</li>
+                  <li>Ad Gift (after video) = <b>50%</b> of the rock-break coins.</li>
+                  <li>Gift weights: Coins 60% • Dog (LVL-1) 20% • DPS +10% 10% • GOLD +10% 10%.</li>
+                  <li>Diamond Chest (3×💎): 55% ×1000% / Dog+3 • 30% ×10000% / Dog+5 • 15% ×100000% / Dog+7.</li>
+                  <li>Upgrades (DPS/GOLD) costs scale with the expected next-rock reward.</li>
+                </ul>
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={() => setShowHowTo(false)}
+                    className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
 
-  {/* HOW TO PLAY Modal */}
-  {showHowTo && (
-    <div className="fixed inset-0 z-[10000] bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
-        <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
-        <ul className="list-disc pl-5 space-y-2 text-sm">
-          <li>Merge two same-level miners to upgrade.</li>
-          <li>Miners auto-damage the rock; breaking it yields coins (reduced amounts).</li>
-          <li>If no merges are possible, the next gift spawns a low-level dog to unlock merging.</li>
-          <li><b>ADD</b> grants +50% of a base gift (simulated ad). Available every 10 minutes.</li>
-          <li>Upgrades boost <b>DPS</b> or <b>Gold</b> multiplier.</li>
-          <li>Reference: $2.5 per 1M in-game coins.</li>
-        </ul>
-        <div className="flex justify-end mt-4">
-          <button
-            onClick={() => setShowHowTo(false)}
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
-          >
-            Got it
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-</>
+        {/* ADD Ad Modal */}
+        {showAdModal && (
+          <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+            <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
+              <h2 className="text-2xl font-extrabold mb-3">Watch to Earn</h2>
 
-{/* ADD Ad Modal */}
-{showAdModal && (
-  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
-    <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
-      <h2 className="text-2xl font-extrabold mb-3">Watch to Earn</h2>
+              <video
+                src="/ads/ad1.mp4"
+                className="w-full rounded-lg bg-black"
+                controls
+                autoPlay
+                onEnded={() => setAdVideoEnded(true)}
+              />
 
-      {/* ▶️ איפה לשים את הסרטון:
-          שים את הקובץ ב- /public/ads/ad1.mp4 ואז הנתיב יעבוד כ-/ads/ad1.mp4 */}
-      <video
-        src="/ads/ad1.mp4"
-        className="w-full rounded-lg bg-black"
-        controls
-        autoPlay
-        onEnded={() => setAdVideoEnded(true)}
-      />
+              <div className="flex justify-between items-center mt-4">
+                <button
+                  onClick={() => { setShowAdModal(false); setAdVideoEnded(false); }}
+                  className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900"
+                >
+                  Close
+                </button>
 
-      <div className="flex justify-between items-center mt-4">
-        <button
-          onClick={() => { setShowAdModal(false); setAdVideoEnded(false); }}
-          className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900"
-        >
-          Close
-        </button>
+                <button
+                  onClick={() => {
+                    const s = stateRef.current; if (!s) return;
+                    const rockGain = Math.max(20, expectedRockCoinReward(s));
+                    const gain = Math.round(rockGain * 0.50); // 50% משבירת סלע
+                    s.gold += gain; setUi(u => ({ ...u, gold: s.gold }));
 
-        <button
-          onClick={() => {
-            const s = stateRef.current; if (!s) return;
-            // פרס: 50% מעל מתנה בסיסית
-            const base = Math.max(20, Math.round((s.spawnCost || 80) * 0.18));
-            const gain = Math.round(base * 1.5);
-            s.gold += gain; setUi(u=>({...u, gold:s.gold}));
-            setAdCooldownUntil(Date.now() + 10*60*1000); // 10 דקות קולדאון
-            setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
-            save();
-            setShowAdModal(false);
-            setAdVideoEnded(false);
-          }}
-          disabled={!adVideoEnded}
-          className={`px-4 py-2 rounded-lg font-bold ${
-            adVideoEnded ? "bg-yellow-400 hover:bg-yellow-300 text-black" : "bg-slate-300 text-slate-500 cursor-not-allowed"
-          }`}
-          title={adVideoEnded ? "Collect your reward" : "Watch until the end to unlock"}
-        >
-          COLLECT
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+                    const until = Date.now() + 10*60*1000; // 10 דקות קולדאון
+                    setAdCooldownUntil(until);
+                    setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
 
+                    setShowAdModal(false);
+                    setAdVideoEnded(false);
+                  }}
+                  disabled={!adVideoEnded}
+                  className={`px-4 py-2 rounded-lg font-bold ${
+                    adVideoEnded ? "bg-yellow-400 hover:bg-yellow-300 text-black" : "bg-slate-300 text-slate-500 cursor-not-allowed"
+                  }`}
+                  title={adVideoEnded ? "Collect your reward" : "Watch until the end to unlock"}
+                >
+                  COLLECT
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Title */}
         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-6">
-          MLEO Miners — v5.7 + giftCycle
+          MLEO Miners — v5.8 (Balanced gifts & economy)
         </h1>
 
         {/* ===== Canvas wrapper ===== */}
@@ -1510,13 +1544,22 @@ function circleStyle(progress, withBg = true) {
         >
           <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
 
-          {/* ==== TOP HUD inside canvas ==== */}
+          {/* ==== TOP HUD ==== */}
           <div className="absolute left-1/2 -translate-x-1/2 top-3 z-[6] w-[calc(100%-16px)] max-w-[980px]">
             <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
-              <div className="px-2 py-1 bg-black/60 rounded-lg shadow flex items-center gap-1">
-                <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
+              <div className="px-2 py-1 bg-black/60 rounded-lg shadow flex items-center gap-2">
+                <div
+                  className="relative w-8 h-8 rounded-full grid place-items-center"
+                  style={circleStyle(addProgress, true)}
+                  title={addRemainMs > 0 ? `Next in ${addRemainLabel}` : "Ready"}
+                >
+                  <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center">
+                    <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
+                  </div>
+                </div>
                 <b>{formatShort(stateRef.current?.gold ?? 0)}</b>
               </div>
+
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🪓 DPS x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🟡 Gold x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
               <div className="px-2 py-1 bg-black/60 rounded-lg shadow">🐶 Buy LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
@@ -1601,42 +1644,41 @@ function circleStyle(progress, withBg = true) {
                 Gold +10% (Cost {price(goldCostNow)})
               </button>
 
-<div className="relative inline-block">
-  {/* טבעת עבה שמכסה את הכפתור כולו (ללא מספרים) */}
-  <span
-    aria-hidden
-    className="pointer-events-none absolute rounded-xl"
-    style={{
-      inset: "-6px",                                 // כמה רחוק הטבעת מהכפתור
-      backgroundImage: `conic-gradient(#facc15 ${Math.round(360 * addProgress)}deg, rgba(255,255,255,0.25) 0deg)`,
-      WebkitMask: "radial-gradient(circle, transparent calc(100% - 10px), black 0)", // עובי טבעת ~10px
-      mask: "radial-gradient(circle, transparent calc(100% - 10px), black 0)",
-      borderRadius: "12px",                          // תואם ל-rounded-xl של הכפתור
-      transition: "background-image .2s linear",
-      zIndex: 2,                                     // הטבעת מעל הרקע ומתחת לכפתור
-      boxShadow: addDisabled ? "none" : "0 0 22px rgba(250,204,21,.35)", // הילה עדינה כשהכפתור מוכן
-    }}
-  />
+              {/* ADD with circular progress ring */}
+              <div className="relative inline-block">
+                <span
+                  aria-hidden
+                  className="absolute inset-0 rounded-xl pointer-events-none"
+                  style={{
+                    padding: "3px",
+                    background: `conic-gradient(#facc15 ${Math.round(360 * addProgress)}deg, rgba(255,255,255,.18) 0deg)`,
+                    WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+                    WebkitMaskComposite: "xor",
+                    maskComposite: "exclude",
+                    transition: "background .2s linear",
+                    filter: addDisabled ? undefined : "drop-shadow(0 0 8px rgba(250,204,21,.35))",
+                  }}
+                />
+                <button
+                  onClick={onAdd}
+                  disabled={addDisabled}
+                  className={`px-3 py-1.5 rounded-xl font-bold shadow relative z-[3]
+                    ${addDisabled ? "bg-indigo-400/60 text-slate-900/70 cursor-not-allowed"
+                                  : "bg-indigo-400 hover:bg-indigo-300 text-slate-900"}`}
+                  title={addRemainMs > 0 ? "Ad bonus on cooldown" : "Watch ad to earn"}
+                >
+                  {adWatching ? "Watching..." : "ADD"}
+                </button>
+              </div>
 
-  {/* כפתור ADD עצמו */}
-  <button
-    onClick={onAdd}
-    disabled={addDisabled}
-    className={`px-3 py-1.5 rounded-xl font-bold shadow relative z-[3]
-      ${addDisabled
-        ? "bg-indigo-400/60 text-slate-900/70 cursor-not-allowed"
-        : "bg-indigo-400 hover:bg-indigo-300 text-slate-900"}`}
-    title={addRemainMs > 0 ? "Ad bonus on cooldown" : "Watch ad to earn"}
-  >
-    {adWatching ? "Watching..." : "ADD"}
-  </button>
-</div>
+<button
+  disabled
+  className="px-3 py-1.5 rounded-xl bg-fuchsia-400/50 text-slate-900/60 font-bold shadow cursor-not-allowed"
+  title="Disabled for now"
+>
+  COLLECT
+</button>
 
-
-
-              <button onClick={onCollect} className="px-3 py-1.5 rounded-xl bg-fuchsia-400 hover:bg-fuchsia-300 text-slate-900 font-bold shadow">
-                COLLECT
-              </button>
             </div>
           </div>
 
@@ -1740,9 +1782,7 @@ function circleStyle(progress, withBg = true) {
                         ${isNext ? "bg-yellow-400/15 border border-yellow-400/60" : "bg-white/5 border border-white/10"}`}
                     >
                       <span className="text-gray-100 font-medium">{p.label}</span>
-                      {isNext && (
-                        <span className="text-xs font-extrabold text-yellow-300">NEXT</span>
-                      )}
+                      {isNext && <span className="text-xs font-extrabold text-yellow-300">NEXT</span>}
                     </li>
                   );
                 })}
@@ -1768,7 +1808,7 @@ function circleStyle(progress, withBg = true) {
   );
 } // <-- end component
 
-/** ===== Migration helper (v5.7 -> v5.7+giftCycle) ===== */
+/** ===== Migration helper (v5.8) ===== */
 function theStateFix_maybeMigrateLocalStorage() {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -1784,6 +1824,7 @@ function theStateFix_maybeMigrateLocalStorage() {
       s.giftNextAt = Date.now() + (s.lastGiftIntervalSec || 20) * 1000;
       changed = true;
     }
+    if (typeof s.adCooldownUntil !== "number") { s.adCooldownUntil = 0; changed = true; }
     if (changed) localStorage.setItem(LS_KEY, JSON.stringify(s));
   } catch {}
 }
