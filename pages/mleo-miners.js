@@ -301,7 +301,7 @@ const save = () => {
       // core
       lanes: s.lanes, miners: s.miners, nextId: s.nextId,
       gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
-      muted: ui.muted, onceSpawned: s.onceSpawned,
+      onceSpawned: s.onceSpawned,
       // offline
       lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
       // buy-level
@@ -457,7 +457,7 @@ const save = () => {
     }
 
     stateRef.current = init;
-    setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: loaded?.muted || false }));
+setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: false }));
     setGiftReadyFlag(!!init.giftReady);
     if (reward > 0) setShowCollect(true);
 
@@ -547,7 +547,7 @@ const save = () => {
       window.removeEventListener("beforeunload", onHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ui.muted, isMobileLandscape, gamePaused, isDesktop, isPortrait, showIntro]);
+}, [isMobileLandscape, gamePaused, isDesktop, isPortrait, showIntro]);
 
   function setupCanvasAndLoop(cnv) {
     const ctx = cnv.getContext("2d"); if (!ctx) return;
@@ -1655,12 +1655,7 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
                 </div>
               </div>
 
-              <button
-                onClick={() => { setUi((u) => ({ ...u, muted: !u.muted })); setTimeout(save, 0); }}
-                className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600"
-              >
-                {ui.muted ? "🔇" : "🔊"}
-              </button>
+ 
             </div>
 
             {/* Actions row */}
