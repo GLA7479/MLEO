@@ -66,7 +66,7 @@ const GIFT_PHASES = [
 const GIFT_CYCLE_SEC = GIFT_PHASES.reduce((a, p) => a + p.durSec, 0); // 3 hours
 
 // Auto-dog
-const DOG_INTERVAL_SEC = 120; // every 2 minutes
+const DOG_INTERVAL_SEC = 1800; // every 30 minutes
 const DOG_BANK_CAP = 6;       // can accumulate up to 6
 
 // Rail alignment (fractions of BG height)
@@ -108,6 +108,28 @@ function getImg(src) {
 
 // ===== Helpers for the new gift schedule =====
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function clampDogBank(s) {
+  s.autoDogBank = Math.max(0, Math.min(DOG_BANK_CAP, Math.floor(s.autoDogBank || 0)));
+}
+function processAutoDog(s, now = Date.now()) {
+  const intervalMs = DOG_INTERVAL_SEC * 1000;
+  if (!s.autoDogLastAt) { s.autoDogLastAt = now; return; }
+
+  const elapsed = Math.max(0, now - s.autoDogLastAt);
+  const intervals = Math.floor(elapsed / intervalMs);
+  if (intervals <= 0) return;
+
+  const room = Math.max(0, DOG_BANK_CAP - Math.floor(s.autoDogBank || 0));
+  const add  = Math.min(intervals, room);
+  if (add > 0) s.autoDogBank = Math.floor((s.autoDogBank || 0) + add);
+
+  // תמיד “אוכלים” את הזמן שעבר – אין קרדיט נצבר כשהבנק מלא
+  const remainder = elapsed % intervalMs;
+  s.autoDogLastAt = now - remainder;
+
+  clampDogBank(s);
+}
+
 
 function normalizeCycleStart(s, now) {
   if (!s.cycleStartAt) { s.cycleStartAt = now; return; }
@@ -293,8 +315,10 @@ const newState = () => {
 
 const save = () => {
   const s = stateRef.current; if (!s) return;
+  clampDogBank(s); // ודא שהבנק לא חורג לפני שמירה
   try {
     localStorage.setItem(LS_KEY, JSON.stringify({
+
       // core
       lanes: s.lanes, miners: s.miners, nextId: s.nextId,
       gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
@@ -471,14 +495,11 @@ const resetGame = async () => {
       init.giftReady = true;
     }
 
-    // Auto-dog offline bank
-    if (!init.autoDogLastAt) init.autoDogLastAt = now;
-    const elapsedDogMs = Math.max(0, now - init.autoDogLastAt);
-    const dogIntervals = Math.floor(elapsedDogMs / (DOG_INTERVAL_SEC * 1000));
-    if (dogIntervals > 0) {
-      init.autoDogBank = Math.min(DOG_BANK_CAP, (init.autoDogBank || 0) + dogIntervals);
-      init.autoDogLastAt = init.autoDogLastAt + dogIntervals * DOG_INTERVAL_SEC * 1000;
-    }
+// Auto-dog offline bank
+if (!init.autoDogLastAt) init.autoDogLastAt = now;
+processAutoDog(init, now);
+
+
 
       // diamonds default
      if (init.diamonds == null) init.diamonds = 0;
@@ -552,14 +573,12 @@ setMounted(true); // ← מדליק את ה־mounted רק אחרי שה־LS נט
           setGiftReadyFlag(true);
         }
 
-        // Auto-dog
-        if (!s.autoDogLastAt) s.autoDogLastAt = now2;
-        const elapsedDogMs2 = Math.max(0, now2 - s.autoDogLastAt);
-        const dogIntervals2 = Math.floor(elapsedDogMs2 / (DOG_INTERVAL_SEC * 1000));
-        if (dogIntervals2 > 0) {
-          s.autoDogBank = Math.min(DOG_BANK_CAP, (s.autoDogBank || 0) + dogIntervals2);
-          s.autoDogLastAt = s.autoDogLastAt + dogIntervals2 * DOG_INTERVAL_SEC * 1000;
-        }
+// Auto-dog
+if (!s.autoDogLastAt) s.autoDogLastAt = now2;
+processAutoDog(s, now2);
+
+
+
 
         save();
       }
@@ -859,6 +878,8 @@ const getGoldCost = () => {
 
   // ===== Logic =====
   const spawnMiner = (s, level = 1) => {
+// hard guard — never exceed board capacity
+if (Object.keys(s.miners).length >= MAX_MINERS) return false;
     for(let l=0;l<LANES;l++){
       for(let slot=0; slot<SLOTS_PER_LANE; slot++){
         if(!s.lanes[l].slots[slot]){
@@ -960,7 +981,7 @@ const getGoldCost = () => {
   // ===== GIFT LOGIC =====
 
   function grantDogOrCoins(s, targetLevel, cx, cy, reasonText) {
-    if (countMiners(s) < MAX_MINERS && spawnMiner(s, targetLevel)) {
+    if (spawnMiner(s, targetLevel)) {
       setGiftToastWithTTL(`🐶 ${reasonText}: Dog LV ${targetLevel}`, 3000);
       return;
     }
@@ -1078,13 +1099,29 @@ const getGoldCost = () => {
 
 
 
-  const tryAutoDogSpawns = () => {
-    const s = stateRef.current; if (!s) return;
-    while (s.autoDogBank > 0 && countMiners(s) < MAX_MINERS) {
-      if (!spawnMiner(s, s.spawnLevel)) break;
-      s.autoDogBank--;
+const tryAutoDogSpawns = () => {
+  const s = stateRef.current; if (!s) return;
+  clampDogBank(s);
+
+  // כמה סלוטים ריקים יש כרגע
+  let empty = 0;
+  for (let l = 0; l < LANES; l++) {
+    for (let k = 0; k < SLOTS_PER_LANE; k++) {
+      if (!s.lanes[l].slots[k]) empty++;
     }
-  };
+  }
+if (empty <= 0 || s.autoDogBank <= 0) return;
+
+  const toSpawn = Math.max(0, Math.min(s.autoDogBank, empty));
+  for (let i = 0; i < toSpawn; i++) {
+    if (!spawnMiner(s, s.spawnLevel)) break;
+  }
+
+  s.autoDogBank -= toSpawn;
+clampDogBank(s);
+if (toSpawn > 0) save();
+};
+
 
   const tick = (dt) => {
     const s = stateRef.current; if (!s) return;
@@ -1112,15 +1149,13 @@ const getGoldCost = () => {
       s.lastGiftIntervalSec = curInt;
     }
 
-    // Auto-dog timing
-    if (!s.autoDogLastAt) s.autoDogLastAt = now;
-    const elapsedDogMs = Math.max(0, now - s.autoDogLastAt);
-    const dogIntervals = Math.floor(elapsedDogMs / (DOG_INTERVAL_SEC * 1000));
-    if (dogIntervals > 0) {
-      s.autoDogBank = Math.min(DOG_BANK_CAP, (s.autoDogBank || 0) + dogIntervals);
-      s.autoDogLastAt = s.autoDogLastAt + dogIntervals * DOG_INTERVAL_SEC * 1000;
-      save();
-    }
+// Auto-dog timing
+if (!s.autoDogLastAt) s.autoDogLastAt = now;
+processAutoDog(s, now);
+
+
+
+
 
     if (!s.paused) tryAutoDogSpawns();
 
@@ -1687,7 +1722,7 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
                 <div
                   className="relative w-8 h-8 rounded-full grid place-items-center"
                   style={circleStyle(dogProgress, true)}
-                  title="Auto-dog every 2m (bank up to 6)"
+                  title="Auto-dog every 30m (bank up to 6)"
                 >
                   <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🐶</div>
                 </div>
@@ -1917,11 +1952,11 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
 /** ===== Migration helper (v5.8) ===== */
 function theStateFix_maybeMigrateLocalStorage() {
   try {
-   if (typeof window === "undefined" || !window.localStorage) return; // ⬅️ SSR guard
-     const raw = localStorage.getItem(LS_KEY);
-     if (!raw) return;
-     const s = JSON.parse(raw);
-     let changed = false;
+    if (typeof window === "undefined" || !window.localStorage) return; // ⬅️ SSR guard
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    let changed = false;
 
     if (s.cycleStartAt == null) { s.cycleStartAt = Date.now(); changed = true; }
     if (s.lastGiftIntervalSec == null) {
@@ -1934,7 +1969,11 @@ function theStateFix_maybeMigrateLocalStorage() {
     }
     if (typeof s.adCooldownUntil !== "number") { s.adCooldownUntil = 0; changed = true; }
 
-    // עוגן לבסיס המחיר כדי למנוע קפיצות אחרי כל שבירת סלע
+    // דוג-בנק – ודאות סוג והגבלה
+    if (typeof s.autoDogBank !== "number") { s.autoDogBank = 0; changed = true; }
+    clampDogBank(s); // יחתוך ל-0..DOG_BANK_CAP
+
+    // עוגן עלות
     if (s.costBase == null) {
       try { s.costBase = Math.max(80, expectedRockCoinReward(s)); }
       catch { s.costBase = 120; }
@@ -1944,3 +1983,4 @@ function theStateFix_maybeMigrateLocalStorage() {
     if (changed) localStorage.setItem(LS_KEY, JSON.stringify(s));
   } catch {}
 }
+
