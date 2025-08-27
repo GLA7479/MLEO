@@ -160,9 +160,16 @@ export default function MleoMiners() {
 
   const [showHowTo, setShowHowTo] = useState(false);
   const [adWatching, setAdWatching] = useState(false);
-// ✅ אתחול נטול-SSR; נטען מה-LS רק אחרי mount
-const [adCooldownUntil, setAdCooldownUntil] = useState(0);
-
+  const [adCooldownUntil, setAdCooldownUntil] = useState(() => {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return 0;
+    const data = JSON.parse(raw);
+    return typeof data.adCooldownUntil === "number" ? data.adCooldownUntil : 0;
+  } catch {
+    return 0;
+  }
+});
 
 
 // Persist cooldown whenever it changes (skip first mount to avoid overwriting LS with 0)
@@ -181,11 +188,9 @@ useEffect(() => {
   const [showAdModal, setShowAdModal] = useState(false);
   const [adVideoEnded, setAdVideoEnded] = useState(false);
 
-    // Offline collect overlay
+  // Offline collect overlay
+  theStateFix_maybeMigrateLocalStorage();
   const [showCollect, setShowCollect] = useState(false);
-  useEffect(() => {
-    theStateFix_maybeMigrateLocalStorage();
-  }, []);
 
   // Gift UI
   const [giftReadyFlag, setGiftReadyFlag] = useState(false);
@@ -194,9 +199,9 @@ useEffect(() => {
   const [showDiamondInfo, setShowDiamondInfo] = useState(false);
 // Reset confirm modal
 const [showResetConfirm, setShowResetConfirm] = useState(false);
-// --- SSR guard: becomes true only after LS init completes ---
+// --- SSR guard so ADD doesn't light before LS loads ---
 const [mounted, setMounted] = useState(false);
-
+useEffect(() => { setMounted(true); }, []);
 
 
   // UI pulse to keep timers smooth (re-render ~10Hz)
@@ -312,16 +317,13 @@ const save = () => {
       nextDiamondPrize: s.nextDiamondPrize,
       // auto-dog
       autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
-      // ad  ✅ לשמור קולדאון בכל שמירה
-      adCooldownUntil: adCooldownUntil,
+      // ad
+      adCooldownUntil,
       // pricing
       costBase: s.costBase,
     }));
   } catch {}
 };
-
-
-
 
   const load = () => { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } };
 
@@ -493,7 +495,6 @@ const resetGame = async () => {
 setUi((u) => ({ ...u, gold: init.gold, spawnCost: init.spawnCost, dpsMult: init.dpsMult, goldMult: init.goldMult, muted: false }));
     setGiftReadyFlag(!!init.giftReady);
     if (reward > 0) setShowCollect(true);
-setMounted(true); // ← מדליק את ה־mounted רק אחרי שה־LS נטען
 
     const updateViewportFlags = () => {
       const w = window.innerWidth, h = window.innerHeight;
@@ -1432,11 +1433,7 @@ const getGoldCost = () => {
   })();
 
   // ADD cooldown progress + label
-// ברינדור הראשון (לפני mount) ננ鎝ל את הכפתור בכוונה
-const addRemainMs = mounted
-  ? Math.max(0, adCooldownUntil - Date.now())
-  : Number.POSITIVE_INFINITY;
-
+const addRemainMs = Math.max(0, adCooldownUntil - Date.now());
 const addProgress = (() => {
   if (!mounted) return 0; // לפני mount, אל תדליק טבעת
   const total = 10 * 60 * 1000; // 10 דקות
@@ -1917,11 +1914,10 @@ setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
 /** ===== Migration helper (v5.8) ===== */
 function theStateFix_maybeMigrateLocalStorage() {
   try {
-   if (typeof window === "undefined" || !window.localStorage) return; // ⬅️ SSR guard
-     const raw = localStorage.getItem(LS_KEY);
-     if (!raw) return;
-     const s = JSON.parse(raw);
-     let changed = false;
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    let changed = false;
 
     if (s.cycleStartAt == null) { s.cycleStartAt = Date.now(); changed = true; }
     if (s.lastGiftIntervalSec == null) {
