@@ -153,7 +153,8 @@ export default function MiningRush() {
   // Ad gift
   const [adOpen, setAdOpen] = useState(false);
   const [adUntil, setAdUntil] = useState(0);
-  const [adLoaded, setAdLoaded] = useState(false);     // ← חשוב כדי לא להציג זמינות לפני טעינה
+const [adLoaded, setAdLoaded] = useState(false);
+const [mounted, setMounted] = useState(false);
   const adRemainMs = Math.max(0, adUntil - Date.now());
   const addDisabled = !adLoaded || adRemainMs > 0;
 
@@ -248,6 +249,7 @@ export default function MiningRush() {
       if (rawAd != null) setAdUntil(Number(rawAd));
     }
     setAdLoaded(true);
+setMounted(true);
 
     const now = Date.now();
     if (loaded?.lastSeen) {
@@ -307,6 +309,8 @@ export default function MiningRush() {
   function setupCanvas(cnv){
     const ctx = cnv.getContext("2d");
     const DPR = window.devicePixelRatio || 1;
+// חשוב למובייל/ספארי: למנוע פאנינג/זום ברירת־מחדל
+cnv.style.touchAction = "none";
 
     const resize = ()=>{
       const rect = wrapRef.current?.getBoundingClientRect();
@@ -324,52 +328,72 @@ export default function MiningRush() {
     resize();
     window.addEventListener("resize", resize);
 
-    // ----- Pointer-based input on window (אמין בנייד/דסקטופ) -----
-    const pos = (e)=>{ const r=cnv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
+// ----- Pointer-based input (אמין במובייל/דסקטופ) -----
+const pos = (e)=>{ const r=cnv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
 
-    const onDown=(e)=>{
-      const s=stateRef.current; if(!s || introOpen || collectOpen) return;
-      const p = pos(e);
+const onDown=(e)=>{
+  e.preventDefault();
+  const s=stateRef.current; if(!s || introOpen || collectOpen) return;
+  const p = pos(e);
 
-      const hit = pickMiner(p.x,p.y);
-      if (hit){ dragRef.current={active:true,id:hit.id,ox:p.x-hit.x,oy:p.y-hit.y,x:p.x,y:p.y}; play(S_CLICK); return; }
+  const hit = pickMiner(p.x,p.y);
+  if (hit){
+    dragRef.current={active:true,id:hit.id,ox:p.x-hit.x,oy:p.y-hit.y,x:p.x,y:p.y, pointerId:e.pointerId};
+    try { cnv.setPointerCapture(e.pointerId); } catch {}
+    play(S_CLICK);
+    return;
+  } // ←←← הסוגר שהיה חסר
 
-      const pill = pickPill(p.x,p.y); if (pill){ trySpawnAt(pill.lane,pill.slot); return; }
-    };
-    const onMove=(e)=>{ if(!dragRef.current.active) return; const p=pos(e); dragRef.current.x=p.x-dragRef.current.ox; dragRef.current.y=p.y-dragRef.current.oy; draw(); };
-    const onUp  =(e)=>{
-      if(!dragRef.current.active) return;
-      const s=stateRef.current; const id=dragRef.current.id; const m=s.miners[id];
-      const p=pos(e); const drop = pickSlot(p.x,p.y);
-      const cur=s.lanes[m.lane];
+  const pill = pickPill(p.x,p.y);
+  if (pill){ trySpawnAt(pill.lane,pill.slot); return; }
+};
 
-      if (drop){
-        const {lane,slot}=drop;
+const onMove=(e)=>{
+  if(!dragRef.current.active) return;
+  e.preventDefault();
+  const p=pos(e); // ←←← היה pos(e, cnv)
+  dragRef.current.x=p.x-dragRef.current.ox;
+  dragRef.current.y=p.y-dragRef.current.oy;
+  draw();
+};
 
-        // אם שחררנו באותו סלוט — לא עושים כלום
-        if (lane===m.lane && slot===m.slot){
-          dragRef.current={active:false}; draw(); return;
-        }
+const onUp=(e)=>{
+  e.preventDefault();
+  if(!dragRef.current.active) return;
+  const s=stateRef.current; const id=dragRef.current.id; const m=s.miners[id];
+  const p=pos(e); const drop = pickSlot(p.x,p.y);
+  const cur=s.lanes[m.lane];
 
-        const target=s.lanes[lane].slots[slot];
-        if(!target){
-          cur.slots[m.slot]=null; m.lane=lane; m.slot=slot; s.lanes[lane].slots[slot]={id}; save();
-        } else if (target.id!==id){
-          const other=s.miners[target.id];
-          if (other && other.level===m.level){
-            cur.slots[m.slot]=null; s.lanes[other.lane].slots[other.slot]=null;
-            delete s.miners[m.id]; delete s.miners[other.id];
-            const nid = s.nextId++; const merged={id:nid,level:m.level+1,lane,slot,pop:1};
-            s.miners[nid]=merged; s.lanes[lane].slots[slot]={id:nid}; play(S_MERGE); save();
-          }
-        }
+  if (drop){
+    const {lane,slot}=drop;
+    // אותו תא? לא מזיזים
+    if (lane===m.lane && slot===m.slot){
+      dragRef.current={active:false};
+      try { cnv.releasePointerCapture(e.pointerId); } catch {}
+      draw(); return;
+    }
+    const target=s.lanes[lane].slots[slot];
+    if(!target){
+      cur.slots[m.slot]=null; m.lane=lane; m.slot=slot; s.lanes[lane].slots[slot]={id}; save();
+    } else if (target.id!==id){
+      const other=s.miners[target.id];
+      if (other && other.level===m.level){
+        cur.slots[m.slot]=null; s.lanes[other.lane].slots[other.slot]=null;
+        delete s.miners[m.id]; delete s.miners[other.id];
+        const nid = s.nextId++; const merged={id:nid,level:m.level+1,lane,slot,pop:1};
+        s.miners[nid]=merged; s.lanes[lane].slots[slot]={id:nid}; play(S_MERGE); save();
       }
-      dragRef.current={active:false}; draw();
-    };
+    }
+  }
+  dragRef.current={active:false};
+  try { cnv.releasePointerCapture(e.pointerId); } catch {}
+  draw();
+};
+
 
     cnv.addEventListener("pointerdown", onDown, { passive:false });
-    window.addEventListener("pointermove", onMove, { passive:false });
-    window.addEventListener("pointerup",   onUp,   { passive:false });
+    cnv.addEventListener("pointermove", onMove, { passive:false });
+    cnv.addEventListener("pointerup",   onUp,   { passive:false });
 
     // loop
     let last = performance.now();
@@ -568,12 +592,13 @@ export default function MiningRush() {
 
   const finalizeAdGift = ()=>{
     const s=stateRef.current; if(!s) return;
-    const add = govRef.current.award(40);
+    const add = govRef.current.award(40); // פרס צפייה
     s.gold += add; setUi(u=>({...u,gold:s.gold})); setToast(`▶️ Ad Gift +${short(add)} coins`);
     const until = Date.now() + AD_COOLDOWN_MS;
     setAdUntil(until);
     setAdOpen(false);
-    save(Number(until)); // שמירה מיידית + מספר
+    save(Number(until));                           // לקובץ ה־LS הראשי
+  try { localStorage.setItem(LS_KEY+"_adUntil", String(until)); } catch {}
   };
 
   function scheduleNextGift(s, now=Date.now()){
@@ -769,10 +794,13 @@ export default function MiningRush() {
                       disabled={!hud.giftReady} onClick={()=>{ play(S_CLICK); claimGift(); }}>
                 {giftBtnLabel}
               </button>
-              <button className="px-3 py-2 rounded-xl border border-white/15 disabled:opacity-40 hover:bg-white/10"
-                      disabled={addDisabled} onClick={()=>{ play(S_CLICK); onAdGift(); }}>
-                {adRemainLabel}
-              </button>
+ {mounted && (
+    <button className="px-3 py-2 rounded-xl border border-white/15 disabled:opacity-40 hover:bg-white/10"
+            disabled={addDisabled}
+            onClick={()=>{ play(S_CLICK); onAdGift(); }}>
+      {adRemainLabel}
+    </button>
+  )}
             </div>
             <div className="text-xs text-white/60 mt-2">
               Gifts may grant Coins/Dog/DPS/GOLD. Diamonds come from Gifts only. Every 3 Diamonds opens a <b>Big Chest</b>.
