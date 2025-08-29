@@ -212,8 +212,6 @@ export default function MleoMiners() {
 // === END PART 2 ===
 
 
-
-
 // === START PART 3 ===
 // Init state + קנבס + ציור + לולאת משחק (שיפור UX של גרירה)
 
@@ -362,7 +360,10 @@ function freshState(){
     miners:{}, nextId:1,
 
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
+// === END PART 3 ===
 
+
+// === START PART 4 ===
     // >>> חדש: קנה מידה של הכלב (1 = 100%)
     minerScale: 1.25,
 
@@ -605,7 +606,10 @@ function pickMiner(x,y){
   }
   return null;
 }
+// === END PART 4 ===
 
+
+// === START PART 5 ===
 // ----- ציור -----
 function drawBg(ctx,b){
   const img = getImg(IMG_BG);
@@ -820,11 +824,10 @@ function tick(dt){
   finalizeDailyRewardOncePerTick();
   s.lastSeen = now;
 }
-// === END PART 3 ===
+// === END PART 5 ===
 
 
-
-// === START PART 4 ===
+// === START PART 6 ===
 // Helpers + save/load + purchases + reset + misc used by JSX
 
 // ── Basic math helpers ──
@@ -1234,7 +1237,10 @@ function handleOfflineAccrual(s, elapsedMs) {
         hp = rk.hp; maxHp = rk.maxHp;
       }
     }
+// === END PART 6 ===
 
+
+// === START PART 7 ===
     // עדכן מצב המסילה בהתאם לסימולציה
     s.lanes[lane].rock = { lane, idx, maxHp, hp: Math.max(1, Math.floor(hp)) };
     s.lanes[lane].rockCount = idx;
@@ -1268,11 +1274,7 @@ function openDiamondChestIfReady() {
   s.nextDiamondPrize = rollDiamondPrize();
   save();
 }
-// === END PART 4 ===
 
-
-
-// === START PART 5 ===
 // HUD computed values + Gift heartbeat + EARN cooldown
 
 const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 15*60;
@@ -1315,11 +1317,10 @@ const price=(n)=>formatShort(n??0);
 
 // EARN button
 function onAdd(){ try{play?.(S_CLICK);}catch{} const s=stateRef.current;if(!s) return; const now=Date.now(); if(now<(s.adCooldownUntil||0)){ const remain=Math.ceil(((s.adCooldownUntil||0)-now)/1000); const m=Math.floor(remain/60),sec=String(remain%60).padStart(2,"0"); if(typeof setGiftToast==="function"){ const id=Math.random().toString(36).slice(2); setGiftToast({text:`Ad bonus in ${m}:${sec}`,id}); setTimeout(()=>{setGiftToast(cur=>(cur&&cur.id===id?null:cur));},2000);} return; } setAdVideoEnded(false); setShowAdModal(true); }
-// === END PART 5 ===
+// === END PART 7 ===
 
- 
 
-// === START PART 6 ===
+// === START PART 8 ===
   // ——— iOS detection ———
   const [isIOS, setIsIOS] = useState(false);
 
@@ -1444,7 +1445,10 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
             </div>
           </div>
         )}
+{/* === END PART 8 === */}
 
+
+{/* === START PART 9 === */}
         {/* ADD Ad Modal */}
         {showAdModal && (
           <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
@@ -1503,7 +1507,6 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
           </div>
         )}
 
-
         {/* ===== Canvas wrapper ===== */}
         <div
           id="miners-canvas-wrap"
@@ -1529,7 +1532,7 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
 >
   {/* כותרת בתוך הקאנבס */}
   <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-center mb-2">
-    MLEO MINERS
+    MLEO - MINERS
   </h1>
 
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
@@ -1642,8 +1645,10 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
   </div>
 
 </div>
+{/* === END PART 9 === */}
 
 
+{/* === START PART 10 === */}
           {/* Toast (gift result) */}
           {giftToast && (
             <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "200px" }}>
@@ -1801,4 +1806,4 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
     </Layout>
   );
 } 
-// === END PART 6 ===
+// === END PART 10 ===
