@@ -222,12 +222,15 @@ export default function MleoMiners() {
 
 useEffect(() => {
   theStateFix_maybeMigrateLocalStorage();
+
   // טען שמירה אם יש
   const loaded = loadSafe();
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
-// אם אין minerScale בשמירה – קבע 1.5 כברירת־מחדל חדשה
-if (loaded && loaded.minerScale == null) init.minerScale = 1.25;
 
+  // אם אין minerScale בשמירה – קבע 1.25 כברירת־מחדל (גובה)
+  if (loaded && loaded.minerScale == null) init.minerScale = 1.25;
+  // חדש: אם אין minerWidth בשמירה – קבע 1.15 כברירת־מחדל (רוחב בלבד)
+  if (loaded && loaded.minerWidth == null) init.minerWidth = 1.15;
 
   // עוגן עלות ראשוני
   if (init.costBase == null) {
@@ -365,12 +368,15 @@ function freshState(){
     miners:{}, nextId:1,
 
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
+
 // === END PART 3 ===
 
 
 // === START PART 4 ===
-    // >>> חדש: קנה מידה של הכלב (1 = 100%)
+    // >>> קני מידה של הכלב
+    // minerScale = גובה/סקייל כולל; minerWidth = הרחבת רוחב בלבד
     minerScale: 1.25,
+    minerWidth: 1.15,
 
     anim:{ t:0, coins:[], hint:1, fx:[] },
     onceSpawned:false,
@@ -405,15 +411,13 @@ function setupCanvasAndLoop(cnv){
 
     let targetW, targetH;
     if (isFS) {
-      // במסך מלא: גובה מלא אמיתי + עדכון גם ל־wrapper
       targetW = Math.min(window.innerWidth || 360, 1024);
-      targetH = Math.max(420, (window.innerHeight || 600) - 1); // -1 למניעת גלילה מיותרת
+      targetH = Math.max(420, (window.innerHeight || 600) - 1);
       const wrap = cnv.parentElement;
       if (wrap) wrap.style.height = `${window.innerHeight}px`;
     } else {
-      // מצב רגיל: לפי האלמנט העוטף
       const wrap = cnv.parentElement;
-      if (wrap) wrap.style.height = ""; // נקה גובה ידני ממסך מלא
+      if (wrap) wrap.style.height = "";
       const rect = wrap?.getBoundingClientRect();
       const innerW = Math.max(320, Math.floor(wrap?.clientWidth  ?? rect?.width  ?? 360));
       const innerH = Math.max(420, Math.floor(wrap?.clientHeight ?? rect?.height ?? 600));
@@ -431,7 +435,6 @@ function setupCanvasAndLoop(cnv){
 
   const onFSResize = () => {
     resize();
-    // כרום אנדרואיד מעדכן innerHeight באיחור קצר
     setTimeout(resize, 60);
   };
 
@@ -445,7 +448,6 @@ function setupCanvasAndLoop(cnv){
     const p = pos(e);
     const hit = pickMiner(p.x,p.y);
     if (hit) {
-      // שמור offset יחסית למרכז הדמות
       dragRef.current = {
         active:true,
         id: hit.id,
@@ -464,7 +466,7 @@ function setupCanvasAndLoop(cnv){
     const p = pos(e);
     dragRef.current.x = p.x - dragRef.current.ox;
     dragRef.current.y = p.y - dragRef.current.oy;
-    draw(); // רענון מיידי
+    draw();
   };
   const onUp = (e) => {
     if (!dragRef.current.active) return;
@@ -490,7 +492,6 @@ function setupCanvasAndLoop(cnv){
           s.lanes[lane].slots[slot]={ id:nid };
           try { play?.(S_MERGE); } catch {}
         } else {
-          // יעד תפוס — החזרה למקום
           cur.slots[m.slot] = { id:m.id };
         }
       }
@@ -526,7 +527,6 @@ function setupCanvasAndLoop(cnv){
     cnv.removeEventListener("mousedown", onDown);
     cnv.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
-    // לא ניתן להסיר מאזינים אנונימיים; נשאיר כך כדי לא לשבור.
   };
 }
 
@@ -544,12 +544,9 @@ function laneRect(lane){
   const y = Math.max(b.y, Math.min(centerY - h*0.5, b.y + b.h - h));
   return { x:b.x, y, w:b.w, h };
 }
-// היה: return Math.min(L.w*0.16, Math.max(50, L.h*0.64));
 function rockWidth(L){
-  // רחב יותר: 0.25 מרוחב המסילה, ומותר עד 0.9 מהגובה (או מינ' 60px)
   return Math.min(L.w * 0.30, Math.max(80, L.h * 1.10));
 }
-
 function slotRect(lane,slot){
   const L = laneRect(lane);
   const rw = rockWidth(L);
@@ -632,7 +629,6 @@ function drawBg(ctx,b){
 }
 
 function drawRock(ctx,rect,rock){
-  // בטל צללים לחלוטין
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
   ctx.shadowOffsetX = 0;
@@ -653,11 +649,10 @@ function drawRock(ctx,rect,rock){
   if (img.complete && img.naturalWidth>0) ctx.drawImage(img,dx,dy,rw,rh);
   else { ctx.fillStyle="#6b7280"; ctx.fillRect(dx,dy,rw,rh); }
 
-  // פס חיים/ספירה – מוקטן עוד יותר (3px)
- const by   = rect.y + 4;
-const barW = fullW * 0.75;                         // 25% קצר יותר
-const bx   = rect.x + pad + (fullW - barW) / 2;    // ממורכז אופקית
-const barH = 10;                                    // לא נוגעים בגובה
+  const by   = rect.y + 4;
+  const barW = fullW * 0.75;
+  const bx   = rect.x + pad + (fullW - barW) / 2;
+  const barH = 10;
 
   ctx.fillStyle   = "#0ea5e9";
   ctx.fillRect(bx,by,barW*pct,barH);
@@ -665,7 +660,6 @@ const barH = 10;                                    // לא נוגעים בגו�
   ctx.lineWidth   = 1;
   ctx.strokeRect(bx,by,barW,barH);
 
-  // כותרת הסלע ממורכזת מעל הפס
   ctx.fillStyle    = "#e5e7eb";
   ctx.font         = "bold 11px system-ui";
   ctx.textAlign    = "center";
@@ -678,38 +672,36 @@ function drawMiner(ctx,lane,slot,m){
   const cx = r.x + r.w*0.52;
   const cy = r.y + r.h*0.56;
 
-  // קנה מידה
-  const scale = (stateRef.current?.minerScale || 1);
-  const w     = Math.min(r.w, r.h) * 0.84 * scale;
+  // קנה מידה: גובה + רוחב
+  const scaleH = (stateRef.current?.minerScale || 1);             // גובה
+  const base   = Math.min(r.w, r.h) * 0.84 * scaleH;               // גודל בסיסי אנכי
+  const wH     = base;
+  const wW     = base * (stateRef.current?.minerWidth || 1.15);    // הרחבת רוחב בלבד
 
-  // בטל צללים לחלוטין
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
 
-  // הכלב
   const img = getImg(IMG_MINER);
   if (img.complete && img.naturalWidth>0) {
     const frame = Math.floor(((stateRef.current?.anim?.t)||0)*8)%4;
     const sw = img.width/4, sh = img.height;
-    ctx.drawImage(img, frame*sw, 0, sw, sh, cx - w/2, cy - w/2, w, w);
+    ctx.drawImage(img, frame*sw, 0, sw, sh, cx - wW/2, cy - wH/2, wW, wH);
   } else {
     ctx.fillStyle="#22c55e";
-    ctx.beginPath(); ctx.arc(cx, cy, w*0.35, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx, cy, (wW*0.35), (wH*0.35), 0, 0, Math.PI*2); ctx.fill();
   }
 
-  // דרגת הכלב – בלי רקע/צל, קרובה עוד יותר לראש
-  const fontPx = Math.max(12, Math.floor(w*0.22));
+  const fontPx = Math.max(12, Math.floor(base*0.22));
   ctx.fillStyle    = "#ffffff";
   ctx.font         = `bold ${fontPx}px system-ui`;
   ctx.textAlign    = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText(String(m.level), cx, cy - w*0.20); // ← היה 0.30-
+  ctx.fillText(String(m.level), cx, cy - base*0.20);
 }
 
 function drawPill(ctx,x,y,w,h,label,enabled=true){
-  // אין צללים גם בכפתור
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
   ctx.shadowOffsetX = 0;
@@ -741,7 +733,6 @@ function draw(){
   const s = stateRef.current;   if (!s) return;
   const b = boardRect();
 
-  // איפוס צללים גורף לכל הפריים
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
   ctx.shadowOffsetX = 0;
@@ -776,9 +767,11 @@ function draw(){
       const gx = (dragRef.current.x ?? 0) + (dragRef.current.ox ?? 0);
       const gy = (dragRef.current.y ?? 0) + (dragRef.current.oy ?? 0);
       const r0 = slotRect(m.lane, m.slot);
+
       const baseW = Math.min(r0.w, r0.h) * 0.84;
-      const scale = (stateRef.current?.minerScale || 1);
-      const w  = baseW * scale;
+      const scaleH = (stateRef.current?.minerScale || 1);
+      const wH = baseW * scaleH;
+      const wW = wH * (stateRef.current?.minerWidth || 1.15);
 
       const img=getImg(IMG_MINER);
       ctx.save();
@@ -790,15 +783,16 @@ function draw(){
       if (img.complete && img.naturalWidth>0) {
         const frame=Math.floor(((stateRef.current?.anim?.t)||0)*8)%4;
         const sw=img.width/4, sh=img.height;
-        ctx.drawImage(img, frame*sw,0,sw,sh, gx-w/2, gy-w/2, w, w);
+        ctx.drawImage(img, frame*sw,0,sw,sh, gx-wW/2, gy-wH/2, wW, wH);
       } else {
         ctx.fillStyle="#22c55e";
-        ctx.beginPath(); ctx.arc(gx,gy,(w*0.35),0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(gx,gy,(wW*0.35),(wH*0.35),0,0,Math.PI*2); ctx.fill();
       }
       ctx.restore();
     }
   }
 }
+
 // ----- לוגיקת tick בסיסית -----
 function tick(dt){
   const s = stateRef.current; if (!s) return;
@@ -820,17 +814,13 @@ function tick(dt){
       const gain = Math.floor(rock.maxHp * GOLD_FACTOR * (s.goldMult||1));
       s.gold += gain; setUi(u => ({ ...u, gold:s.gold }));
       addPlayerScorePoints(s, gain);
-
-      // פופאפ מרכזי אוטומטי (נעלם לבד)
       setCenterPopup({ text: `⛏️ +${formatShort(gain)} coins`, id: Math.random() });
-
       s.lanes[l].rockCount += 1;
       s.lanes[l].rock = newRock(l, s.lanes[l].rockCount);
       safeSave();
     }
   }
 
-  // gifts timer
   if (!s.giftReady) {
     if ((s.giftNextAt || 0) <= Date.now()) {
       s.giftReady = true;
@@ -838,7 +828,6 @@ function tick(dt){
     }
   }
 
-  // בנק כלבים אוטומטי + הפצה
   if (s.autoDogLastAt == null) s.autoDogLastAt = Date.now();
   const elapsedSinceDog = Date.now() - (s.autoDogLastAt || Date.now());
   if (elapsedSinceDog >= (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800) * 1000) {
@@ -857,14 +846,9 @@ function tick(dt){
 // Helpers + save/load + purchases + reset + misc used by JSX
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
-// ── Count miners safely ──
 function countMiners(s) { return s?.miners ? Object.keys(s.miners).length : 0; }
-
-// ── DPS per miner ──
 function minerDps(level, mul = 1) { return BASE_DPS * Math.pow(LEVEL_DPS_MUL, level - 1) * mul; }
 
-// ── Lane DPS sum ──
 function laneDpsSum(s, laneIdx) {
   if (!s) return 0;
   let dps = 0;
@@ -878,13 +862,11 @@ function laneDpsSum(s, laneIdx) {
   return dps;
 }
 
-// ── Rocks ──
 function newRock(lane, idx) {
   const hp = Math.floor(ROCK_BASE_HP * Math.pow(ROCK_HP_MUL, idx));
   return { lane, idx, maxHp: hp, hp };
 }
 
-// ── Fresh state used by resetGame/first boot ──
 function makeFreshState() {
   const now = Date.now();
   return {
@@ -905,30 +887,28 @@ function makeFreshState() {
     anim: { t: 0, coins: [], hint: 1, fx: [] },
     onceSpawned: false,
 
-    // purchasing & levels
     totalPurchased: 0,
     spawnLevel: 1,
 
-    // offline
     lastSeen: now,
     pendingOfflineGold: 0,
 
-    // gifts timer
     cycleStartAt: now,
     lastGiftIntervalSec: 20,
     giftNextAt: now + 20 * 1000,
     giftReady: false,
 
-    // diamonds
     diamonds: 0,
     nextDiamondPrize: rollDiamondPrize(),
 
-    // auto-dog (30m) – בנק עד 6
     autoDogLastAt: now,
     autoDogBank: 0,
 
-    // ad cooldown — מקור אמת נשמר בשמירה
     adCooldownUntil: 0,
+
+    // גודל כלב — גם ב־fresh המלא
+    minerScale: 1.25,
+    minerWidth: 1.15,
   };
 }
 
@@ -937,48 +917,36 @@ function save() {
   const s = stateRef.current; if (!s) return;
   try {
     localStorage.setItem(LS_KEY, JSON.stringify({
-      // core
       lanes: s.lanes, miners: s.miners, nextId: s.nextId,
       gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
       onceSpawned: s.onceSpawned,
 
-      // קנה מידה של הכלב
+      // קני מידה של הכלב
       minerScale: s.minerScale || 1,
+      minerWidth: s.minerWidth || 1.15,
 
-      // offline
       lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
-
-      // buy-level
       totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
 
-      // gifts
       cycleStartAt: s.cycleStartAt,
       lastGiftIntervalSec: s.lastGiftIntervalSec,
       giftNextAt: s.giftNextAt, giftReady: s.giftReady,
 
-      // diamonds
       diamonds: s.diamonds || 0,
       nextDiamondPrize: s.nextDiamondPrize,
 
-      // auto-dog
       autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
-
-      // pricing anchor
       costBase: s.costBase,
-
-      // ad cooldown
       adCooldownUntil: s.adCooldownUntil || 0,
     }));
   } catch {}
 }
 function load() { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 
-// ── Costs ──
 function _baseCost(s) { if (!s) return 160; return Math.max(80, s.costBase || 120); }
 function _dpsCost(s)  { const base=_baseCost(s); const steps=Math.max(0, Math.round(((s?.dpsMult||1)-1)*10)); return Math.ceil(base*2.0*Math.pow(1.18,steps)); }
 function _goldCost(s) { const base=_baseCost(s); const steps=Math.max(0, Math.round(((s?.goldMult||1)-1)*10)); return Math.ceil(base*2.2*Math.pow(1.18,steps)); }
 
-// ── Expected reward for next rock ──
 function expectedRockCoinReward(s) {
   if (!s) return 0;
   let bestLane = 0, bestDps = 0;
@@ -998,7 +966,6 @@ function expectedRockCoinReward(s) {
   return Math.floor(rock.maxHp * GOLD_FACTOR * (s.goldMult || 1));
 }
 
-// ── Gift coin baseline (לפי כל המסילות) ──
 function expectedGiftCoinReward(s) {
   if (!s) return 0;
   const mult = (s.goldMult || 1);
@@ -1014,14 +981,12 @@ function expectedGiftCoinReward(s) {
   return Math.floor(max + others * 0.5);
 }
 
-// ── UI toast helper ──
 function setGiftToastWithTTL(text, ttl = 3000) {
   const id = Math.random().toString(36).slice(2);
   setGiftToast?.({ text, id });
   setTimeout(() => { setGiftToast?.(cur => (cur && cur.id === id ? null : cur)); }, ttl);
 }
 
-// ── Spawn logic ──
 function spawnMiner(s, level = 1) {
   if (!s) return false;
   if (countMiners(s) >= MAX_MINERS) return false;
@@ -1093,7 +1058,6 @@ function upgradeGold() {
   setUi(u => ({ ...u, gold: s.gold })); save();
 }
 
-// ── Offline collect ──
 function onOfflineCollect() {
   const s = stateRef.current; if (!s) return;
   const add = s.pendingOfflineGold || 0;
@@ -1106,7 +1070,6 @@ function onOfflineCollect() {
   setShowCollect(false);
 }
 
-// ── Fullscreen helpers ──
 async function enterFullscreenAndLockMobile() { try {
   const w = window.innerWidth, desktop = w >= 1024;
   if (desktop) return;
@@ -1116,7 +1079,6 @@ async function enterFullscreenAndLockMobile() { try {
 } catch {} }
 async function exitFullscreenIfAny() { try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {} }
 
-// ── RESET ──
 async function resetGame() {
   try { play?.(S_CLICK); } catch {}
   try { localStorage.removeItem(LS_KEY); } catch {}
@@ -1147,8 +1109,7 @@ async function resetGame() {
   save();
 }
 
-// ===== Gifts: weights & handlers (עודכן לפי הבקשה) =====
-// 60% coins, 18% dog (spawnLevel-1), 8% dps, 8% gold, 6% diamond
+// ===== Gifts: weights & handlers =====
 function rollGiftType() {
   const r = Math.random() * 100;
   if (r < 60) return "coins";
@@ -1157,28 +1118,17 @@ function rollGiftType() {
   if (r < 94) return "gold";
   return "diamond";
 }
-
-// מתנת כלב רגילה: תמיד spawnLevel-1
 function chooseGiftDogLevelForRegularGift(s) {
   const sl = Math.max(1, s.spawnLevel || 1);
   return Math.max(1, sl - 1);
 }
-
-// מתנת כלב תקופתית (כל 30 דק׳): ברירת־מחדל spawnLevel,
-// אבל ננסה קודם לייצר “מסלול מיזוג” אם יש יתמות ב־(spawnLevel-2)
 function chooseAutoDogLevel(s) {
   const sl = Math.max(1, s.spawnLevel || 1);
   const lvlMinus2 = Math.max(1, sl - 2);
-
-  // אם יש כלב ב-(sl-2) אבל רק אחד (אין לו בן זוג), עדיף להציב שם כדי לאפשר מיזוג עתידי
   const countMinus2 = Object.values(s.miners || {}).filter(m => m.level === lvlMinus2).length;
   if (countMinus2 === 1) return lvlMinus2;
-
-  // אחרת – רמת קנייה
   return sl;
 }
-
-// יצירה/המרה אם מלא
 function trySpawnDogOrConvert(s, level) {
   if (countMiners(s) < MAX_MINERS) {
     const ok = spawnMiner(s, level);
@@ -1191,8 +1141,6 @@ function trySpawnDogOrConvert(s, level) {
   save?.();
   return false;
 }
-
-// Auto-dog banking (כל 30 דק׳), cap 6
 function accrueBankDogsByElapsed(s, elapsedMs) {
   if (!s) return;
   const total = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800) * 1000;
@@ -1208,21 +1156,15 @@ function accrueBankDogsByElapsed(s, elapsedMs) {
     s.autoDogLastAt = Date.now();
   }
 }
-
-// הפצת כלבים מהבנק: רק אם יש סלוט פנוי *וגם* ההצבה מקדמת מיזוג; אחרת ממתין
 function tryDistributeBankDog(s) {
   if (!s) return;
   if ((s.autoDogBank || 0) <= 0) return;
   if (countMiners(s) >= MAX_MINERS) return;
 
-  // בדיקה: האם יש יתמות ב-(spawnLevel-2) (בדיוק כלב אחד)? אם כן – נציב שם.
   const lvl = chooseAutoDogLevel(s);
-
-  // אם רמת היעד לא משפרת מסלול מיזוג (למשל כבר יש 0 או >=2 באותה רמה),
-  // נשאיר בבנק עד שתיווצר היתכנות (כפי שביקשת).
   if (lvl === Math.max(1, (s.spawnLevel||1) - 2)) {
     const countAt = Object.values(s.miners || {}).filter(m => m.level === lvl).length;
-    if (countAt !== 1) return; // לא משפר → לחכות
+    if (countAt !== 1) return;
   }
 
   const ok = spawnMiner(s, lvl);
@@ -1233,10 +1175,8 @@ function tryDistributeBankDog(s) {
   }
 }
 
-// ===== OFFLINE mining up to 12h =====
 function handleOfflineAccrual(s, elapsedMs) {
   if (!s) return 0;
-  // צבור כלבים אוטומטיים גם בזמן OFFLINE (30 דק׳)
   accrueBankDogsByElapsed(s, elapsedMs);
 
   const CAP_MS = 12 * 60 * 60 * 1000; // 12h
@@ -1247,7 +1187,6 @@ function handleOfflineAccrual(s, elapsedMs) {
     let dps = laneDpsSum(s, lane);
     if (dps <= 0) continue;
 
-    // מצב סלע נוכחי במסילה
     let idx = s.lanes[lane].rock.idx;
     let hp  = s.lanes[lane].rock.hp;
     let maxHp = s.lanes[lane].rock.maxHp;
@@ -1271,9 +1210,7 @@ function handleOfflineAccrual(s, elapsedMs) {
     s.lanes[lane].rockCount = idx;
   }
 
-  if (totalCoins > 0) {
-    s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
-  }
+  if (totalCoins > 0) s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
   return totalCoins;
 }
 // === END PART 6 ===
@@ -1306,7 +1243,6 @@ function openDiamondChestIfReady() {
 
 // HUD computed values + Gift heartbeat + EARN cooldown
 
-// ⏱️ מתנת כלב תקופתית: כל 30 דקות
 const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 30*60;
 const DOG_BANK_CAP = (typeof window !== "undefined" && window.DOG_BANK_CAP) || 6;
 
@@ -1357,19 +1293,16 @@ const dogProgress=(()=>{
   return Math.max(0,Math.min(1,elapsed/total)); 
 })();
 
-// החלף את הפונקציה circleStyle
+// טבעת — רק הקטע הצבעוני, ללא רקע כהה
 function circleStyle(progress){
   const p   = Math.max(0, Math.min(1, Number(progress) || 0));
   const deg = Math.round(360 * p);
   return {
-    // רק הקטע הצבעוני, והשאר שקוף – בלי שום רדיאל/הילה
     backgroundImage: `conic-gradient(#facc15 ${deg}deg, transparent 0)`,
     backgroundColor: "transparent",
     transition: "background-image 0.2s linear",
   };
 }
-
-
 
 // ADD cooldown
 const sNow=stateRef.current;
@@ -1385,6 +1318,9 @@ const addRemainLabel=(()=>{
   return `${m}:${String(s).padStart(2,"0")}`;
 })();
 const addDisabled=addRemainMs>0||adWatching;
+
+// מחוון יהלומים מוכנים
+const diamondsReady = (stateRef.current?.diamonds || 0) >= 3;
 
 // prices
 const spawnCostNow=sNow?.spawnCost??ui.spawnCost;
@@ -1545,7 +1481,7 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
 
 
 {/* === START PART 9 === */}
-        {/* ADD Ad Modal */}
+               {/* ADD Ad Modal */}
         {showAdModal && (
           <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
             <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-5">
@@ -1630,37 +1566,55 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
   </h1>
 
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
-    {/* Gold + ring (ללא shadow) */}
-    <div className="px-2 py-1 bg-black/60 rounded-lg flex items-center gap-2">
+    {/* Gold + ring */}
+    <div className="px-2 py-1 rounded-lg flex items-center gap-2">
       <div
         className="relative w-8 h-8 rounded-full grid place-items-center"
         style={circleStyle(addProgress)}
         title={addRemainMs > 0 ? `Next ad in ${addRemainLabel}` : "Ad bonus ready"}
       >
-        <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center">
+        <div className="w-6 h-6 rounded-full bg-black grid place-items-center">
           <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
         </div>
       </div>
       <b>{formatShort(stateRef.current?.gold ?? 0)}</b>
     </div>
 
-    <div className="px-2 py-1 bg-black/60 rounded-lg">🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
-    <div className="px-2 py-1 bg-black/60 rounded-lg">🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
-    <div className="px-2 py-1 bg-black/60 rounded-lg">🐶 LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
+    <div className="px-2 py-1 rounded-lg">🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
+    <div className="px-2 py-1 rounded-lg">🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
+    <div className="px-2 py-1 rounded-lg">🐶 LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
 
-    {/* Diamonds counter */}
+    {/* Diamonds counter עם הילה כשמוכן */}
     <button
       onClick={() => setShowDiamondInfo(true)}
-      className="px-2 py-1 bg-black/70 rounded-lg flex items-center gap-1 hover:bg-black/60 active:scale-95 transition"
+      className="relative px-2 py-1 rounded-lg flex items-center gap-1 active:scale-95 transition"
       aria-label="Diamond rewards info"
       title="Tap to open Diamond chest"
     >
+      {diamondsReady && (
+        <>
+          <span
+            className="pointer-events-none absolute -inset-2 rounded-xl"
+            style={{
+              animation: "glowPulse 3.2s infinite",
+              background: "radial-gradient(circle, rgba(250,204,21,0.35) 0%, rgba(250,204,21,0.18) 35%, transparent 60%)"
+            }}
+          />
+          <span
+            className="pointer-events-none absolute -inset-[6px] rounded-2xl"
+            style={{
+              animation: "glowRing 3.2s infinite",
+              border: "2px solid rgba(250,204,21,0.55)"
+            }}
+          />
+        </>
+      )}
       <span>💎</span>
       <b>{stateRef.current?.diamonds ?? 0}</b>
       <span className="opacity-80">/3</span>
     </button>
 
-    <div className="px-2 py-1 bg-black/60 rounded-lg">{`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}</div>
+    <div className="px-2 py-1 rounded-lg">{`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}</div>
 
     <div className="flex items-center gap-3 ml-2">
       <div
@@ -1668,19 +1622,19 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
         style={circleStyle(giftProgress)}
         title={`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}
       >
-        <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🎁</div>
+        <div className="w-6 h-6 rounded-full bg-black grid place-items-center text-[10px] font-extrabold">🎁</div>
       </div>
       <div
         className="relative w-8 h-8 rounded-full grid place-items-center"
         style={circleStyle(dogProgress)}
         title="Auto-dog every 15m (bank up to 6)"
       >
-        <div className="w-6 h-6 rounded-full bg-black/70 grid place-items-center text-[10px] font-extrabold">🐶</div>
+        <div className="w-6 h-6 rounded-full bg-black grid place-items-center text-[10px] font-extrabold">🐶</div>
       </div>
     </div>
   </div>
 
-  {/* Actions row (ללא shadow) */}
+  {/* Actions row */}
   <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
     <button
       onClick={addMiner}
@@ -1716,7 +1670,6 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
       🟡 +10% (Cost {formatShort(goldCostNow)})
     </button>
 
-    {/* GAIN */}
     <button
       onClick={onAdd}
       disabled={addDisabled}
@@ -1737,8 +1690,38 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
       RESET
     </button>
   </div>
+
+  {/* === Dog size controls === */}
+  <div className="flex gap-3 mt-2 flex-wrap justify-center text-xs items-center">
+    <label className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/10 border border-white/10">
+      <span>Dog Width</span>
+      <input
+        type="range" min="0.8" max="1.6" step="0.05"
+        defaultValue={stateRef.current?.minerWidth ?? 1.15}
+        onChange={(e)=>{
+          const s = stateRef.current; if(!s) return;
+          s.minerWidth = Math.max(0.8, Math.min(1.6, parseFloat(e.target.value)||1.15));
+          save();
+        }}
+      />
+      <span className="tabular-nums">{(stateRef.current?.minerWidth ?? 1.15).toFixed(2)}×</span>
+    </label>
+
+    <label className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/10 border border-white/10">
+      <span>Dog Height</span>
+      <input
+        type="range" min="0.8" max="1.6" step="0.05"
+        defaultValue={stateRef.current?.minerScale ?? 1.25}
+        onChange={(e)=>{
+          const s = stateRef.current; if(!s) return;
+          s.minerScale = Math.max(0.8, Math.min(1.6, parseFloat(e.target.value)||1.25));
+          save();
+        }}
+      />
+      <span className="tabular-nums">{(stateRef.current?.minerScale ?? 1.25).toFixed(2)}×</span>
+    </label>
+  </div>
 </div>
-{/* === END PART 9 === */}
 
 
 {/* === START PART 10 === */}
