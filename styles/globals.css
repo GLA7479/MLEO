@@ -110,3 +110,17 @@ html, body { -webkit-tap-highlight-color: transparent; touch-action: manipulatio
   .hud-chip { height: 36px; font-size: 13px; }
 }
 
+
+/* ===== iOS-only: games viewport+safe-area (minimal, scoped) ===== */
+@supports (-webkit-touch-callout: none) {
+  .game-container {
+    min-height: 100dvh;
+    height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .fixed-bottom-safe,
+  [data-game-ui="bottom"] {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}
