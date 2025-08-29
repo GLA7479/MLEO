@@ -123,6 +123,8 @@ export default function MleoMiners() {
   const rafRef    = useRef(0);
   const dragRef   = useRef({ active:false });
   const stateRef  = useRef(null);
+const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
+
 
   const [ui, setUi] = useState({
     gold: 0,
@@ -368,6 +370,11 @@ function freshState(){
     miners:{}, nextId:1,
 
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
+
+    // >>> קני מידה של הכלב
+    minerScale: 1.45, // גובה קבוע
+    minerWidth: 0.80, // רוחב קבוע
+
 
 // === END PART 3 ===
 
@@ -906,11 +913,12 @@ function makeFreshState() {
 
     adCooldownUntil: 0,
 
-    // גודל כלב — גם ב־fresh המלא
-    minerScale: 1.25,
-    minerWidth: 1.15,
+    // גודל כלב קבוע
+    minerScale: 1.45,
+    minerWidth: 0.80,
   };
 }
+
 
 // ── Save/Load ──
 function save() {
@@ -1243,7 +1251,7 @@ function openDiamondChestIfReady() {
 
 // HUD computed values + Gift heartbeat + EARN cooldown
 
-const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 30*60;
+const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 10;
 const DOG_BANK_CAP = (typeof window !== "undefined" && window.DOG_BANK_CAP) || 6;
 
 const _currentGiftIntervalSec = typeof currentGiftIntervalSec==="function"?currentGiftIntervalSec:(s)=>Math.max(5,Math.floor(s?.lastGiftIntervalSec||20));
@@ -1293,7 +1301,20 @@ const dogProgress=(()=>{
   return Math.max(0,Math.min(1,elapsed/total)); 
 })();
 
-// טבעת — רק הקטע הצבעוני, ללא רקע כהה
+// טבעת — שכבת conic עם מסכה שמחוררת את המרכז (בלי רקע שחור)
+function ringBg(progress){
+  const p   = Math.max(0, Math.min(1, Number(progress) || 0));
+  const deg = Math.round(360 * p);
+  return {
+    background: `conic-gradient(#facc15 ${deg}deg, transparent 0)`,
+    WebkitMask: "radial-gradient(transparent 12px, #000 13px)",
+    mask:       "radial-gradient(transparent 12px, #000 13px)",
+    borderRadius: "9999px",
+    transition: "background 0.2s linear",
+  };
+}
+
+// (נשאיר את circleStyle אם תרצה להשתמש בעוד מקומות)
 function circleStyle(progress){
   const p   = Math.max(0, Math.min(1, Number(progress) || 0));
   const deg = Math.round(360 * p);
@@ -1349,7 +1370,43 @@ function onAdd(){
   setAdVideoEnded(false); 
   setShowAdModal(true); 
 }
+
+// ===== HUD Info modal state & content =====
+const [hudModal, setHudModal] = useState(null); // 'coins'|'dps'|'gold'|'spawn'|'gifts'|'giftRing'|'dogRing'
+function getHudModalTitle(k){
+  switch(k){
+    case 'coins': return 'Coins';
+    case 'dps': return 'DPS Multiplier';
+    case 'gold': return 'Gold Multiplier';
+    case 'spawn': return 'Dog Spawn Level';
+    case 'gifts': return 'Gift Phases';
+    case 'giftRing': return 'Gift Timer';
+    case 'dogRing': return 'Auto-Dog';
+    default: return 'Info';
+  }
+}
+function getHudModalText(k){
+  switch(k){
+    case 'coins':
+      return 'מספר המטבעות שלך. שבירת סלעים מוסיפה מטבעות; בונוסים: 🎁 מתנה רגילה (10%), מודעת וידאו (50%), ויהלומים נותנים מכפילים גדולים.';
+    case 'dps':
+      return '🪓 DPS xN מעלה את קצב הורדת ה-HP של הסלעים ב-10% בכל שדרוג.';
+    case 'gold':
+      return '🟡 GOLD xN מעלה את כמות המטבעות המתקבלת מכל סלע ב-10% בכל שדרוג.';
+    case 'spawn':
+      return '🐶 LV מציין את רמת הכלב שמופיע ברכישה/בונוס. עולה אוטומטית אחרי מספר רכישות.';
+    case 'gifts':
+      return '⏳ מרווח בין מתנות. כל פעם שהטיימר מסתיים מתקבלת מתנה: מטבעות/כלב/בונוסים/יהלום.';
+    case 'giftRing':
+      return 'הטבעת מסביב ל-🎁 מראה את ההתקדמות עד למתנה הבאה. בלי רקע שחור – רק טבעת.';
+    case 'dogRing':
+      return 'הטבעת מסביב ל-🐶 מראה התקדמות לכלב אוטומטי. כשהבנק מלא (עד 6) הוא ייפתח בהזדמנות פנויה.';
+    default:
+      return '';
+  }
+}
 // === END PART 7 ===
+
 
 
 // === START PART 8 ===
@@ -1566,28 +1623,38 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
   </h1>
 
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
-    {/* Gold + ring */}
-    <div className="px-2 py-1 rounded-lg flex items-center gap-2">
-      <div
-        className="relative w-8 h-8 rounded-full grid place-items-center"
-        style={circleStyle(addProgress)}
-        title={addRemainMs > 0 ? `Next ad in ${addRemainLabel}` : "Ad bonus ready"}
-      >
-        <div className="w-6 h-6 rounded-full bg-black grid place-items-center">
-          <img src={IMG_COIN} alt="coin" className="w-4 h-4" />
-        </div>
+    {/* Coins + ad ring (clickable info) */}
+    <button
+      onClick={()=>setHudModal('coins')}
+      className="px-2 py-1 rounded-lg flex items-center gap-2 hover:bg-white/10"
+      aria-label="Coins info"
+    >
+      <div className="relative w-8 h-8 rounded-full grid place-items-center" title={addRemainMs > 0 ? `Next ad in ${addRemainLabel}` : "Ad bonus ready"}>
+        <div className="absolute inset-0 rounded-full" style={ringBg(addProgress)} />
+        <img src={IMG_COIN} alt="coin" className="w-7 h-7" />
       </div>
       <b>{formatShort(stateRef.current?.gold ?? 0)}</b>
-    </div>
+    </button>
 
-    <div className="px-2 py-1 rounded-lg">🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b></div>
-    <div className="px-2 py-1 rounded-lg">🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b></div>
-    <div className="px-2 py-1 rounded-lg">🐶 LV <b>{stateRef.current?.spawnLevel || 1}</b></div>
+    {/* DPS */}
+    <button onClick={()=>setHudModal('dps')} className="px-2 py-1 rounded-lg hover:bg-white/10">
+      🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b>
+    </button>
 
-    {/* Diamonds counter עם הילה כשמוכן */}
+    {/* GOLD */}
+    <button onClick={()=>setHudModal('gold')} className="px-2 py-1 rounded-lg hover:bg-white/10">
+      🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b>
+    </button>
+
+    {/* Spawn LV */}
+    <button onClick={()=>setHudModal('spawn')} className="px-2 py-1 rounded-lg hover:bg-white/10">
+      🐶 LV <b>{stateRef.current?.spawnLevel || 1}</b>
+    </button>
+
+    {/* Diamonds (נשאר המודאל הייעודי) */}
     <button
       onClick={() => setShowDiamondInfo(true)}
-      className="relative px-2 py-1 rounded-lg flex items-center gap-1 active:scale-95 transition"
+      className="relative px-2 py-1 rounded-lg flex items-center gap-1 active:scale-95 transition hover:bg-white/10"
       aria-label="Diamond rewards info"
       title="Tap to open Diamond chest"
     >
@@ -1614,23 +1681,31 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
       <span className="opacity-80">/3</span>
     </button>
 
-    <div className="px-2 py-1 rounded-lg">{`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}</div>
+    {/* Phase label */}
+    <button onClick={()=>setHudModal('gifts')} className="px-2 py-1 rounded-lg hover:bg-white/10">{`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}</button>
 
     <div className="flex items-center gap-3 ml-2">
-      <div
-        className="relative w-8 h-8 rounded-full grid place-items-center"
-        style={circleStyle(giftProgress)}
+      {/* 🎁 ring */}
+      <button
+        onClick={()=>setHudModal('giftRing')}
+        className="relative w-8 h-8 rounded-full grid place-items-center hover:opacity-90 active:scale-95 transition"
         title={`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}
+        aria-label="Gift timer info"
       >
-        <div className="w-6 h-6 rounded-full bg-black grid place-items-center text-[10px] font-extrabold">🎁</div>
-      </div>
-      <div
-        className="relative w-8 h-8 rounded-full grid place-items-center"
-        style={circleStyle(dogProgress)}
+        <div className="absolute inset-0 rounded-full" style={ringBg(giftProgress)} />
+        <div className="text-[22px] font-extrabold leading-none">🎁</div>
+      </button>
+
+      {/* 🐶 ring */}
+      <button
+        onClick={()=>setHudModal('dogRing')}
+        className="relative w-8 h-8 rounded-full grid place-items-center hover:opacity-90 active:scale-95 transition"
         title="Auto-dog every 15m (bank up to 6)"
+        aria-label="Auto-dog info"
       >
-        <div className="w-6 h-6 rounded-full bg-black grid place-items-center text-[10px] font-extrabold">🐶</div>
-      </div>
+        <div className="absolute inset-0 rounded-full" style={ringBg(dogProgress)} />
+        <div className="text-[22px] font-extrabold leading-none">🐶</div>
+      </button>
     </div>
   </div>
 
@@ -1690,38 +1765,9 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
       RESET
     </button>
   </div>
-
-  {/* === Dog size controls === */}
-  <div className="flex gap-3 mt-2 flex-wrap justify-center text-xs items-center">
-    <label className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/10 border border-white/10">
-      <span>Dog Width</span>
-      <input
-        type="range" min="0.8" max="1.6" step="0.05"
-        defaultValue={stateRef.current?.minerWidth ?? 1.15}
-        onChange={(e)=>{
-          const s = stateRef.current; if(!s) return;
-          s.minerWidth = Math.max(0.8, Math.min(1.6, parseFloat(e.target.value)||1.15));
-          save();
-        }}
-      />
-      <span className="tabular-nums">{(stateRef.current?.minerWidth ?? 1.15).toFixed(2)}×</span>
-    </label>
-
-    <label className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/10 border border-white/10">
-      <span>Dog Height</span>
-      <input
-        type="range" min="0.8" max="1.6" step="0.05"
-        defaultValue={stateRef.current?.minerScale ?? 1.25}
-        onChange={(e)=>{
-          const s = stateRef.current; if(!s) return;
-          s.minerScale = Math.max(0.8, Math.min(1.6, parseFloat(e.target.value)||1.25));
-          save();
-        }}
-      />
-      <span className="tabular-nums">{(stateRef.current?.minerScale ?? 1.25).toFixed(2)}×</span>
-    </label>
-  </div>
 </div>
+{/* === END PART 9 === */}
+
 
 
 {/* === START PART 10 === */}
@@ -1879,6 +1925,24 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
                   }`}
                 >
                   OPEN (3💎)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HUD Info Modal (כל פריטי ה-HUD חוץ מהיהלום) */}
+        {hudModal && (
+          <div className="fixed inset-0 z-[10000] bg-black/70 flex items-center justify-center p-4">
+            <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-5 shadow-2xl">
+              <h2 className="text-xl font-extrabold mb-2">{getHudModalTitle(hudModal)}</h2>
+              <p className="text-sm text-slate-700 mb-4">{getHudModalText(hudModal)}</p>
+              <div className="flex justify-end">
+                <button
+                  onClick={()=>setHudModal(null)}
+                  className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+                >
+                  Close
                 </button>
               </div>
             </div>
