@@ -202,12 +202,55 @@ const { isConnected } = useAccount();
 
   const [showDiamondInfo, setShowDiamondInfo] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+const [mounted, setMounted] = useState(false);
+
+// === Mining HUD state (CLAIM) ===
+const [mining, setMining] = useState({ balance: 0, minedToday: 0, lastDay: "", scoreToday: 0 });
+const [claiming, setClaiming] = useState(false);
+
+// טוען/מרענן סטטוס ה־Mining מה־localStorage פעם בשניה (אחרי mount)
+useEffect(() => {
+  if (!mounted) return;
+  try { setMining(loadMiningState()); } catch {}
+  const id = setInterval(() => {
+    try { setMining(loadMiningState()); } catch {}
+  }, 1000);
+  return () => clearInterval(id);
+}, [mounted]);
+
+async function onClaimMined() {
+  try { play?.(S_CLICK); } catch {}
+  const st = loadMiningState();
+  const amt = Math.floor(st?.balance || 0);
+  if (!amt) {
+    setGiftToastWithTTL("No tokens to claim");
+    return;
+  }
+
+  // אם אין חיבור ארנק – פותח את מודאל החיבור
+  if (!isConnected) {
+    openConnectModal?.();
+    return;
+  }
+
+  // TODO: כאן תבוא כתיבה לשרשרת עם wagmi (כשיהיה לך contract/ABI)
+  setClaiming(true);
+  try {
+    st.balance = 0;                // סימולציית claim מקומית
+    saveMiningState(st);
+    setMining(st);
+    setGiftToastWithTTL(`🪙 CLAIMED ${formatShort(amt)} MLEO`);
+  } finally {
+    setClaiming(false);
+  }
+}
+
   
 
   // פופאפ מרכזי (למתנות + שבירת סלע) — נסגר אוטומטית
   const [centerPopup, setCenterPopup] = useState(null);
 
-  const [mounted, setMounted] = useState(false);
+  
 
   const uiPulseAccumRef = useRef(0);
 const rockSfxCooldownRef = useRef(0);
@@ -1605,27 +1648,20 @@ return (
 
           <div className="flex gap-3 flex-wrap justify-center">
 <button
-  onClick={async () => {
+  onClick={() => {
     try { play?.(S_CLICK); } catch {}
-    const s = stateRef.current;
-    if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-
-    setShowIntro(false);
-    setGamePaused(false);
-    try { await enterFullscreenAndLockMobile(); } catch {}
-
-    setTimeout(() => {
-      if (isConnected) {
-        openAccountModal?.();
-      } else {
-        openConnectModal?.();
-      }
-    }, 0);
+    if (isConnected) {
+      openAccountModal?.();   // כבר מחובר → פותח מודאל חשבון
+    } else {
+      openConnectModal?.();   // לא מחובר → פותח מודאל חיבור
+    }
   }}
   className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
 >
   CONNECT WALLET
 </button>
+
+
 
 
 
@@ -1900,6 +1936,30 @@ return (
       RESET
     </button>
   </div>
+{/* Mining status + CLAIM */}
+<div className="w-full flex justify-center mt-2">
+  <div className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm">
+    <span className="font-semibold">🪙 MLEO Mining</span>
+    <span className="text-gray-200">
+      Balance: <b className="text-yellow-300">{formatShort(mining?.balance || 0)}</b>
+    </span>
+    <span className="text-gray-400 text-xs">
+      Today: {formatShort(mining?.minedToday || 0)} / {formatShort(DAILY_CAP)}
+    </span>
+    <button
+      onClick={onClaimMined}
+      disabled={claiming || (mining?.balance || 0) <= 0}
+      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs ${
+        (mining?.balance || 0) > 0
+          ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+          : "bg-slate-500 text-white/70 cursor-not-allowed"
+      }`}
+      title={(mining?.balance || 0) > 0 ? "Claim mined tokens" : "No tokens to claim"}
+    >
+      CLAIM
+    </button>
+  </div>
+</div>
 </div>
 
 {/* === END PART 9 === */}
