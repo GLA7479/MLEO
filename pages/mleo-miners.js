@@ -229,10 +229,9 @@ useEffect(() => {
   const loaded = loadSafe();
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
 
-  // אם אין minerScale בשמירה – קבע 1.25 כברירת־מחדל (גובה)
+  // אם אין minerScale/Width בשמירה – ברירות מחדל
   if (loaded && loaded.minerScale == null) init.minerScale = 1.25;
-  // חדש: אם אין minerWidth בשמירה – קבע 1.15 כברירת־מחדל (רוחב בלבד)
-  if (loaded && loaded.minerWidth == null) init.minerWidth = 1.15;
+  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 1.15;
 
   // עוגן עלות ראשוני
   if (init.costBase == null) {
@@ -246,19 +245,19 @@ useEffect(() => {
     dpsMult: init.dpsMult, goldMult: init.goldMult,
   }));
 
-  // --- FIX: אם המתנה כבר הייתה מוכנה לפני הרענון, תרים את דגל ה־UI; ואם חסר טיימר – אתחל ---
+  // אם המתנה כבר מוכנה/טיימר חסר – תקן
   try {
     if (init.giftReady && (init.giftNextAt || 0) <= Date.now()) {
       setGiftReadyFlag(true);
     }
     if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
       init.giftNextAt = Date.now() + currentGiftIntervalSec(init) * 1000;
-      init.giftReady = false;
+      init.giftReady  = false;
       save();
     }
   } catch {}
 
-  // --- Load persisted ad cooldown so it doesn't reset on refresh ---
+  // טען קירור מודעה
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
@@ -273,11 +272,11 @@ useEffect(() => {
   // בדיקת OFFLINE כבר ב־mount
   try {
     const s = stateRef.current;
-    const now = Date.now();
+    const now  = Date.now();
     const last = s?.lastSeen || now;
     const elapsedMs = Math.max(0, now - last);
     if (elapsedMs > 1000) {
-      const gained = handleOfflineAccrual(s, elapsedMs); // PART 4
+      const gained = handleOfflineAccrual(s, elapsedMs); // PART 6
       if (gained > 0) setShowCollect(true);
       s.lastSeen = now;
       save();
@@ -326,7 +325,7 @@ useEffect(() => {
       const now = Date.now();
       const elapsedMs = Math.max(0, now - (s.lastSeen || now));
       if (elapsedMs > 1000) {
-        const gained = handleOfflineAccrual(s, elapsedMs); // PART 4
+        const gained = handleOfflineAccrual(s, elapsedMs); // PART 6
         if (gained > 0) setShowCollect(true);
         s.lastSeen = now;
       }
@@ -371,19 +370,9 @@ function freshState(){
 
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
 
-    // >>> קני מידה של הכלב
-    minerScale: 1.45, // גובה קבוע
-    minerWidth: 0.80, // רוחב קבוע
-
-
-// === END PART 3 ===
-
-
-// === START PART 4 ===
-    // >>> קני מידה של הכלב
-    // minerScale = גובה/סקייל כולל; minerWidth = הרחבת רוחב בלבד
-    minerScale: 1.25,
-    minerWidth: 1.15,
+    // קנה מידה לכלב
+    minerScale: 1.25, // גובה/סקייל כולל
+    minerWidth: 1.15, // הרחבת רוחב בלבד
 
     anim:{ t:0, coins:[], hint:1, fx:[] },
     onceSpawned:false,
@@ -395,11 +384,14 @@ function freshState(){
     giftNextAt: now + 20000, giftReady:false,
     diamonds:0, nextDiamondPrize: rollDiamondPrize(),
 
-    // Auto-dog
+    // Auto-dog (בנק)
     autoDogLastAt: now, autoDogBank: 0,
 
-    // ad cooldown (נשמר גם כאן אם נטען)
+    // מודעות
     adCooldownUntil: 0,
+
+    // תיבת יהלום מושהית אם אין מקום
+    pendingDiamondDogLevel: null,
   };
 }
 
@@ -407,7 +399,11 @@ function loadSafe(){
   try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 function safeSave(){ try { save?.(); } catch {} }
+// === END PART 3 ===
 
+
+
+// === START PART 4 ===
 // ---------- קנבס/ציור ----------
 function setupCanvasAndLoop(cnv){
   const ctx = cnv.getContext("2d"); if (!ctx) return () => {};
@@ -680,10 +676,10 @@ function drawMiner(ctx,lane,slot,m){
   const cy = r.y + r.h*0.56;
 
   // קנה מידה: גובה + רוחב
-  const scaleH = (stateRef.current?.minerScale || 1);             // גובה
-  const base   = Math.min(r.w, r.h) * 0.84 * scaleH;               // גודל בסיסי אנכי
+  const scaleH = (stateRef.current?.minerScale || 1);
+  const base   = Math.min(r.w, r.h) * 0.84 * scaleH;
   const wH     = base;
-  const wW     = base * (stateRef.current?.minerWidth || 1.15);    // הרחבת רוחב בלבד
+  const wW     = base * (stateRef.current?.minerWidth || 1.15);
 
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
@@ -808,6 +804,7 @@ function tick(dt){
   const now = Date.now();
   if (s.paused){ s.lastSeen = now; return; }
 
+  // שבירת סלעים + מטבעות
   for (let l=0; l<LANES; l++){
     let dps = 0;
     for (let k=0; k<SLOTS_PER_LANE; k++){
@@ -828,6 +825,7 @@ function tick(dt){
     }
   }
 
+  // טיימר מתנות
   if (!s.giftReady) {
     if ((s.giftNextAt || 0) <= Date.now()) {
       s.giftReady = true;
@@ -835,12 +833,23 @@ function tick(dt){
     }
   }
 
-  if (s.autoDogLastAt == null) s.autoDogLastAt = Date.now();
-  const elapsedSinceDog = Date.now() - (s.autoDogLastAt || Date.now());
-  if (elapsedSinceDog >= (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800) * 1000) {
-    accrueBankDogsByElapsed(s, elapsedSinceDog);
+  // אם יש כלב יהלום מושהה ואין מקום – נחכה; אם התפנה מקום – נכניס ונאפס טיימר מתנה
+  if (s.pendingDiamondDogLevel && countMiners(s) < MAX_MINERS) {
+    const placed = spawnMiner(s, s.pendingDiamondDogLevel);
+    if (placed) {
+      s.pendingDiamondDogLevel = null;
+      s.giftReady  = false;
+      s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
+      setGiftToastWithTTL(`💎 Dog (LV ${s.pendingDiamondDogLevel||""}) placed`);
+      save?.();
+    }
   }
-  tryDistributeBankDog(s);
+
+  // אוטו־דוג:
+  // 1) צבירה לבנק לפי הזמן (בלי חלוקה OFFLINE)
+  // 2) אם יש בנק>0 ויש סלוט פנוי → מכניס, מאפס טיימר ומפחית מהבנק
+  accrueBankDogsUpToNow(s);   // PART 6
+  tryDistributeBankDog(s);    // PART 6
 
   finalizeDailyRewardOncePerTick();
   s.lastSeen = now;
@@ -874,51 +883,9 @@ function newRock(lane, idx) {
   return { lane, idx, maxHp: hp, hp };
 }
 
-function makeFreshState() {
-  const now = Date.now();
-  return {
-    lanes: Array.from({ length: LANES }, (_, lane) => ({
-      slots: Array(SLOTS_PER_LANE).fill(null),
-      rock: newRock(lane, 0),
-      rockCount: 0,
-      beltShift: 0,
-    })),
-    miners: {},
-    nextId: 1,
-
-    gold: 0,
-    spawnCost: 50,
-    dpsMult: 1,
-    goldMult: 1,
-
-    anim: { t: 0, coins: [], hint: 1, fx: [] },
-    onceSpawned: false,
-
-    totalPurchased: 0,
-    spawnLevel: 1,
-
-    lastSeen: now,
-    pendingOfflineGold: 0,
-
-    cycleStartAt: now,
-    lastGiftIntervalSec: 20,
-    giftNextAt: now + 20 * 1000,
-    giftReady: false,
-
-    diamonds: 0,
-    nextDiamondPrize: rollDiamondPrize(),
-
-    autoDogLastAt: now,
-    autoDogBank: 0,
-
-    adCooldownUntil: 0,
-
-    // גודל כלב קבוע
-    minerScale: 1.45,
-    minerWidth: 0.80,
-  };
+function makeFreshState() { // (לשמירת תאימות אם קוראים לזה במקום freshState)
+  return freshState();
 }
-
 
 // ── Save/Load ──
 function save() {
@@ -930,7 +897,7 @@ function save() {
       onceSpawned: s.onceSpawned,
 
       // קני מידה של הכלב
-      minerScale: s.minerScale || 1,
+      minerScale: s.minerScale || 1.25,
       minerWidth: s.minerWidth || 1.15,
 
       lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
@@ -946,6 +913,8 @@ function save() {
       autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
       costBase: s.costBase,
       adCooldownUntil: s.adCooldownUntil || 0,
+
+      pendingDiamondDogLevel: s.pendingDiamondDogLevel || null,
     }));
   } catch {}
 }
@@ -995,6 +964,7 @@ function setGiftToastWithTTL(text, ttl = 3000) {
   setTimeout(() => { setGiftToast?.(cur => (cur && cur.id === id ? null : cur)); }, ttl);
 }
 
+// === Spawn helpers ===
 function spawnMiner(s, level = 1) {
   if (!s) return false;
   if (countMiners(s) >= MAX_MINERS) return false;
@@ -1020,6 +990,7 @@ function spawnMinerAt(s, lane, slot, level = 1) {
   s.lanes[lane].slots[slot] = { id };
   return true;
 }
+
 function afterPurchaseBump(s) {
   s.totalPurchased = (s.totalPurchased || 0) + 1;
   s.spawnLevel = 1 + Math.floor((s.totalPurchased) / 30);
@@ -1078,6 +1049,148 @@ function onOfflineCollect() {
   setShowCollect(false);
 }
 
+// ===== לוגיקת אוטו־דוג והמתנות =====
+
+// בחירת דרגת כלב (אוטומטי/מתנת כלב):
+// אם יש על הלוח לפחות כלב אחד בדרגה spawnLevel-2 → נחזיר spawnLevel-2, אחרת spawnLevel.
+function chooseAutoDogLevel(s) {
+  const sl = Math.max(1, s.spawnLevel || 1);
+  const target2 = Math.max(1, sl - 2);
+  const existsLv2 = Object.values(s.miners || {}).some(m => m.level === target2);
+  return existsLv2 ? target2 : sl;
+}
+function chooseGiftDogLevelForRegularGift(s) {
+  return chooseAutoDogLevel(s);
+}
+
+// צבירת כלבים לבנק לפי זמן (לא מחלק OFFLINE; רק צובר עד קאפ)
+function accrueBankDogsUpToNow(s) {
+  if (!s) return;
+  const intervalSec = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800);
+  const intervalMs  = intervalSec * 1000;
+  const cap         = (typeof DOG_BANK_CAP !== "undefined" ? DOG_BANK_CAP : 6);
+  const now         = Date.now();
+  const last        = s.autoDogLastAt || now;
+
+  if (now <= last) return;
+  const diffMs = now - last;
+
+  if ((s.autoDogBank || 0) >= cap) return;
+
+  const made = Math.floor(diffMs / intervalMs);
+  if (made <= 0) return;
+
+  const room = Math.max(0, cap - (s.autoDogBank || 0));
+  const add  = Math.min(made, room);
+  if (add <= 0) return;
+
+  s.autoDogBank = (s.autoDogBank || 0) + add;
+
+  // שומרים את ה-remainder לטבעת; אם הגענו לקאפ — ננעל לזמן עכשיו
+  if (s.autoDogBank >= cap) {
+    s.autoDogLastAt = now;
+  } else {
+    const consumed  = add * intervalMs;
+    const remainder = diffMs - consumed;
+    s.autoDogLastAt = now - remainder;
+  }
+}
+
+// מחלק כלב אחד מהבנק כשיש מקום פנוי. מאפס טיימר (autoDogLastAt = עכשיו).
+function tryDistributeBankDog(s) {
+  if (!s) return;
+  if ((s.autoDogBank || 0) <= 0) return;
+
+  // יש סלוט פנוי?
+  if (countMiners(s) >= MAX_MINERS) return;
+
+  const lvl = chooseAutoDogLevel(s);
+  const ok  = spawnMiner(s, lvl);
+  if (ok) {
+    s.autoDogBank = Math.max(0, (s.autoDogBank || 0) - 1);
+    s.autoDogLastAt = Date.now(); // אתחול הטיימר מחדש
+    setGiftToastWithTTL(`🐶 Auto Dog (LV ${lvl})`);
+    save?.();
+  }
+}
+
+// אין המרה למטבעות כשאין מקום — החזרה false בלבד.
+function trySpawnDogOrConvert(_s, _level) {
+  const s = _s; const level = _level;
+  if (!s) return false;
+  if (countMiners(s) >= MAX_MINERS) return false;
+  const ok = spawnMiner(s, level);
+  if (ok) { save?.(); return true; }
+  return false;
+}
+
+// OFFLINE: רק צבירת בנק; לא חלוקה
+function handleOfflineAccrual(s, elapsedMs) {
+  if (!s) return 0;
+
+  // צבירת בנק בלבד (לא חלוקה)
+  const intervalSec = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800);
+  const intervalMs  = intervalSec * 1000;
+  const cap         = (typeof DOG_BANK_CAP !== "undefined" ? DOG_BANK_CAP : 6);
+
+  let toAdd = Math.floor(elapsedMs / intervalMs);
+  if (toAdd > 0) {
+    const room = Math.max(0, cap - (s.autoDogBank || 0));
+    const add  = Math.min(toAdd, room);
+    if (add > 0) {
+      s.autoDogBank = (s.autoDogBank || 0) + add;
+      const consumed  = add * intervalMs;
+      const remainder = Math.max(0, elapsedMs - consumed);
+      s.autoDogLastAt = Date.now() - remainder;
+    }
+  }
+
+  // סימולציית זהב OFFLINE
+  const CAP_MS = 12 * 60 * 60 * 1000; // 12h
+  const simMs = Math.min(elapsedMs, CAP_MS);
+  let totalCoins = 0;
+
+  for (let lane = 0; lane < LANES; lane++) {
+    let dps = laneDpsSum(s, lane);
+    if (dps <= 0) continue;
+
+    let idx = s.lanes[lane].rock.idx;
+    let hp  = s.lanes[lane].rock.hp;
+    let maxHp = s.lanes[lane].rock.maxHp;
+    let timeLeft = simMs / 1000;
+
+    while (timeLeft > 0 && dps > 0) {
+      const timeToBreak = hp / dps;
+      if (timeToBreak > timeLeft) {
+        hp -= dps * timeLeft;
+        timeLeft = 0;
+      } else {
+        totalCoins += Math.floor(maxHp * GOLD_FACTOR * (s.goldMult || 1));
+        timeLeft -= timeToBreak;
+        idx += 1;
+        const rk = newRock(lane, idx);
+        hp = rk.hp; maxHp = rk.maxHp;
+      }
+    }
+
+    s.lanes[lane].rock = { lane, idx, maxHp, hp: Math.max(1, Math.floor(hp)) };
+    s.lanes[lane].rockCount = idx;
+  }
+
+  if (totalCoins > 0) s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
+  return totalCoins;
+}
+
+// ===== Gifts: weights & handlers =====
+function rollGiftType() {
+  const r = Math.random() * 100;
+  if (r < 60) return "coins";
+  if (r < 78) return "dog";
+  if (r < 86) return "dps";
+  if (r < 94) return "gold";
+  return "diamond";
+}
+
 async function enterFullscreenAndLockMobile() { try {
   const w = window.innerWidth, desktop = w >= 1024;
   if (desktop) return;
@@ -1116,111 +1229,6 @@ async function resetGame() {
 
   save();
 }
-
-// ===== Gifts: weights & handlers =====
-function rollGiftType() {
-  const r = Math.random() * 100;
-  if (r < 60) return "coins";
-  if (r < 78) return "dog";
-  if (r < 86) return "dps";
-  if (r < 94) return "gold";
-  return "diamond";
-}
-function chooseGiftDogLevelForRegularGift(s) {
-  const sl = Math.max(1, s.spawnLevel || 1);
-  return Math.max(1, sl - 1);
-}
-function chooseAutoDogLevel(s) {
-  const sl = Math.max(1, s.spawnLevel || 1);
-  const lvlMinus2 = Math.max(1, sl - 2);
-  const countMinus2 = Object.values(s.miners || {}).filter(m => m.level === lvlMinus2).length;
-  if (countMinus2 === 1) return lvlMinus2;
-  return sl;
-}
-function trySpawnDogOrConvert(s, level) {
-  if (countMiners(s) < MAX_MINERS) {
-    const ok = spawnMiner(s, level);
-    if (ok) { save?.(); return true; }
-  }
-  const add = Math.max(10, s.spawnCost || 50);
-  s.gold = (s.gold || 0) + add;
-  setUi(u => ({ ...u, gold: s.gold }));
-  setGiftToastWithTTL(`Board full → converted to +${formatShort(add)} coins`);
-  save?.();
-  return false;
-}
-function accrueBankDogsByElapsed(s, elapsedMs) {
-  if (!s) return;
-  const total = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800) * 1000;
-  if (total <= 0) return;
-  let add = Math.floor(elapsedMs / total);
-  if (add <= 0) return;
-  const cap = (typeof DOG_BANK_CAP !== "undefined" ? DOG_BANK_CAP : 6);
-  const cur = s.autoDogBank || 0;
-  const room = Math.max(0, cap - cur);
-  add = Math.min(add, room);
-  if (add > 0) {
-    s.autoDogBank = cur + add;
-    s.autoDogLastAt = Date.now();
-  }
-}
-function tryDistributeBankDog(s) {
-  if (!s) return;
-  if ((s.autoDogBank || 0) <= 0) return;
-  if (countMiners(s) >= MAX_MINERS) return;
-
-  const lvl = chooseAutoDogLevel(s);
-  if (lvl === Math.max(1, (s.spawnLevel||1) - 2)) {
-    const countAt = Object.values(s.miners || {}).filter(m => m.level === lvl).length;
-    if (countAt !== 1) return;
-  }
-
-  const ok = spawnMiner(s, lvl);
-  if (ok) {
-    s.autoDogBank -= 1;
-    setGiftToastWithTTL(`🐶 Bank → Deployed (LV ${lvl})`);
-    save?.();
-  }
-}
-
-function handleOfflineAccrual(s, elapsedMs) {
-  if (!s) return 0;
-  accrueBankDogsByElapsed(s, elapsedMs);
-
-  const CAP_MS = 12 * 60 * 60 * 1000; // 12h
-  const simMs = Math.min(elapsedMs, CAP_MS);
-  let totalCoins = 0;
-
-  for (let lane = 0; lane < LANES; lane++) {
-    let dps = laneDpsSum(s, lane);
-    if (dps <= 0) continue;
-
-    let idx = s.lanes[lane].rock.idx;
-    let hp  = s.lanes[lane].rock.hp;
-    let maxHp = s.lanes[lane].rock.maxHp;
-    let timeLeft = simMs / 1000;
-
-    while (timeLeft > 0 && dps > 0) {
-      const timeToBreak = hp / dps;
-      if (timeToBreak > timeLeft) {
-        hp -= dps * timeLeft;
-        timeLeft = 0;
-      } else {
-        totalCoins += Math.floor(maxHp * GOLD_FACTOR * (s.goldMult || 1));
-        timeLeft -= timeToBreak;
-        idx += 1;
-        const rk = newRock(lane, idx);
-        hp = rk.hp; maxHp = rk.maxHp;
-      }
-    }
-
-    s.lanes[lane].rock = { lane, idx, maxHp, hp: Math.max(1, Math.floor(hp)) };
-    s.lanes[lane].rockCount = idx;
-  }
-
-  if (totalCoins > 0) s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
-  return totalCoins;
-}
 // === END PART 6 ===
 
 
@@ -1235,7 +1243,19 @@ function grantDiamondPrize(s, key) {
   else if (key.startsWith("dog+")) {
     const delta = parseInt(key.split("+")[1] || "3", 10);
     const lvl = Math.max(1, (stateRef.current?.spawnLevel || 1) + delta);
-    trySpawnDogOrConvert(s, lvl);
+    if (countMiners(s) < MAX_MINERS) {
+      const placed = spawnMiner(s, lvl);
+      if (placed) {
+        setGiftToastWithTTL(`💎 Dog (LV ${lvl})`);
+        // אתחול טיימר מתנות רק כשבאמת הונח
+        s.giftReady  = false;
+        s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
+      }
+    } else {
+      // אין מקום כרגע ⇒ נניח אוטומטית כשיתפנה
+      s.pendingDiamondDogLevel = lvl;
+      setGiftToastWithTTL(`💎 Dog (LV ${lvl}) pending — free a slot`);
+    }
   }
   setUi(u => ({ ...u, gold: s.gold }));
 }
@@ -1251,8 +1271,9 @@ function openDiamondChestIfReady() {
 
 // HUD computed values + Gift heartbeat + EARN cooldown
 
-const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 10;
-const DOG_BANK_CAP = (typeof window !== "undefined" && window.DOG_BANK_CAP) || 6;
+// לטובת טסטים מקומיים אפשר להגדיר window.DOG_INTERVAL_SEC; אחרת ברירת מחדל 1800s
+const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 600;
+const DOG_BANK_CAP     = (typeof window !== "undefined" && window.DOG_BANK_CAP)     || 6;
 
 const _currentGiftIntervalSec = typeof currentGiftIntervalSec==="function"?currentGiftIntervalSec:(s)=>Math.max(5,Math.floor(s?.lastGiftIntervalSec||20));
 const _getPhaseInfo = typeof getPhaseInfo==="function"?getPhaseInfo:(s,now=Date.now())=>{ const sec=_currentGiftIntervalSec(s,now); return { index:0,into:0,remain:sec,intervalSec:sec }; };
@@ -1279,27 +1300,36 @@ useEffect(()=>{
 },[]);
 
 // Phase label
-const phaseNow=(()=>{const s=stateRef.current; if(!s) return {index:0,intervalSec:20,remain:20}; return _getPhaseInfo(s,Date.now());})();
-const phaseLabel=`⏳ ${phaseNow.intervalSec}s gifts`;
+const phaseNow = (() => {
+  const s = stateRef.current; 
+  if (!s) return { index:0, intervalSec:20, remain:20 };
+  return _getPhaseInfo(s, Date.now());
+})();
+const phaseLabel = `⏳ ${phaseNow.intervalSec}s gifts`;
 
-// progress rings
-const giftProgress=(()=>{ 
-  const s=stateRef.current; if(!s) return 0; 
-  if(s.giftReady) return 1; 
-  const now=Date.now(); 
-  const total=_currentGiftIntervalSec(s,now)*1000; 
-  const remain=Math.max(0,(s.giftNextAt||now)-now); 
-  return Math.max(0,Math.min(1,1-remain/total)); 
+// progress rings — SINGLE definitions (בלי כפילויות)
+const giftProgress = (() => { 
+  const s = stateRef.current; if (!s) return 0; 
+  if (s.giftReady) return 1; 
+  const now = Date.now(); 
+  const total = _currentGiftIntervalSec(s, now) * 1000; 
+  const remain = Math.max(0, (s.giftNextAt || now) - now); 
+  return Math.max(0, Math.min(1, 1 - remain / total)); 
 })();
-const dogProgress=(()=>{ 
-  const s=stateRef.current; if(!s) return 0; 
-  if((s.autoDogBank||0)>=DOG_BANK_CAP) return 1; 
-  const now=Date.now(); 
-  const total=DOG_INTERVAL_SEC*1000; 
-  const last=s.autoDogLastAt||now; 
-  const elapsed=Math.max(0,now-last); 
-  return Math.max(0,Math.min(1,elapsed/total)); 
+
+const dogProgress = (() => { 
+  const s = stateRef.current; if (!s) return 0; 
+  if ((s.autoDogBank || 0) >= DOG_BANK_CAP) return 1; 
+  const now = Date.now(); 
+  const total = DOG_INTERVAL_SEC * 1000; 
+  const last = s.autoDogLastAt || now; 
+  const elapsed = Math.max(0, now - last); 
+  return Math.max(0, Math.min(1, elapsed / total)); 
 })();
+
+// READY flag for diamond chest glow/OPEN
+const diamondsReady = (stateRef.current?.diamonds || 0) >= 3;
+
 
 // טבעת — שכבת conic עם מסכה שמחוררת את המרכז (בלי רקע שחור)
 function ringBg(progress){
@@ -1314,7 +1344,7 @@ function ringBg(progress){
   };
 }
 
-// (נשאיר את circleStyle אם תרצה להשתמש בעוד מקומות)
+// (אופציונלי במקומות אחרים)
 function circleStyle(progress){
   const p   = Math.max(0, Math.min(1, Number(progress) || 0));
   const deg = Math.round(360 * p);
@@ -1325,7 +1355,7 @@ function circleStyle(progress){
   };
 }
 
-// ADD cooldown
+// ADD cooldown + onAdd
 const sNow=stateRef.current;
 const nowMs=Date.now();
 const cooldownUntil=sNow?.adCooldownUntil||0;
@@ -1340,19 +1370,6 @@ const addRemainLabel=(()=>{
 })();
 const addDisabled=addRemainMs>0||adWatching;
 
-// מחוון יהלומים מוכנים
-const diamondsReady = (stateRef.current?.diamonds || 0) >= 3;
-
-// prices
-const spawnCostNow=sNow?.spawnCost??ui.spawnCost;
-const dpsCostNow=(typeof _dpsCost==="function")?_dpsCost(sNow):160;
-const goldCostNow=(typeof _goldCost==="function")?_goldCost(sNow):160;
-const canBuyMiner=!!sNow&&sNow.gold>=spawnCostNow&&Object.keys(sNow.miners||{}).length<(typeof MAX_MINERS==="number"?MAX_MINERS:16);
-const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
-const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
-const price=(n)=>formatShort(n??0);
-
-// EARN button
 function onAdd(){ 
   try{play?.(S_CLICK);}catch{} 
   const s=stateRef.current;if(!s) return; 
@@ -1405,7 +1422,17 @@ function getHudModalText(k){
       return '';
   }
 }
+
+// prices & יכולת קנייה לשורת הפעולות (Part 9 משתמש בזה)
+const spawnCostNow=sNow?.spawnCost??ui.spawnCost;
+const dpsCostNow=(typeof _dpsCost==="function")?_dpsCost(sNow):160;
+const goldCostNow=(typeof _goldCost==="function")?_goldCost(sNow):160;
+const canBuyMiner=!!sNow&&sNow.gold>=spawnCostNow&&Object.keys(sNow.miners||{}).length<(typeof MAX_MINERS==="number"?MAX_MINERS:16);
+const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
+const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
+const price=(n)=>formatShort(n??0);
 // === END PART 7 ===
+
 
 
 
