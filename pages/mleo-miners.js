@@ -1,14 +1,11 @@
-// === START PART 1 ===
-
 // pages/mleo-miners.js
-// v5.8
+// v5.9
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import { ConnectButton, useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
-
-
-
+import { useAccount, useChainId, useSwitchChain, useReadContract, useSignMessage } from "wagmi";
+import { formatUnits } from "viem";
+import { ERC20_ABI } from "../lib/erc20";
 
 // ====== Config ======
 const LANES = 4;
@@ -35,6 +32,13 @@ const LEVEL_DPS_MUL = 1.9;
 const ROCK_BASE_HP = 60;
 const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 0.12;
+
+// ── Token/Chain env (זמני) ──
+const TOKEN_ADDRESS  = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "";
+const TOKEN_SYMBOL   = process.env.NEXT_PUBLIC_TOKEN_SYMBOL  || "tMLEO";
+const TOKEN_DECIMALS = Number(process.env.NEXT_PUBLIC_TOKEN_DECIMALS || "18");
+const TARGET_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || "97"); // BSC Testnet
+const CLAIM_RATE = 1000; // 1000 Coins = 1 tMLEO (beta)
 
 // ===== Global gift phases (same for everyone) =====
 const GIFT_PHASES = [
@@ -76,7 +80,6 @@ function phaseAtGlobal(nowMs = Date.now()) {
   const last = GIFT_PHASES[GIFT_PHASES.length - 1];
   return { index: GIFT_PHASES.length - 1, intervalSec: last.intervalSec, into: 0, phaseRemainSec: last.durSec, remainToNextGiftSec: last.intervalSec };
 }
-
 
 // פרסים
 const DIAMOND_PRIZES = [
@@ -170,12 +173,31 @@ export default function MleoMiners() {
   const rafRef    = useRef(0);
   const dragRef   = useRef({ active:false });
   const stateRef  = useRef(null);
-const { openConnectModal } = useConnectModal();
-const { openAccountModal } = useAccountModal();
-const { isConnected } = useAccount();
 
-const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
+  // Wallet/Chain hooks
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const { openConnectModal } = useConnectModal();
+  const { openAccountModal } = useAccountModal();
+  const { signMessageAsync } = useSignMessage();
 
+  const tokenAddressOk = /^0x[a-fA-F0-9]{40}$/.test(TOKEN_ADDRESS);
+  const balanceRead = useReadContract({
+    address: tokenAddressOk ? TOKEN_ADDRESS : undefined,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [address ?? "0x0000000000000000000000000000000000000000"],
+    chainId: TARGET_CHAIN_ID,
+    query: { enabled: isConnected && tokenAddressOk && chainId === TARGET_CHAIN_ID },
+  });
+  const tokenBalanceStr = (() => {
+    const v = balanceRead?.data;
+    if (v == null) return "—";
+    try { return Number(formatUnits(v, TOKEN_DECIMALS)).toLocaleString(); } catch { return "—"; }
+  })();
+
+  const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
 
   const [ui, setUi] = useState({
     gold: 0,
@@ -215,6 +237,16 @@ const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
 
   const uiPulseAccumRef = useRef(0);
   const [, forceUiPulse] = useState(0);
+ // --- FIX #1: למנוע stale-closures במאזינים של הקנבס ---
+  // נעדכן ref עם דגלי מצב נוכחיים, והמאזינים יקראו ממנו.
+  const flagsRef = useRef({ isMobileLandscape: false, paused: true });
+  useEffect(() => {
+    flagsRef.current = {
+      isMobileLandscape,
+      paused: (gamePaused || showIntro || showCollect),
+    };
+  }, [isMobileLandscape, gamePaused, showIntro, showCollect]);
+  // --- END FIX #1 ---
 
   // סאונד
   const play = (src) => {
@@ -231,18 +263,16 @@ const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
 
   // ── סטאבים/עזר ──
   function theStateFix_maybeMigrateLocalStorage(){ /* no-op safe */ }
-function currentGiftIntervalSec(_s, now = Date.now()) {
-  const ph = phaseAtGlobal(now);
-  // אופציונלי: נשמור עקבות לשימושים קיימים
-  if (_s) _s.lastGiftIntervalSec = ph.intervalSec;
-  return ph.intervalSec;
-}
-function getPhaseInfo(_s, now = Date.now()) {
-  return phaseAtGlobal(now);
-}
+  function currentGiftIntervalSec(_s, now = Date.now()) {
+    const ph = phaseAtGlobal(now);
+    if (_s) _s.lastGiftIntervalSec = ph.intervalSec;
+    return ph.intervalSec;
+  }
+  function getPhaseInfo(_s, now = Date.now()) {
+    return phaseAtGlobal(now);
+  }
 
-
-  // איסוף מתנה (כפתור 🎁) — לפי חלוקה שביקשת
+  // איסוף מתנה (כפתור 🎁)
   function grantGift(){
     const s = stateRef.current; if (!s) return;
     const type = rollGiftType(); // PART 6
@@ -255,8 +285,15 @@ function getPhaseInfo(_s, now = Date.now()) {
       setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
     } else if (type === "dog") {
       const lvl = chooseGiftDogLevelForRegularGift(s);
-      const ok = trySpawnDogOrConvert(s, lvl);
-      setCenterPopup({ text: ok ? `🎁 Free Dog (LV ${lvl})` : `🎁 Board full → converted to coins`, id: Math.random() });
+ const ok = trySpawnDogOrConvert(s, lvl);
+      if (ok) {
+        setCenterPopup({ text: `🎁 Free Dog (LV ${lvl})`, id: Math.random() });
+      } else {
+        // לוח מלא: נשמור לכלב־מתנה מושהה ונניח אוטומטית כאשר יתפנה מקום
+        s.pendingGiftDogLevel = lvl;
+        setCenterPopup({ text: `🎁 Dog (LV ${lvl}) pending — free a slot`, id: Math.random() });
+        save?.();
+      }
     } else if (type === "dps") {
       s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(3);
       setCenterPopup({ text: `🎁 DPS +10% (×${(s.dpsMult||1).toFixed(2)})`, id: Math.random() });
@@ -270,10 +307,10 @@ function getPhaseInfo(_s, now = Date.now()) {
 
     s.giftReady = false;
     {
-const now = Date.now();
-const stepSec = currentGiftIntervalSec(s, now);
-s.giftNextAt = now + stepSec * 1000; // מרווח מלא מה־claim
-}
+      const now = Date.now();
+      const stepSec = currentGiftIntervalSec(s, now);
+      s.giftNextAt = now + stepSec * 1000; // מרווח מלא מה־claim
+    }
 
     setGiftReadyFlag(false);
     try { play(S_GIFT); } catch {}
@@ -285,7 +322,6 @@ s.giftNextAt = now + stepSec * 1000; // מרווח מלא מה־claim
 
 // === START PART 3 ===
 // Init state + קנבס + ציור + לולאת משחק (שיפור UX של גרירה)
-
 useEffect(() => {
   theStateFix_maybeMigrateLocalStorage();
 
@@ -294,8 +330,8 @@ useEffect(() => {
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
 
   // אם אין minerScale/Width בשמירה – ברירות מחדל
-  if (loaded && loaded.minerScale == null) init.minerScale = 1.25;
-  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 1.15;
+  if (loaded && loaded.minerScale == null) init.minerScale = 1.18;
+  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 1.24;
 
   // עוגן עלות ראשוני
   if (init.costBase == null) {
@@ -308,31 +344,26 @@ useEffect(() => {
     gold: init.gold, spawnCost: init.spawnCost,
     dpsMult: init.dpsMult, goldMult: init.goldMult,
   }));
-// סנכרון מיידי של הדגל הוויזואלי עם מצב האמת מהשמירה
-setGiftReadyFlag(!!init.giftReady);
-
+  // סנכרון מיידי של הדגל הוויזואלי עם מצב האמת מהשמירה
+  setGiftReadyFlag(!!init.giftReady);
 
   // אם המתנה כבר מוכנה/טיימר חסר – תקן
- try {
-  const now = Date.now();
-  const ph  = getPhaseInfo(null, now);
+  try {
+    const now = Date.now();
+    const ph  = getPhaseInfo(null, now);
 
-  // אם אין giftNextAt — עגן לנקודת הטיקט הקרובה לפי הפאזה הגלובלית
- if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
-  init.giftReady  = false;
-  const stepSec = currentGiftIntervalSec(init, now);
-  init.giftNextAt = now + stepSec * 1000; // התחלה תמיד במרווח מלא
-  save();
-}
+    if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
+      init.giftReady  = false;
+      const stepSec = currentGiftIntervalSec(init, now);
+      init.giftNextAt = now + stepSec * 1000; // התחלה תמיד במרווח מלא
+      save();
+    }
 
-
-  // אם היינו OFFLINE ועבר הטיקט — מתנה אחת מוכנה; הבאה תיושר ב-grantGift/heartbeat
-  if ((init.giftNextAt || 0) <= now) {
-    init.giftReady = true;
-    setGiftReadyFlag(true);
-  }
-} catch {}
-
+    if ((init.giftNextAt || 0) <= now) {
+      init.giftReady = true;
+      setGiftReadyFlag(true);
+    }
+  } catch {}
 
   // טען קירור מודעה
   try {
@@ -427,14 +458,13 @@ setGiftReadyFlag(!!init.giftReady);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [showIntro]);
 
-// רנדר/סנכרון מתנות — 500ms heartbeat (תיקון: בלי "יישור", רק בדיקה)
+// רנדר/סנכרון מתנות — 500ms heartbeat
 useEffect(() => {
   const id = setInterval(() => {
     const s = stateRef.current; 
     if (!s) return;
     const now = Date.now();
 
-    // אם אין טיימר – אתחל מרווח מלא לפי הפאזה הנוכחית
     if (!s.giftNextAt || Number.isNaN(s.giftNextAt)) {
       const stepSec = currentGiftIntervalSec(s, now);
       s.giftReady  = false;
@@ -443,7 +473,6 @@ useEffect(() => {
       return;
     }
 
-    // אם הגיע הזמן – המתנה מוכנה; לא נוגעים ביעד עד Claim
     if (!s.giftReady && s.giftNextAt <= now) {
       s.giftReady = true;
       setGiftReadyFlag(true);
@@ -455,27 +484,20 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
-
-
-// רנדר חלק לשעונים (מתנה/כלב/GAIN) — פולס UI כל 200ms
+// פולס UI כל 200ms
 useEffect(() => {
   const id = setInterval(() => {
-    // שומר רענון קל ל-HUD/טבעות
     uiPulseAccumRef.current += 0.2;
     forceUiPulse(v => (v + 1) % 1000000);
 
-    // סנכרון בטוח: אם ה-ref השתנה מול ה-flag, עדכן את ה-flag
     const s = stateRef.current;
     if (s && giftReadyFlag !== !!s.giftReady) {
       setGiftReadyFlag(!!s.giftReady);
     }
   }, 200);
   return () => clearInterval(id);
-  // בכוונה בלי giftReadyFlag כתלות — אנחנו קוראים מתוך closure ומתאפסים בכל רינדור ממילא
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
-
-
 
 // ---------- init/load/save ----------
 function freshState(){
@@ -492,27 +514,31 @@ function freshState(){
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
 
     // קנה מידה לכלב
-    minerScale: 1.25, // גובה/סקייל כולל
-    minerWidth: 1.15, // הרחבת רוחב בלבד
+    minerScale: 1.18,
+    minerWidth: 1.24,
 
     anim:{ t:0, coins:[], hint:1, fx:[] },
     onceSpawned:false,
     totalPurchased:0, spawnLevel:1,
     lastSeen:now, pendingOfflineGold:0,
 
-    // Gifts/diamonds
-    cycleStartAt: now, lastGiftIntervalSec: 20,
-    giftNextAt: now + 20000, giftReady:false,
-    diamonds:0, nextDiamondPrize: rollDiamondPrize(),
+// Gifts/diamonds
+cycleStartAt: now, lastGiftIntervalSec: 20,
+giftNextAt: now + 20000, giftReady: false,
+diamonds: 0, nextDiamondPrize: rollDiamondPrize(),
 
-    // Auto-dog (בנק)
-    autoDogLastAt: now, autoDogBank: 0,
+// Auto-dog (בנק)
+autoDogLastAt: now, autoDogBank: 0,
 
-    // מודעות
-    adCooldownUntil: 0,
+// מודעות
+adCooldownUntil: 0,
 
-    // תיבת יהלום מושהית אם אין מקום
-    pendingDiamondDogLevel: null,
+// כלב יהלום בהמתנה
+pendingDiamondDogLevel: null,
+
+// כלב רגיל ממתנה בהמתנה (אם הלוח היה מלא בעת הקליימ)
+pendingGiftDogLevel: null,
+
   };
 }
 
@@ -566,9 +592,12 @@ function setupCanvasAndLoop(cnv){
   document.addEventListener("fullscreenchange", onFSResize);
   resize();
 
-  // קלט — גרירה ומיקום (UX משופר)
-  const onDown = (e) => {
-    if (isMobileLandscape || gamePaused || showIntro || showCollect) return;
+  // קלט — גרירה ומיקום
+const onDown = (e) => {
+    // --- FIX #1: במקום לקרוא ל-state ישירות מה-closure הישן,
+    // נקרא את הדגלים מ-ref שמתעדכן בלייב.
+    const { isMobileLandscape: iml, paused } = flagsRef.current || {};
+    if (iml || paused) return;
     const p = pos(e);
     const hit = pickMiner(p.x,p.y);
     if (hit) {
@@ -630,9 +659,13 @@ function setupCanvasAndLoop(cnv){
   cnv.addEventListener("mousedown", onDown);
   cnv.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
-  cnv.addEventListener("touchstart", (e)=>{ onDown(e.touches[0]); e.preventDefault(); }, {passive:false});
-  cnv.addEventListener("touchmove",  (e)=>{ onMove(e.touches[0]); e.preventDefault(); }, {passive:false});
-  cnv.addEventListener("touchend",   (e)=>{ onUp(e.changedTouches[0]); e.preventDefault(); }, {passive:false});
+ // --- FIX #2: מאזיני טאצ׳ עם פונקציות נפרדות כדי שנוכל להסיר ב-cleanup ---
+  const onTouchStart = (e) => { onDown(e.touches[0]); e.preventDefault(); };
+  const onTouchMove  = (e) => { onMove(e.touches[0]); e.preventDefault(); };
+  const onTouchEnd   = (e) => { onUp(e.changedTouches[0]); e.preventDefault(); };
+  cnv.addEventListener("touchstart", onTouchStart, { passive:false });
+  cnv.addEventListener("touchmove",  onTouchMove,  { passive:false });
+  cnv.addEventListener("touchend",   onTouchEnd,   { passive:false });
 
   // לולאה
   let last = performance.now();
@@ -651,6 +684,10 @@ function setupCanvasAndLoop(cnv){
     cnv.removeEventListener("mousedown", onDown);
     cnv.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
+// --- FIX #2: ניקוי מאזיני טאצ׳ ---
+    cnv.removeEventListener("touchstart", onTouchStart);
+    cnv.removeEventListener("touchmove",  onTouchMove);
+    cnv.removeEventListener("touchend",   onTouchEnd);
   };
 }
 
@@ -800,7 +837,7 @@ function drawMiner(ctx,lane,slot,m){
   const scaleH = (stateRef.current?.minerScale || 1);
   const base   = Math.min(r.w, r.h) * 0.84 * scaleH;
   const wH     = base;
-  const wW     = base * (stateRef.current?.minerWidth || 1.15);
+  const wW     = base * (stateRef.current?.minerWidth || 1.24);
 
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
@@ -883,7 +920,7 @@ function draw(){
     }
   }
 
-  // GHOST גרירה — ללא צל/הילה
+  // GHOST גרירה
   if (dragRef.current.active) {
     const id = dragRef.current.id;
     const m  = s.miners[id];
@@ -895,7 +932,7 @@ function draw(){
       const baseW = Math.min(r0.w, r0.h) * 0.84;
       const scaleH = (stateRef.current?.minerScale || 1);
       const wH = baseW * scaleH;
-      const wW = wH * (stateRef.current?.minerWidth || 1.15);
+      const wW = wH * (stateRef.current?.minerWidth || 1.24);
 
       const img=getImg(IMG_MINER);
       ctx.save();
@@ -954,23 +991,31 @@ function tick(dt){
     }
   }
 
-  // אם יש כלב יהלום מושהה ואין מקום – נחכה; אם התפנה מקום – נכניס ונאפס טיימר מתנה
+  // כלב יהלום מושהה
   if (s.pendingDiamondDogLevel && countMiners(s) < MAX_MINERS) {
     const placed = spawnMiner(s, s.pendingDiamondDogLevel);
     if (placed) {
-     const placedLvl = s.pendingDiamondDogLevel;
-s.pendingDiamondDogLevel = null;
-s.giftReady  = false;
-s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
-setGiftToastWithTTL(`💎 Dog (LV ${placedLvl}) placed`);
-save?.();
-
+      const placedLvl = s.pendingDiamondDogLevel;
+      s.pendingDiamondDogLevel = null;
+      s.giftReady  = false;
+      s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
+      setGiftToastWithTTL(`💎 Dog (LV ${placedLvl}) placed`);
+      save?.();
     }
   }
+// כלב־מתנה מושהה: נניח ברגע שמתפנה סלוט (לא מאתחלים טיימר מתנות שוב)
+if (s.pendingGiftDogLevel && countMiners(s) < MAX_MINERS) {
+  const placed = spawnMiner(s, s.pendingGiftDogLevel);
+  if (placed) {
+    const placedLvl = s.pendingGiftDogLevel;
+    s.pendingGiftDogLevel = null;
+    setGiftToastWithTTL(`🐶 Dog (LV ${placedLvl}) placed`);
+    save?.();
+  }
+}
 
-  // אוטו־דוג:
-  // 1) צבירה לבנק לפי הזמן (בלי חלוקה OFFLINE)
-  // 2) אם יש בנק>0 ויש סלוט פנוי → מכניס, מאפס טיימר ומפחית מהבנק
+
+  // Auto-dog
   accrueBankDogsUpToNow(s);   // PART 6
   tryDistributeBankDog(s);    // PART 6
 
@@ -983,7 +1028,6 @@ save?.();
 
 // === START PART 6 ===
 // Helpers + save/load + purchases + reset + misc used by JSX
-
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function countMiners(s) { return s?.miners ? Object.keys(s.miners).length : 0; }
 function minerDps(level, mul = 1) { return BASE_DPS * Math.pow(LEVEL_DPS_MUL, level - 1) * mul; }
@@ -1006,9 +1050,7 @@ function newRock(lane, idx) {
   return { lane, idx, maxHp: hp, hp };
 }
 
-function makeFreshState() { // (לשמירת תאימות אם קוראים לזה במקום freshState)
-  return freshState();
-}
+function makeFreshState() { return freshState(); }
 
 // ── Save/Load ──
 function save() {
@@ -1019,9 +1061,8 @@ function save() {
       gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
       onceSpawned: s.onceSpawned,
 
-      // קני מידה של הכלב
-      minerScale: s.minerScale || 1.25,
-      minerWidth: s.minerWidth || 1.15,
+      minerScale: s.minerScale || 1.18,
+      minerWidth: s.minerWidth || 1.24,
 
       lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
       totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
@@ -1038,6 +1079,7 @@ function save() {
       adCooldownUntil: s.adCooldownUntil || 0,
 
       pendingDiamondDogLevel: s.pendingDiamondDogLevel || null,
+pendingGiftDogLevel: s.pendingGiftDogLevel || null,
     }));
   } catch {}
 }
@@ -1172,10 +1214,7 @@ function onOfflineCollect() {
   setShowCollect(false);
 }
 
-// ===== לוגיקת אוטו־דוג והמתנות =====
-
-// בחירת דרגת כלב (אוטומטי/מתנת כלב):
-// אם יש על הלוח לפחות כלב אחד בדרגה spawnLevel-2 → נחזיר spawnLevel-2, אחרת spawnLevel.
+// ===== אוטו־דוג והמתנות =====
 function chooseAutoDogLevel(s) {
   const sl = Math.max(1, s.spawnLevel || 1);
   const target2 = Math.max(1, sl - 2);
@@ -1186,7 +1225,6 @@ function chooseGiftDogLevelForRegularGift(s) {
   return chooseAutoDogLevel(s);
 }
 
-// צבירת כלבים לבנק לפי זמן (לא מחלק OFFLINE; רק צובר עד קאפ)
 function accrueBankDogsUpToNow(s) {
   if (!s) return;
   const intervalSec = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800);
@@ -1209,7 +1247,6 @@ function accrueBankDogsUpToNow(s) {
 
   s.autoDogBank = (s.autoDogBank || 0) + add;
 
-  // שומרים את ה-remainder לטבעת; אם הגענו לקאפ — ננעל לזמן עכשיו
   if (s.autoDogBank >= cap) {
     s.autoDogLastAt = now;
   } else {
@@ -1219,25 +1256,22 @@ function accrueBankDogsUpToNow(s) {
   }
 }
 
-// מחלק כלב אחד מהבנק כשיש מקום פנוי. מאפס טיימר (autoDogLastAt = עכשיו).
 function tryDistributeBankDog(s) {
   if (!s) return;
   if ((s.autoDogBank || 0) <= 0) return;
 
-  // יש סלוט פנוי?
   if (countMiners(s) >= MAX_MINERS) return;
 
   const lvl = chooseAutoDogLevel(s);
   const ok  = spawnMiner(s, lvl);
   if (ok) {
     s.autoDogBank = Math.max(0, (s.autoDogBank || 0) - 1);
-    s.autoDogLastAt = Date.now(); // אתחול הטיימר מחדש
+    s.autoDogLastAt = Date.now();
     setGiftToastWithTTL(`🐶 Auto Dog (LV ${lvl})`);
     save?.();
   }
 }
 
-// אין המרה למטבעות כשאין מקום — החזרה false בלבד.
 function trySpawnDogOrConvert(_s, _level) {
   const s = _s; const level = _level;
   if (!s) return false;
@@ -1247,11 +1281,10 @@ function trySpawnDogOrConvert(_s, _level) {
   return false;
 }
 
-// OFFLINE: רק צבירת בנק; לא חלוקה
+// OFFLINE: צבירת בנק + סימולציית מטבעות
 function handleOfflineAccrual(s, elapsedMs) {
   if (!s) return 0;
 
-  // צבירת בנק בלבד (לא חלוקה)
   const intervalSec = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800);
   const intervalMs  = intervalSec * 1000;
   const cap         = (typeof DOG_BANK_CAP !== "undefined" ? DOG_BANK_CAP : 6);
@@ -1268,7 +1301,6 @@ function handleOfflineAccrual(s, elapsedMs) {
     }
   }
 
-  // סימולציית זהב OFFLINE
   const CAP_MS = 12 * 60 * 60 * 1000; // 12h
   const simMs = Math.min(elapsedMs, CAP_MS);
   let totalCoins = 0;
@@ -1351,6 +1383,50 @@ async function resetGame() {
   await exitFullscreenIfAny();
 
   save();
+}
+
+// ===== CLAIM (beta): חתימת שובר ל־Coins→tMLEO =====
+async function claimAllAsVoucher() {
+  const s = stateRef.current; if (!s) return;
+  if (!isConnected) { openConnectModal?.(); return; }
+  if (chainId !== TARGET_CHAIN_ID) { try { switchChain({ chainId: TARGET_CHAIN_ID }); } catch {} return; }
+
+  const coins = Math.floor(s.gold || 0);
+  if (coins <= 0) return;
+
+  const tokensFloat = coins / CLAIM_RATE;
+  const tokens = Number(tokensFloat.toFixed(6));
+
+  const payload = {
+    type: "MLEO_CLAIM_VOUCHER",
+    address,
+    chainId: TARGET_CHAIN_ID,
+    coins,
+    tokens,
+    rate: CLAIM_RATE,
+    ts: Date.now()
+  };
+
+  try {
+    const message = JSON.stringify(payload);
+    const signature = await signMessageAsync({ message });
+
+    s.gold = 0;
+    setUi(u => ({ ...u, gold: 0 }));
+    save?.();
+
+    const entry = { ...payload, signature };
+    const key = "mleo_vouchers";
+    try {
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      arr.push(entry);
+      localStorage.setItem(key, JSON.stringify(arr));
+    } catch {}
+
+    setGiftToastWithTTL("Signed claim saved (beta)");
+  } catch (e) {
+    // ביטול/שגיאה — מתעלמים
+  }
 }
 // === END PART 6 ===
 
@@ -1519,7 +1595,7 @@ function getHudModalText(k){
     case 'giftRing':
       return 'The ring around 🎁 shows progress to the next gift, based on the displayed timings.';
     case 'dogRing':
-      return 'The ring around 🐶 shows progress toward an auto-dog. When the bank is full (up to 6), it will deploy when a slot is free.';
+      return 'The ring around 🐶 shows progress toward an auto-dog. When the bank is full (up to 6), it will deploy when there’s a free slot.';
     default:
       return '';
   }
@@ -1653,6 +1729,7 @@ const price=(n)=>formatShort(n??0);
 {/* === END PART 8 === */}
 
 
+
 {/* === START PART 9 === */}
                {/* ADD Ad Modal */}
         {showAdModal && (
@@ -1688,7 +1765,7 @@ const price=(n)=>formatShort(n??0);
                     setAdCooldownUntil(until);
                     try {
                       const raw = localStorage.getItem(LS_KEY);
-                      const data = raw ? JSON.parse(raw) : {};
+                      const data = raw ? JSON.parse(raw) : {}; 
                       data.adCooldownUntil = until;
                       localStorage.setItem(LS_KEY, JSON.stringify(data));
                     } catch {}
@@ -1737,9 +1814,29 @@ const price=(n)=>formatShort(n??0);
   <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-center mb-2">
     MLEO - MINERS
   </h1>
+  {/*
+    FIX #5: אנימציות glowPulse / glowRing עבור היהלומים.
+    שמים כ-global כדי שיהיו זמינות בכל המסך.
+  */}
+  <style jsx global>{`
+    @keyframes glowPulse {
+      0% { opacity: .55; transform: scale(.98); }
+      50% { opacity: 1; transform: scale(1); }
+      100% { opacity: .55; transform: scale(.98); }
+    }
+    @keyframes glowRing {
+      0% { opacity: .6; }
+      50% { opacity: 1; }
+      100% { opacity: .6; }
+    }
+  `}</style>
 <div className="absolute top-2 right-2 z-[40]">
   <ConnectButton showBalance={false} accountStatus="address" chainStatus="icon" />
 </div>
+<div className="absolute top-2 left-2 z-[40] text-xs bg-white/10 px-2 py-1 rounded-lg">
+  {chainId === TARGET_CHAIN_ID && tokenAddressOk ? `${tokenBalanceStr} ${TOKEN_SYMBOL}` : `— ${TOKEN_SYMBOL}`}
+</div>
+
 
 
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
@@ -1820,7 +1917,7 @@ const price=(n)=>formatShort(n??0);
       <button
         onClick={()=>setHudModal('dogRing')}
         className="relative w-8 h-8 rounded-full grid place-items-center hover:opacity-90 active:scale-95 transition"
-        title="Auto-dog every 15m (bank up to 6)"
+        title={`Auto-dog every ${Math.round(DOG_INTERVAL_SEC/60)}m (bank up to ${DOG_BANK_CAP})`}
         aria-label="Auto-dog info"
       >
         <div className="absolute inset-0 rounded-full" style={ringBg(dogProgress)} />
@@ -1876,6 +1973,14 @@ const price=(n)=>formatShort(n??0);
     >
       GAIN {addRemainMs > 0 ? `(${addRemainLabel})` : ""}
     </button>
+<button
+  onClick={claimAllAsVoucher}
+  className="px-3 py-1.5 rounded-xl bg-lime-400 hover:bg-lime-300 text-slate-900 font-bold transition ring-2 ring-lime-300"
+  title="Sign a voucher to claim test tokens"
+>
+  CLAIM
+</button>
+
 
     <button
       onClick={() => setShowResetConfirm(true)}
@@ -1890,7 +1995,7 @@ const price=(n)=>formatShort(n??0);
 
 
 
-{/* === START PART 10 === */}
+// === START PART 10 ===
          {/* Toast קטן (אופציונלי) */}
           {giftToast && (
             <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "200px" }}>
