@@ -34,6 +34,29 @@ const S_MERGE = "/sounds/merge.mp3";
 const S_ROCK  = "/sounds/rock.mp3";
 const S_GIFT  = "/sounds/gift.mp3";
 
+// ===== Debug helpers =====
+ const DEBUG_LS = "MLEO_DEBUG_UI";
+ const DEBUG_HOSTS = ["localhost","127.0.0.1","0.0.0.0"];
+ function getDebugFlag(){
+   try { return localStorage.getItem(DEBUG_LS) === "1"; } catch { return false; }
+ }
+ function setDebugFlag(on){
+   try { if(on) localStorage.setItem(DEBUG_LS,"1"); else localStorage.removeItem(DEBUG_LS); } catch {}
+ }
+ function isLocalHost(){
+   try { return DEBUG_HOSTS.includes(location.hostname); } catch { return false; }
+ }
+ // (אופציונלי: אם יש ערכים שמורים לאייקון ה-ADD—טען ל-window כדי לאפשר טיונינג חי)
+ try {
+   if (typeof window !== "undefined") {
+     const z = localStorage.getItem("SPAWN_ICON_ZOOM");
+     const y = localStorage.getItem("SPAWN_ICON_SHIFT_Y");
+     if (z) window.SPAWN_ICON_ZOOM = parseFloat(z);
+     if (y) window.SPAWN_ICON_SHIFT_Y = parseInt(y,10);
+   }
+ } catch {}
+ 
+
 // ===== UI constants =====
 // קופסת פריסה לאייקון (לא משנה את גובה הכפתור)
 const UI_BTN_H_PX = 50; // שנה פה פעם אחת: 28/32/36/40...
@@ -41,7 +64,7 @@ const UI_BTN_H_PX = 50; // שנה פה פעם אחת: 28/32/36/40...
  const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 // זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
 const UI_SPAWN_ICON_ZOOM =
-  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2.4;
+  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2.2;
 // היסט אנכי עדין ליישור (px) – אופציונלי
 const UI_SPAWN_ICON_SHIFT_Y =
   (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
@@ -240,6 +263,7 @@ const [showMiningInfo, setShowMiningInfo] = useState(false);
   const [showDiamondInfo, setShowDiamondInfo] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 const [mounted, setMounted] = useState(false);
+const [debugUI, setDebugUI] = useState(false); // ← NEW
 
 // === Mining HUD state (CLAIM) ===
 const [mining, setMining] = useState({
@@ -256,6 +280,30 @@ useEffect(() => {
     // Do not auto-open modal here; we show a banner and gate PLAY/CONNECT.
   }
 }, []);
+
+// ===== Debug UI bootstrap (URL ?debug=1, LS flag, or auto on localhost) =====
+ useEffect(() => {
+   let on = false;
+   try {
+     const qs = new URLSearchParams(window.location.search);
+     if (qs.get("debug") === "1") on = true;
+   } catch {}
+   if (!on) on = getDebugFlag();
+   if (!on && isLocalHost()) on = true; // auto-enable on localhost
+   setDebugUI(on);
+   if (on) setDebugFlag(true);
+ 
+   // Shift+D toggle
+   const onKey = (e) => {
+     if (!e) return;
+     const k = (e.key || "").toLowerCase();
+     if (k === "d" && e.shiftKey) {
+       setDebugUI(v => { const nv = !v; setDebugFlag(nv); return nv; });
+     }
+   };
+   window.addEventListener("keydown", onKey);
+   return () => window.removeEventListener("keydown", onKey);
+ }, []);
 
 
 
@@ -317,6 +365,30 @@ async function onClaimMined() {
     setClaiming(false);
   }
 }
+
+// Debug live values for the panel (controlled inputs)
+const [debugVals, setDebugVals] = useState({
+  minerScale: stateRef.current?.minerScale ?? 1.10,
+  minerWidth: stateRef.current?.minerWidth ?? 1.12,
+  spawnIconZoom:
+    (typeof window !== "undefined" && (window.SPAWN_ICON_ZOOM ?? Number(localStorage.getItem("SPAWN_ICON_ZOOM")))) || 2.2,
+  spawnIconShiftY:
+    (typeof window !== "undefined" && (window.SPAWN_ICON_SHIFT_Y ?? Number(localStorage.getItem("SPAWN_ICON_SHIFT_Y")))) || 0,
+});
+
+// כשפותחים את הפאנל – למשוך ערכים עדכניים מה־stateRef ומה־window
+useEffect(() => {
+  if (!debugUI) return;
+  const s = stateRef.current || {};
+  const zoom = (typeof window !== "undefined" && (window.SPAWN_ICON_ZOOM ?? Number(localStorage.getItem("SPAWN_ICON_ZOOM")))) || 2.2;
+  const shift = (typeof window !== "undefined" && (window.SPAWN_ICON_SHIFT_Y ?? Number(localStorage.getItem("SPAWN_ICON_SHIFT_Y")))) || 0;
+  setDebugVals({
+    minerScale: s.minerScale ?? 1.10,
+    minerWidth: s.minerWidth ?? 1.12,
+    spawnIconZoom: Number(zoom) || 2.2,
+    spawnIconShiftY: Number(shift) || 0,
+  });
+}, [debugUI]);
 
   
 
@@ -2054,9 +2126,10 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
         className="pointer-events-none object-cover block"
         style={{
           width: "100%",
-          height: "100%",
-          transform: `scale(${UI_SPAWN_ICON_ZOOM}) translateY(${UI_SPAWN_ICON_SHIFT_Y}px)`,
-          transformOrigin: "center",
+               height: "100%",
+               // קריאה חיה מ-window (אם שונה דרך הדיבוג), עם נפילה לברירת המחדל מהקבועים:
+               transform: `scale(${(typeof window!=="undefined" && window.SPAWN_ICON_ZOOM) || UI_SPAWN_ICON_ZOOM}) translateY(${(typeof window!=="undefined" && window.SPAWN_ICON_SHIFT_Y) || UI_SPAWN_ICON_SHIFT_Y}px)`,
+               transformOrigin: "center",
         }}
       />
     </span>
@@ -2574,17 +2647,161 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
           </div>
         )}
 
-        {!showIntro && (
-          <button
-            onClick={async () => { setShowIntro(true); setGamePaused(true); try { await exitFullscreenIfAny(); } catch {} }}
- className="fixed right-3 px-4 py-2 bg-yellow-400 text-black font-bold rounded-lg text-sm z-[999]"
-  style={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
-          >
-            Exit
-          </button>
-        )}
+  {!showIntro && (
+  <button
+    onClick={async () => { setShowIntro(true); setGamePaused(true); try { await exitFullscreenIfAny(); } catch {} }}
+    className="fixed right-3 px-4 py-2 bg-yellow-400 text-black font-bold rounded-lg text-sm z-[999]"
+    style={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+  >
+    Exit
+  </button>
+)}
+
+{/* ===== Debug Panel (toggle: Shift+D, ?debug=1, LS flag; auto in localhost) ===== */}
+{debugUI && (
+  <div
+    className="fixed bottom-3 left-3 z-[10050] bg-black/70 text-white p-3 rounded-xl border border-white/20 w-[280px] backdrop-blur"
+    style={{ fontSize: 12, lineHeight: 1.1 }}
+  >
+    <div className="flex items-center justify-between mb-2">
+      <b>Debug: Miner &amp; UI</b>
+      <button
+        onClick={() => { setDebugUI(false); setDebugFlag(false); }}
+        className="px-2 py-0.5 rounded bg-white/15 hover:bg-white/25"
+        title="Hide debug panel (Shift+D toggles too)"
+      >
+        Hide
+      </button>
+    </div>
+
+    {/* minerScale (height) */}
+    <label className="block mb-2">
+      <div className="mb-1">minerScale (height)</div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range" min="0.6" max="1.8" step="0.01"
+          value={debugVals.minerScale}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            const s = stateRef.current; if (!s) return;
+            s.minerScale = v; safeSave();
+            setDebugVals(d => ({ ...d, minerScale: v }));
+          }}
+          className="flex-1"
+        />
+        <div className="w-12 text-right tabular-nums">{debugVals.minerScale.toFixed(2)}</div>
       </div>
-    </Layout>
-  );
+      <input
+        type="number" step="0.01"
+        className="mt-1 w-24 bg-white/10 rounded px-1"
+        value={debugVals.minerScale}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value) || 1;
+          const s = stateRef.current; if (!s) return;
+          s.minerScale = v; safeSave();
+          setDebugVals(d => ({ ...d, minerScale: v }));
+        }}
+      />
+    </label>
+
+    {/* minerWidth (width) */}
+    <label className="block mb-2">
+      <div className="mb-1">minerWidth (width)</div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range" min="0.7" max="1.8" step="0.01"
+          value={debugVals.minerWidth}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            const s = stateRef.current; if (!s) return;
+            s.minerWidth = v; safeSave();
+            setDebugVals(d => ({ ...d, minerWidth: v }));
+          }}
+          className="flex-1"
+        />
+        <div className="w-12 text-right tabular-nums">{debugVals.minerWidth.toFixed(2)}</div>
+      </div>
+      <input
+        type="number" step="0.01"
+        className="mt-1 w-24 bg-white/10 rounded px-1"
+        value={debugVals.minerWidth}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value) || 1;
+          const s = stateRef.current; if (!s) return;
+          s.minerWidth = v; safeSave();
+          setDebugVals(d => ({ ...d, minerWidth: v }));
+        }}
+      />
+    </label>
+
+    <hr className="my-2 border-white/10" />
+
+    {/* SPAWN_ICON_ZOOM */}
+    <label className="block mb-2">
+      <div className="mb-1">SPAWN_ICON_ZOOM</div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range" min="0.6" max="3" step="0.01"
+          value={debugVals.spawnIconZoom}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            if (typeof window !== "undefined") window.SPAWN_ICON_ZOOM = v;
+            try { localStorage.setItem("SPAWN_ICON_ZOOM", String(v)); } catch {}
+            setDebugVals(d => ({ ...d, spawnIconZoom: v }));
+          }}
+          className="flex-1"
+        />
+        <div className="w-12 text-right tabular-nums">{debugVals.spawnIconZoom.toFixed(2)}</div>
+      </div>
+    </label>
+
+    {/* SPAWN_ICON_SHIFT_Y */}
+    <label className="block">
+      <div className="mb-1">SPAWN_ICON_SHIFT_Y</div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range" min="-10" max="10" step="1"
+          value={debugVals.spawnIconShiftY}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            if (typeof window !== "undefined") window.SPAWN_ICON_SHIFT_Y = v;
+            try { localStorage.setItem("SPAWN_ICON_SHIFT_Y", String(v)); } catch {}
+            setDebugVals(d => ({ ...d, spawnIconShiftY: v }));
+          }}
+          className="flex-1"
+        />
+        <div className="w-12 text-right tabular-nums">{String(debugVals.spawnIconShiftY)}</div>
+      </div>
+    </label>
+
+    <div className="mt-3 flex gap-2">
+      <button
+        onClick={() => {
+          try {
+            localStorage.removeItem("SPAWN_ICON_ZOOM");
+            localStorage.removeItem("SPAWN_ICON_SHIFT_Y");
+          } catch {}
+          if (typeof window !== "undefined") {
+            delete window.SPAWN_ICON_ZOOM;
+            delete window.SPAWN_ICON_SHIFT_Y;
+          }
+          setDebugVals(d => ({ ...d, spawnIconZoom: 2.2, spawnIconShiftY: 0 }));
+        }}
+        className="px-2 py-1 rounded bg-white/15 hover:bg-white/25"
+      >
+        Reset ADD icon
+      </button>
+      <button
+        onClick={() => location.reload()}
+        className="px-2 py-1 rounded bg-yellow-400 text-black font-bold ml-auto"
+      >
+        Reload
+      </button>
+    </div>
+  </div>
+)}
+</div>
+</Layout>
+);
 } 
 // === END PART 10 ===
