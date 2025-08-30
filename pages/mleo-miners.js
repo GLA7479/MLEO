@@ -22,6 +22,7 @@ const IMG_BG    = "/images/bg-cave.png";
 const IMG_MINER = "/images/leo-miner-4x.png";
 const IMG_ROCK  = "/images/rock.png";
 const IMG_COIN  = "/images/silver.png";
+const IMG_TOKEN = "/images/coin3.png";
 
 // SFX
 const S_CLICK = "/sounds/click.mp3";
@@ -2003,8 +2004,8 @@ return (
 
 {/* Mining status + CLAIM (with Vault) */}
 <div className="w-full flex justify-center mt-1">
-  <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs">
-    <span className="font-bold">🪙</span>
+  <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
+    <img src={IMG_TOKEN} alt="MLEO" className="w-6 h-6 rounded-full" />
     <span className="text-yellow-300 font-extrabold">
       {formatShort(mining?.balance || 0)}
     </span>
