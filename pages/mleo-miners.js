@@ -261,9 +261,9 @@ function getPhaseInfo(_s, now = Date.now()) {
 
     s.giftReady = false;
     {
-  const now = Date.now();
-  const ph  = getPhaseInfo(s, now);
-  s.giftNextAt = now + ph.remainToNextGiftSec * 1000; // לפי המחזור הגלובלי
+const now = Date.now();
+const stepSec = currentGiftIntervalSec(s, now);
+s.giftNextAt = now + stepSec * 1000; // מרווח מלא מה־claim
 }
 
     setGiftReadyFlag(false);
@@ -309,11 +309,13 @@ setGiftReadyFlag(!!init.giftReady);
   const ph  = getPhaseInfo(null, now);
 
   // אם אין giftNextAt — עגן לנקודת הטיקט הקרובה לפי הפאזה הגלובלית
-  if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
-    init.giftReady  = false;
-    init.giftNextAt = now + ph.remainToNextGiftSec * 1000;
-    save();
-  }
+ if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
+  init.giftReady  = false;
+  const stepSec = currentGiftIntervalSec(init, now);
+  init.giftNextAt = now + stepSec * 1000; // התחלה תמיד במרווח מלא
+  save();
+}
+
 
   // אם היינו OFFLINE ועבר הטיקט — מתנה אחת מוכנה; הבאה תיושר ב-grantGift/heartbeat
   if ((init.giftNextAt || 0) <= now) {
@@ -416,38 +418,34 @@ setGiftReadyFlag(!!init.giftReady);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [showIntro]);
 
-// רנדר/סנכרון מתנות למחזור הגלובלי — 500ms heartbeat
+// רנדר/סנכרון מתנות — 500ms heartbeat (תיקון: בלי "יישור", רק בדיקה)
 useEffect(() => {
   const id = setInterval(() => {
-    const s = stateRef.current; if (!s) return;
+    const s = stateRef.current; 
+    if (!s) return;
     const now = Date.now();
-    const ph  = getPhaseInfo(null, now);
 
-    // 1) אם אין טיימר, אתחל לפי המחזור הגלובלי
+    // אם אין טיימר – אתחל מרווח מלא לפי הפאזה הנוכחית
     if (!s.giftNextAt || Number.isNaN(s.giftNextAt)) {
+      const stepSec = currentGiftIntervalSec(s, now);
       s.giftReady  = false;
-      s.giftNextAt = now + ph.remainToNextGiftSec * 1000;
+      s.giftNextAt = now + stepSec * 1000;
       save();
       return;
     }
 
-    // 2) אם הגיע הזמן – סמן מתנה מוכנה ואל תיישר באותו טיק
+    // אם הגיע הזמן – המתנה מוכנה; לא נוגעים ביעד עד Claim
     if (!s.giftReady && s.giftNextAt <= now) {
       s.giftReady = true;
       setGiftReadyFlag(true);
       save();
-      return;
-    }
-
-    // 3) יישור "רך" רק כשהטיימר עדיין בעתיד
-    const ideal = now + ph.remainToNextGiftSec * 1000;
-    if (!s.giftReady && s.giftNextAt > now && Math.abs(s.giftNextAt - ideal) > 1000) {
-      s.giftNextAt = ideal;
-      save();
     }
   }, 500);
+
   return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
+
 
 
 // רנדר חלק לשעונים (מתנה/כלב/GAIN) — פולס UI כל 200ms
