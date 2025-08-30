@@ -23,12 +23,23 @@ const IMG_MINER = "/images/leo-miner-4x.png";
 const IMG_ROCK  = "/images/rock.png";
 const IMG_COIN  = "/images/silver.png";
 const IMG_TOKEN = "/images/coin3.png";
+const IMG_SPAWN_ICON = "/images/coin4.png";
 
 // SFX
 const S_CLICK = "/sounds/click.mp3";
 const S_MERGE = "/sounds/merge.mp3";
 const S_ROCK  = "/sounds/rock.mp3";
 const S_GIFT  = "/sounds/gift.mp3";
+
+// ===== UI constants =====
+// קופסת פריסה לאייקון (לא משנה את גובה הכפתור)
+const UI_SPAWN_ICON_BOX = 18;
+// זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
+const UI_SPAWN_ICON_ZOOM =
+  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2;
+// היסט אנכי עדין ליישור (px) – אופציונלי
+const UI_SPAWN_ICON_SHIFT_Y =
+  (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
 
 // Balance
 const BASE_DPS = 2;
@@ -547,13 +558,7 @@ useEffect(() => {
     // שומר רענון קל ל-HUD/טבעות
     uiPulseAccumRef.current += 0.2;
     forceUiPulse(v => (v + 1) % 1000000);
-
-    // סנכרון בטוח: אם ה-ref השתנה מול ה-flag, עדכן את ה-flag
-    const s = stateRef.current;
-    if (s && giftReadyFlag !== !!s.giftReady) {
-      setGiftReadyFlag(!!s.giftReady);
-    }
-  }, 200);
+   }, 200);
   return () => clearInterval(id);
   // בכוונה בלי giftReadyFlag כתלות — אנחנו קוראים מתוך closure ומתאפסים בכל רינדור ממילא
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1266,8 +1271,9 @@ function onOfflineCollect() {
     s.pendingOfflineGold = 0;
     setUi(u => ({ ...u, gold: s.gold }));
     save();
-  }
-  setShowCollect(false);
+    setCenterPopup({ text: `⛏️ +${formatShort(add)} coins`, id: Math.random() });
+}
+setShowCollect(false);
 }
 
 // ===== לוגיקת אוטו־דוג והמתנות =====
@@ -1328,7 +1334,7 @@ function tryDistributeBankDog(s) {
   if (ok) {
     s.autoDogBank = Math.max(0, (s.autoDogBank || 0) - 1);
     s.autoDogLastAt = Date.now(); // אתחול הטיימר מחדש
-    setGiftToastWithTTL(`🐶 Auto Dog (LV ${lvl})`);
+    setCenterPopup({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
     save?.();
   }
 }
@@ -1587,6 +1593,7 @@ function getHudModalTitle(k){
     case 'dps': return 'DPS Multiplier';
     case 'gold': return 'Gold Multiplier';
     case 'spawn': return 'Dog Spawn Level';
+case 'lvCounter': return 'Spawn LV Counter';
     case 'gifts': return 'Gift Phases';
     case 'giftRing': return 'Gift Timer';
     case 'dogRing': return 'Auto-Dog';
@@ -1601,8 +1608,12 @@ function getHudModalText(k){
       return '🪓 DPS xN increases the rate rocks lose HP by 10% per upgrade.';
     case 'gold':
       return '🟡 GOLD xN increases the coins gained from each rock by 10% per upgrade.';
-    case 'spawn':
-      return '🐶 LV shows the dog level that appears on purchase/bonus. Increases automatically after 30 purchases.';
+case 'spawn':
+  return `🐶 LV shows the dog level that appears on purchase/bonus. 
+Increases automatically after 30 purchases.
+
+Purchases left to the next level: ${toNextLv}.`;
+
     case 'gifts':
       return '⏳ Interval between gifts. Each time the timer ends you get a gift: coins/dog/boosts/diamond.';
     case 'giftRing':
@@ -1622,6 +1633,8 @@ const goldCostNow=(typeof _goldCost==="function")?_goldCost(sNow):160;
 const canBuyMiner=!!sNow&&sNow.gold>=spawnCostNow&&Object.keys(sNow.miners||{}).length<(typeof MAX_MINERS==="number"?MAX_MINERS:16);
 const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
 const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
+const boughtCount = sNow?.totalPurchased || 0;
+const toNextLv    = 30 - (boughtCount % 30); // 30 → 1..30
 
 // === END PART 7 ===
 
@@ -1790,7 +1803,7 @@ return (
                       localStorage.setItem(LS_KEY, JSON.stringify(data));
                     } catch {}
 
-                    setGiftToastWithTTL(`🎬 Ad Reward +${formatShort(gain)} coins`, 3000);
+setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
                     save();
                     setShowAdModal(false);
                     setAdVideoEnded(false);
@@ -1880,10 +1893,23 @@ return (
       🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b>
     </button>
 
-    {/* Spawn LV */}
-    <button onClick={()=>setHudModal('spawn')} className="px-2 py-1 rounded-lg hover:bg-white/10">
-      🐶 LV <b>{stateRef.current?.spawnLevel || 1}</b>
-    </button>
+  {/* Spawn LV (with inline counter) */}
+<button
+  onClick={()=>setHudModal('spawn')}
+  className="px-2 py-1 rounded-lg hover:bg-white/10"
+  title={`Next Spawn Level in ${toNextLv} purchases`}
+>
+  <span className="inline-flex items-baseline gap-1 leading-none">
+    <span>🐶 LV</span>
+    <b className="leading-none">{stateRef.current?.spawnLevel || 1}</b>
+    <span className="text-[11px] leading-none opacity-80 relative -top-[1px]">
+      ({toNextLv})
+    </span>
+  </span>
+</button>
+
+
+
 
     {/* Diamonds */}
     <button
@@ -1947,16 +1973,40 @@ return (
 
   {/* Actions row */}
   <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
-    <button
-      onClick={addMiner}
-      disabled={!canBuyMiner}
-      className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold transition
-        ${canBuyMiner
-          ? "bg-emerald-500 hover:bg-emerald-400 ring-2 ring-emerald-300"
-          : "bg-emerald-500 opacity-60 cursor-not-allowed"}`}
+<button
+  onClick={addMiner}
+  disabled={!canBuyMiner}
+  className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold transition inline-flex items-center
+    ${canBuyMiner
+      ? "bg-emerald-500 hover:bg-emerald-400 ring-2 ring-emerald-300"
+      : "bg-emerald-500 opacity-60 cursor-not-allowed"}`}
+>
+{/* פלוס נקי — אותו פונט/עובי כמו LV, ללא עיגול */}
+    <span className="mr-1 align-middle font-extrabold tracking-tight">+</span>
+
+    {/* אייקון — גדל ויזואלית בלבד עם scale, בלי להשפיע על פריסה */}
+    <span
+      className="relative mr-1 inline-grid place-items-center align-middle"
+      style={{ width: UI_SPAWN_ICON_BOX, height: UI_SPAWN_ICON_BOX }}
     >
-      + 🐶 Miner (LV {stateRef.current?.spawnLevel || 1}) — {formatShort(spawnCostNow)}
-    </button>
+      <img
+        src={IMG_SPAWN_ICON}
+        alt="dog"
+        className="pointer-events-none object-cover block"
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: `scale(${UI_SPAWN_ICON_ZOOM}) translateY(${UI_SPAWN_ICON_SHIFT_Y}px)`,
+          transformOrigin: "center",
+        }}
+      />
+    </span>
+
+  {/* טקסט */}
+  <b className="tracking-tight align-middle font-extrabold">
+    (LV {stateRef.current?.spawnLevel || 1} — {formatShort(spawnCostNow)})
+  </b>
+</button>
 
     <button
       onClick={upgradeDps}
@@ -2043,22 +2093,23 @@ return (
 
 
 {/* === START PART 10 === */}
-         {/* Toast קטן (אופציונלי) */}
-          {giftToast && (
-            <div className="absolute left-1/2 -translate-x-1/2 z-[7]" style={{ top: "200px" }}>
-              <div className="px-4 py-2 rounded-xl bg-emerald-400 text-black font-extrabold shadow-lg animate-[fadeOut_3s_ease-out_forwards]">
-                {giftToast.text}
-              </div>
-              <style jsx global>{`
-                @keyframes fadeOut {
-                  0% { opacity: 0; transform: translateY(-6px) scale(0.96); }
-                  15% { opacity: 1; transform: translateY(0) scale(1); }
-                  80% { opacity: 1; }
-                  100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
-                }
-              `}</style>
-            </div>
-          )}
+        {/* Toast ממורכז ומעל ה-HUD */}
+{giftToast && (
+  <div className="fixed inset-0 z-[10002] flex items-center justify-center pointer-events-none">
+    <div className="pointer-events-auto px-6 py-4 rounded-2xl font-extrabold text-black shadow-2xl bg-gradient-to-br from-yellow-300 to-amber-400 border border-yellow-200 text-center animate-[popfade_1.8s_ease-out_forwards]">
+      {giftToast.text}
+    </div>
+    <style jsx global>{`
+      @keyframes popfade {
+        0% { opacity: 0; transform: translateY(6px) scale(0.96); }
+        15% { opacity: 1; transform: translateY(0) scale(1); }
+        75% { opacity: 1; }
+        100% { opacity: 0; transform: translateY(-6px) scale(0.98); }
+      }
+    `}</style>
+  </div>
+)}
+
 
           {/* פופאפ מרכזי – בלי OK, נעלם אוטומטית */}
           {centerPopup && (
