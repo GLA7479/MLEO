@@ -31,6 +31,48 @@ const ROCK_BASE_HP = 60;
 const ROCK_HP_MUL = 2.15;
 const GOLD_FACTOR = 0.12;
 
+// ===== Global gift phases (same for everyone) =====
+const GIFT_PHASES = [
+  { durSec: 30 * 60, intervalSec: 20 }, // 30m @ 20s
+  { durSec: 30 * 60, intervalSec: 30 }, // 30m @ 30s
+  { durSec: 30 * 60, intervalSec: 40 }, // 30m @ 40s
+  { durSec: 30 * 60, intervalSec: 50 }, // 30m @ 50s
+  { durSec: 60 * 60, intervalSec: 60 }, // 60m @ 60s
+];
+const GIFT_TOTAL_SEC = GIFT_PHASES.reduce((a, p) => a + p.durSec, 0);
+
+// עוגן גלובלי קבוע (UTC) — כל הלקוחות מחשבים יחסית אליו
+const GLOBAL_ANCHOR_MS = Date.UTC(2025, 0, 1, 0, 0, 0); // 2025-01-01 00:00:00Z
+
+function phaseAtGlobal(nowMs = Date.now()) {
+  const intoCycleSec = Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000) % GIFT_TOTAL_SEC < 0
+    ? (GIFT_TOTAL_SEC + (Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000) % GIFT_TOTAL_SEC))
+    : Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000) % GIFT_TOTAL_SEC;
+
+  let acc = 0;
+  for (let i = 0; i < GIFT_PHASES.length; i++) {
+    const ph = GIFT_PHASES[i];
+    if (intoCycleSec < acc + ph.durSec) {
+      const intoPhaseSec = intoCycleSec - acc;
+      const step = ph.intervalSec;
+      const mod = intoPhaseSec % step;
+      const remainToNextGiftSec = mod === 0 ? step : (step - mod);
+      return {
+        index: i,
+        intervalSec: step,
+        into: intoPhaseSec,
+        phaseRemainSec: ph.durSec - intoPhaseSec,
+        remainToNextGiftSec,
+      };
+    }
+    acc += ph.durSec;
+  }
+  // fallback
+  const last = GIFT_PHASES[GIFT_PHASES.length - 1];
+  return { index: GIFT_PHASES.length - 1, intervalSec: last.intervalSec, into: 0, phaseRemainSec: last.durSec, remainToNextGiftSec: last.intervalSec };
+}
+
+
 // פרסים
 const DIAMOND_PRIZES = [
   { key: "coins_x10",   label: "Coins ×1000% (×10 gift)" },
@@ -180,8 +222,16 @@ const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
 
   // ── סטאבים/עזר ──
   function theStateFix_maybeMigrateLocalStorage(){ /* no-op safe */ }
-  function currentGiftIntervalSec(s){ return Math.max(5, Math.floor(s?.lastGiftIntervalSec || 20)); }
-  function getPhaseInfo(s, now = Date.now()){ const sec = currentGiftIntervalSec(s); return { index:0, into:0, remain:sec, intervalSec:sec }; }
+function currentGiftIntervalSec(_s, now = Date.now()) {
+  const ph = phaseAtGlobal(now);
+  // אופציונלי: נשמור עקבות לשימושים קיימים
+  if (_s) _s.lastGiftIntervalSec = ph.intervalSec;
+  return ph.intervalSec;
+}
+function getPhaseInfo(_s, now = Date.now()) {
+  return phaseAtGlobal(now);
+}
+
 
   // איסוף מתנה (כפתור 🎁) — לפי חלוקה שביקשת
   function grantGift(){
@@ -210,7 +260,12 @@ const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
     }
 
     s.giftReady = false;
-    s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
+    {
+  const now = Date.now();
+  const ph  = getPhaseInfo(s, now);
+  s.giftNextAt = now + ph.remainToNextGiftSec * 1000; // לפי המחזור הגלובלי
+}
+
     setGiftReadyFlag(false);
     try { play(S_GIFT); } catch {}
     save?.();
@@ -244,18 +299,29 @@ useEffect(() => {
     gold: init.gold, spawnCost: init.spawnCost,
     dpsMult: init.dpsMult, goldMult: init.goldMult,
   }));
+// סנכרון מיידי של הדגל הוויזואלי עם מצב האמת מהשמירה
+setGiftReadyFlag(!!init.giftReady);
+
 
   // אם המתנה כבר מוכנה/טיימר חסר – תקן
-  try {
-    if (init.giftReady && (init.giftNextAt || 0) <= Date.now()) {
-      setGiftReadyFlag(true);
-    }
-    if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
-      init.giftNextAt = Date.now() + currentGiftIntervalSec(init) * 1000;
-      init.giftReady  = false;
-      save();
-    }
-  } catch {}
+ try {
+  const now = Date.now();
+  const ph  = getPhaseInfo(null, now);
+
+  // אם אין giftNextAt — עגן לנקודת הטיקט הקרובה לפי הפאזה הגלובלית
+  if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
+    init.giftReady  = false;
+    init.giftNextAt = now + ph.remainToNextGiftSec * 1000;
+    save();
+  }
+
+  // אם היינו OFFLINE ועבר הטיקט — מתנה אחת מוכנה; הבאה תיושר ב-grantGift/heartbeat
+  if ((init.giftNextAt || 0) <= now) {
+    init.giftReady = true;
+    setGiftReadyFlag(true);
+  }
+} catch {}
+
 
   // טען קירור מודעה
   try {
@@ -350,11 +416,59 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [showIntro]);
 
-// רנדר חלק לשעונים (מתנה/כלב/GAIN) — פולס UI כל 200ms
+// רנדר/סנכרון מתנות למחזור הגלובלי — 500ms heartbeat
 useEffect(() => {
-  const id = setInterval(() => { uiPulseAccumRef.current += 0.2; forceUiPulse(v => (v + 1) % 1000000); }, 200);
+  const id = setInterval(() => {
+    const s = stateRef.current; if (!s) return;
+    const now = Date.now();
+    const ph  = getPhaseInfo(null, now);
+
+    // 1) אם אין טיימר, אתחל לפי המחזור הגלובלי
+    if (!s.giftNextAt || Number.isNaN(s.giftNextAt)) {
+      s.giftReady  = false;
+      s.giftNextAt = now + ph.remainToNextGiftSec * 1000;
+      save();
+      return;
+    }
+
+    // 2) אם הגיע הזמן – סמן מתנה מוכנה ואל תיישר באותו טיק
+    if (!s.giftReady && s.giftNextAt <= now) {
+      s.giftReady = true;
+      setGiftReadyFlag(true);
+      save();
+      return;
+    }
+
+    // 3) יישור "רך" רק כשהטיימר עדיין בעתיד
+    const ideal = now + ph.remainToNextGiftSec * 1000;
+    if (!s.giftReady && s.giftNextAt > now && Math.abs(s.giftNextAt - ideal) > 1000) {
+      s.giftNextAt = ideal;
+      save();
+    }
+  }, 500);
   return () => clearInterval(id);
 }, []);
+
+
+// רנדר חלק לשעונים (מתנה/כלב/GAIN) — פולס UI כל 200ms
+useEffect(() => {
+  const id = setInterval(() => {
+    // שומר רענון קל ל-HUD/טבעות
+    uiPulseAccumRef.current += 0.2;
+    forceUiPulse(v => (v + 1) % 1000000);
+
+    // סנכרון בטוח: אם ה-ref השתנה מול ה-flag, עדכן את ה-flag
+    const s = stateRef.current;
+    if (s && giftReadyFlag !== !!s.giftReady) {
+      setGiftReadyFlag(!!s.giftReady);
+    }
+  }, 200);
+  return () => clearInterval(id);
+  // בכוונה בלי giftReadyFlag כתלות — אנחנו קוראים מתוך closure ומתאפסים בכל רינדור ממילא
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+
 
 // ---------- init/load/save ----------
 function freshState(){
@@ -837,11 +951,13 @@ function tick(dt){
   if (s.pendingDiamondDogLevel && countMiners(s) < MAX_MINERS) {
     const placed = spawnMiner(s, s.pendingDiamondDogLevel);
     if (placed) {
-      s.pendingDiamondDogLevel = null;
-      s.giftReady  = false;
-      s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
-      setGiftToastWithTTL(`💎 Dog (LV ${s.pendingDiamondDogLevel||""}) placed`);
-      save?.();
+     const placedLvl = s.pendingDiamondDogLevel;
+s.pendingDiamondDogLevel = null;
+s.giftReady  = false;
+s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
+setGiftToastWithTTL(`💎 Dog (LV ${placedLvl}) placed`);
+save?.();
+
     }
   }
 
@@ -1278,27 +1394,6 @@ const DOG_BANK_CAP     = (typeof window !== "undefined" && window.DOG_BANK_CAP) 
 const _currentGiftIntervalSec = typeof currentGiftIntervalSec==="function"?currentGiftIntervalSec:(s)=>Math.max(5,Math.floor(s?.lastGiftIntervalSec||20));
 const _getPhaseInfo = typeof getPhaseInfo==="function"?getPhaseInfo:(s,now=Date.now())=>{ const sec=_currentGiftIntervalSec(s,now); return { index:0,into:0,remain:sec,intervalSec:sec }; };
 
-// heartbeat מתנות – רץ כל חצי שנייה
-useEffect(()=>{ 
-  const id=setInterval(()=>{ 
-    const s=stateRef.current; if(!s) return; 
-    const now=Date.now(); 
-    const intervalMs=_currentGiftIntervalSec(s)*1000; 
-    if(!s.giftNextAt){ 
-      s.giftNextAt=now+intervalMs; 
-      s.giftReady=false; 
-      save(); 
-      return; 
-    } 
-    if(!s.giftReady && s.giftNextAt<=now){ 
-      s.giftReady=true; 
-      setGiftReadyFlag(true); 
-      save(); 
-    }
-  },500); 
-  return()=>clearInterval(id); 
-},[]);
-
 // Phase label
 const phaseNow = (() => {
   const s = stateRef.current; 
@@ -1405,23 +1500,24 @@ function getHudModalTitle(k){
 function getHudModalText(k){
   switch(k){
     case 'coins':
-      return 'מספר המטבעות שלך. שבירת סלעים מוסיפה מטבעות; בונוסים: 🎁 מתנה רגילה (10%), מודעת וידאו (50%), ויהלומים נותנים מכפילים גדולים.';
+      return 'Your total coins. Breaking rocks adds coins; bonuses: 🎁 regular gift (10%), video ad (50%), and diamonds grant large multipliers.';
     case 'dps':
-      return '🪓 DPS xN מעלה את קצב הורדת ה-HP של הסלעים ב-10% בכל שדרוג.';
+      return '🪓 DPS xN increases the rate rocks lose HP by 10% per upgrade.';
     case 'gold':
-      return '🟡 GOLD xN מעלה את כמות המטבעות המתקבלת מכל סלע ב-10% בכל שדרוג.';
+      return '🟡 GOLD xN increases the coins gained from each rock by 10% per upgrade.';
     case 'spawn':
-      return '🐶 LV מציין את רמת הכלב שמופיע ברכישה/בונוס. עולה אוטומטית אחרי מספר רכישות.';
+      return '🐶 LV shows the dog level that appears on purchase/bonus. Increases automatically after 30 purchases.';
     case 'gifts':
-      return '⏳ מרווח בין מתנות. כל פעם שהטיימר מסתיים מתקבלת מתנה: מטבעות/כלב/בונוסים/יהלום.';
+      return '⏳ Interval between gifts. Each time the timer ends you get a gift: coins/dog/boosts/diamond.';
     case 'giftRing':
-      return 'הטבעת מסביב ל-🎁 מראה את ההתקדמות עד למתנה הבאה. בלי רקע שחור – רק טבעת.';
+      return 'The ring around 🎁 shows progress to the next gift, based on the displayed timings.';
     case 'dogRing':
-      return 'הטבעת מסביב ל-🐶 מראה התקדמות לכלב אוטומטי. כשהבנק מלא (עד 6) הוא ייפתח בהזדמנות פנויה.';
+      return 'The ring around 🐶 shows progress toward an auto-dog. When the bank is full (up to 6), it will deploy when a slot is free.';
     default:
       return '';
   }
 }
+
 
 // prices & יכולת קנייה לשורת הפעולות (Part 9 משתמש בזה)
 const spawnCostNow=sNow?.spawnCost??ui.spawnCost;
@@ -1833,7 +1929,7 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
           )}
 
           {/* Center Gift Button */}
-          {!showIntro && !gamePaused && !showCollect && giftReadyFlag && (
+          {!showIntro && !gamePaused && !showCollect && (stateRef.current?.giftReady) && (
             <div className="absolute inset-0 z-[8] flex items-center justify-center pointer-events-none">
               <button
                 onClick={grantGift}
