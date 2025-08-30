@@ -33,7 +33,9 @@ const S_GIFT  = "/sounds/gift.mp3";
 
 // ===== UI constants =====
 // קופסת פריסה לאייקון (לא משנה את גובה הכפתור)
-const UI_SPAWN_ICON_BOX = 18;
+const UI_BTN_H_PX = 50; // שנה פה פעם אחת: 28/32/36/40...
+ // קופסת אייקון ADD נגזרת מהגובה (חצי גובה נראה טוב)
+ const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 // זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
 const UI_SPAWN_ICON_ZOOM =
   (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2;
@@ -752,7 +754,7 @@ cnv.removeEventListener("touchstart", onTouchStart);
 }
 
 // ----- גיאומטריה -----
-const PILL_H = 36; // גובה כפתור ADD
+const PILL_H = UI_BTN_H_PX; // גובה ADD מיושר לקבוע הגלובלי
 function boardRect(){
   const c = canvasRef.current;
   return { x:PADDING, y:PADDING, w:(c?.clientWidth||0)-PADDING*2, h:(c?.clientHeight||0)-PADDING*2 };
@@ -1635,8 +1637,11 @@ const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
 const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
 const boughtCount = sNow?.totalPurchased || 0;
 const toNextLv    = 30 - (boughtCount % 30); // 30 → 1..30
-const BTN_H = "h-9"; // 36px – אותו גובה לכולם
-const BTN_BASE = "inline-flex items-center gap-1 px-3 rounded-xl font-extrabold text-[13px] leading-none transition ring-2";
+const BTN_H = `h-[${UI_BTN_H_PX}px]`; // גובה מתוך הקבוע
+
+ // רינגים של Coin/🎁/🐶 (במקום w-8 h-8)
+ const RING_SZ = `w-[${UI_BTN_H_PX}px] h-[${UI_BTN_H_PX}px]`;
+const BTN_BASE = "inline-flex items-center gap-1 px-2 rounded-xl font-extrabold text-[12px] leading-none transition ring-2";
 const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
 
