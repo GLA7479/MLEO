@@ -15,7 +15,10 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_81_reset2";
+const LS_KEY = "mleoMiners_v5_82_reset2";
+// First–play terms acceptance gate (global versioned)
+const TERMS_VERSION = "v1"; // ⬅️ bump to "v2", "v3"... to force everyone to re-accept
+const TERMS_KEY = `mleoMiners_termsAccepted_${TERMS_VERSION}`;
 
 // Assets
 const IMG_BG    = "/images/bg-cave.png";
@@ -38,7 +41,7 @@ const UI_BTN_H_PX = 50; // שנה פה פעם אחת: 28/32/36/40...
  const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 // זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
 const UI_SPAWN_ICON_ZOOM =
-  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2;
+  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2.4;
 // היסט אנכי עדין ליישור (px) – אופציונלי
 const UI_SPAWN_ICON_SHIFT_Y =
   (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
@@ -157,6 +160,14 @@ function saveMiningState(st){
   try { localStorage.setItem(MINING_LS_KEY, JSON.stringify(st)); } catch {}
 }
 
+// ===== Terms helpers =====
+function isTermsAccepted() {
+  try { return localStorage.getItem(TERMS_KEY) === "yes"; } catch { return false; }
+}
+function acceptTerms() {
+  try { localStorage.setItem(TERMS_KEY, "yes"); } catch {}
+}
+
 function addPlayerScorePoints(_s, baseGoldEarned){
   if(!baseGoldEarned || baseGoldEarned<=0) return;
   const st = loadMiningState();
@@ -211,7 +222,9 @@ const { isConnected } = useAccount();
   const [isMobileLandscape, setIsMobileLandscape] = useState(false);
 
   const [showIntro, setShowIntro] = useState(true);
-    const [gamePaused, setGamePaused] = useState(true);
+  const [gamePaused, setGamePaused] = useState(true);
+  const [showTerms, setShowTerms] = useState(false);
+  const [firstTimeNeedsTerms, setFirstTimeNeedsTerms] = useState(false);
 
   const [showHowTo, setShowHowTo] = useState(false);
 const [showMiningInfo, setShowMiningInfo] = useState(false);
@@ -234,6 +247,15 @@ const [mining, setMining] = useState({
   vault: 0, claimedTotal: 0, history: []
 });
 const [claiming, setClaiming] = useState(false); // ← הוסף את זה
+
+// Check terms status on mount
+useEffect(() => {
+  const accepted = isTermsAccepted();
+  setFirstTimeNeedsTerms(!accepted);
+  if (!accepted) {
+    // Do not auto-open modal here; we show a banner and gate PLAY/CONNECT.
+  }
+}, []);
 
 
 
@@ -392,8 +414,8 @@ useEffect(() => {
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
 
   // אם אין minerScale/Width בשמירה – ברירות מחדל
-  if (loaded && loaded.minerScale == null) init.minerScale = 1.18;
-  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 1.24;
+  if (loaded && loaded.minerScale == null) init.minerScale = 1.10;
+  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 1.12;
 
   // עוגן עלות ראשוני
   if (init.costBase == null) {
@@ -583,8 +605,8 @@ function freshState(){
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
 
     // קנה מידה לכלב
-    minerScale: 1.18, // גובה/סקייל כולל
-    minerWidth: 1.24, // הרחבת רוחב בלבד
+    minerScale: 1.10, // גובה/סקייל כולל
+    minerWidth: 1.12, // הרחבת רוחב בלבד
 
     anim:{ t:0, coins:[], hint:1, fx:[] },
     onceSpawned:false,
@@ -1125,8 +1147,8 @@ function save() {
       onceSpawned: s.onceSpawned,
 
       // קני מידה של הכלב
-      minerScale: s.minerScale || 1.18,
-      minerWidth: s.minerWidth || 1.24,
+      minerScale: s.minerScale || 1.10,
+      minerWidth: s.minerWidth || 1.12,
 
       lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
       totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
@@ -1439,18 +1461,28 @@ async function exitFullscreenIfAny() { try { if (document.fullscreenElement) awa
 
 async function resetGame() {
   try { play?.(S_CLICK); } catch {}
-  try { localStorage.removeItem(LS_KEY); } catch {}
 
+  // מוחק את שתי השמירות
+  try {
+    localStorage.removeItem(LS_KEY);         // שמירת המשחק
+    localStorage.removeItem(MINING_LS_KEY);  // שמירת הכרייה (Balance/Vault/History)
+  } catch {}
+
+  // מאפס סטייט הכרייה במסך
+  setMining({
+    balance: 0, minedToday: 0, lastDay: getTodayKey(),
+    scoreToday: 0, vault: 0, claimedTotal: 0, history: []
+  });
+
+  // בונה משחק חדש מאפס
   const fresh = makeFreshState();
   fresh.costBase = Math.max(80, expectedRockCoinReward(fresh));
   stateRef.current = fresh;
 
   setUi(u => ({
     ...u,
-    gold: fresh.gold,
-    spawnCost: fresh.spawnCost,
-    dpsMult: fresh.dpsMult,
-    goldMult: fresh.goldMult,
+    gold: fresh.gold, spawnCost: fresh.spawnCost,
+    dpsMult: fresh.dpsMult, goldMult: fresh.goldMult,
   }));
 
   setAdCooldownUntil(0);
@@ -1464,8 +1496,9 @@ async function resetGame() {
   setGamePaused(true);
   await exitFullscreenIfAny();
 
-  save();
+  save(); // שומר את ה־fresh החדש
 }
+
 // === END PART 6 ===
 
 
@@ -1712,12 +1745,22 @@ return (
             <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
             <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
 
-            <p className="text-sm sm:text-base text-gray-200 mb-6">Merge miners, break rocks, earn gold.</p>
+           <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
+
+            {firstTimeNeedsTerms && (
+              <div className="mb-4 w-full max-w-md">
+                <div className="px-3 py-2 rounded-lg bg-yellow-300/20 text-yellow-200 border border-yellow-300/40 text-xs sm:text-sm">
+                  You must read and accept the <b>Terms &amp; Conditions</b> before playing for the first time.
+                </div>
+              </div>
+            )}
+ 
 
 <div className="flex gap-3 flex-wrap justify-center">
   <button
     onClick={async () => {
       try { play?.(S_CLICK); } catch {}
+if (firstTimeNeedsTerms) { setShowTerms(true); return; }
       const s = stateRef.current;
       if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
 
@@ -1741,6 +1784,7 @@ return (
   <button
     onClick={async () => {
       try { play?.(S_CLICK); } catch {}
+if (firstTimeNeedsTerms) { setShowTerms(true); return; }
       const s = stateRef.current;
       if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
       setShowIntro(false);
@@ -1764,6 +1808,13 @@ return (
     className="px-5 py-3 font-bold rounded-lg text-base shadow bg-cyan-400 hover:bg-cyan-300 text-black"
   >
     MINING
+  </button>
+
+<button
+    onClick={() => setShowTerms(true)}
+    className="px-5 py-3 font-bold rounded-lg text-base shadow bg-teal-400 hover:bg-teal-300 text-black"
+  >
+    TERMS
   </button>
 </div>
 
@@ -1852,7 +1903,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
   style={{ top: hudTop }}
 >
   <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-center mb-2">
-    MLEO - MINERS
+    MLEO — MINERS
   </h1>
 
   {/* Wallet status (non-interactive) */}
@@ -2010,7 +2061,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
       />
     </span>
     <b className="tracking-tight align-middle">
-      (LV {stateRef.current?.spawnLevel || 1} — {formatShort(spawnCostNow)})
+      (LV {stateRef.current?.spawnLevel || 1}) — {formatShort(spawnCostNow)}
     </b>
   </button>
 
@@ -2267,6 +2318,79 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
           className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
         >
           Close
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{showTerms && (
+  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-2xl font-extrabold">Terms &amp; Conditions</h2>
+        <button
+          onClick={() => setShowTerms(false)}
+          className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="text-sm text-slate-700 space-y-4 text-left">
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">1) Coins vs. MLEO</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li><b>Coins</b> are in-game currency for upgrades and purchases.</li>
+            <li><b>MLEO</b> is earned only via mining activity (see below).</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">2) How MLEO is earned</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li><b>Only</b> by breaking rocks. Gifts/ads/diamonds do not directly grant MLEO.</li>
+            <li>Each rock break adds daily mining points which convert to MLEO up to your daily cap.</li>
+            <li>Offline simulation (up to 12h) also counts if rocks are virtually broken.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">3) Fairness: Daily Pool & Cap</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>There is a fixed global daily pool of MLEO.</li>
+            <li>Each player has a daily cap. After reaching it, no further MLEO is added that day.</li>
+            <li>If total demand exceeds the pool, rewards are scaled down equally for everyone (pro-rata).</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">4) Claim & Vault</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>Your daily earned balance can be <b>CLAIM</b>ed into your Vault.</li>
+            <li>Before token launch this is off-chain; after launch, transfers to wallet may be enabled.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">5) Fair Play & Security</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>No bots, exploits or automation. Abusive behavior may lead to suspension or reset.</li>
+            <li>Data shown in the HUD may include rounding and can change as the system updates.</li>
+          </ul>
+        </section>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-4">
+        <button
+          onClick={() => {
+            acceptTerms();
+            setFirstTimeNeedsTerms(false);
+            setShowTerms(false);
+          }}
+          className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-500 font-bold"
+        >
+          I Agree
         </button>
       </div>
     </div>
