@@ -4,7 +4,7 @@
 // v5.8
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
-import { ConnectButton, useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
+import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 
 
@@ -191,6 +191,7 @@ const { isConnected } = useAccount();
     const [gamePaused, setGamePaused] = useState(true);
 
   const [showHowTo, setShowHowTo] = useState(false);
+const [showMiningInfo, setShowMiningInfo] = useState(false);
     const [adCooldownUntil, setAdCooldownUntil] = useState(0);
   const [showAdModal, setShowAdModal] = useState(false);
   const [adVideoEnded, setAdVideoEnded] = useState(false);
@@ -1311,7 +1312,7 @@ function trySpawnDogOrConvert(_s, _level) {
 function handleOfflineAccrual(s, elapsedMs) {
   if (!s) return 0;
 
-  // צבירת בנק בלבד (לא חלוקה)
+  // צבירת בנק אוטו־דוג (לא מחלק בפועל בזמן offline)
   const intervalSec = (typeof DOG_INTERVAL_SEC !== "undefined" ? DOG_INTERVAL_SEC : 1800);
   const intervalMs  = intervalSec * 1000;
   const cap         = (typeof DOG_BANK_CAP !== "undefined" ? DOG_BANK_CAP : 6);
@@ -1328,7 +1329,7 @@ function handleOfflineAccrual(s, elapsedMs) {
     }
   }
 
-  // סימולציית זהב OFFLINE
+  // סימולציית שבירת סלעים עד תקרה של 12 שעות
   const CAP_MS = 12 * 60 * 60 * 1000; // 12h
   const simMs = Math.min(elapsedMs, CAP_MS);
   let totalCoins = 0;
@@ -1360,9 +1361,20 @@ function handleOfflineAccrual(s, elapsedMs) {
     s.lanes[lane].rockCount = idx;
   }
 
-  if (totalCoins > 0) s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
+  // הוספת Coins לקרדיט לאסוף + עדכון כריית MLEO בדיוק כמו אונליין
+  if (totalCoins > 0) {
+    s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
+    try {
+      // נקודות כרייה יומיות (נשמר ב-localStorage תחת MINING_LS_KEY)
+      addPlayerScorePoints(s, totalCoins);
+      // בדיוק כמו בטיקט אונליין — ממיר נקודות ליתרה בפועל עד DAILY_CAP
+      finalizeDailyRewardOncePerTick();
+    } catch {}
+  }
+
   return totalCoins;
 }
+
 
 // ===== Gifts: weights & handlers =====
 function rollGiftType() {
@@ -1646,24 +1658,29 @@ return (
 
             <p className="text-sm sm:text-base text-gray-200 mb-6">Merge miners, break rocks, earn gold.</p>
 
-          <div className="flex gap-3 flex-wrap justify-center">
-<button
-  onClick={() => {
-    try { play?.(S_CLICK); } catch {}
-    if (isConnected) {
-      openAccountModal?.();   // כבר מחובר → פותח מודאל חשבון
-    } else {
-      openConnectModal?.();   // לא מחובר → פותח מודאל חיבור
-    }
-  }}
-  className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
->
-  CONNECT WALLET
-</button>
+<div className="flex gap-3 flex-wrap justify-center">
+  <button
+    onClick={async () => {
+      try { play?.(S_CLICK); } catch {}
+      const s = stateRef.current;
+      if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
 
+      setShowIntro(false);
+      setGamePaused(false);
+      try { await enterFullscreenAndLockMobile(); } catch {}
 
-
-
+      setTimeout(() => {
+        if (isConnected) {
+          openAccountModal?.();
+        } else {
+          openConnectModal?.();
+        }
+      }, 0);
+    }}
+    className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
+  >
+    CONNECT WALLET
+  </button>
 
   <button
     onClick={async () => {
@@ -1685,7 +1702,15 @@ return (
   >
     HOW TO PLAY
   </button>
+
+  <button
+    onClick={() => setShowMiningInfo(true)}
+    className="px-5 py-3 font-bold rounded-lg text-base shadow bg-cyan-400 hover:bg-cyan-300 text-black"
+  >
+    MINING
+  </button>
 </div>
+
           </div>
         )}
 {/* === END PART 8 === */}
@@ -1774,25 +1799,31 @@ return (
     MLEO - MINERS
   </h1>
 
-  <div className="absolute top-2 right-2 z-[40]">
-    <ConnectButton showBalance={false} accountStatus="address" chainStatus="icon" />
-    {/* אנימציות גלואו ליהלומים (חזרה לגרסת הפרוד) */}
-    <style jsx global>{`
-      @keyframes glowPulse {
-        0% { opacity: .55; transform: scale(.98); }
-        50% { opacity: 1; transform: scale(1); }
-        100% { opacity: .55; transform: scale(.98); }
-      }
-      @keyframes glowRing {
-        0% { opacity: .6; }
-        50% { opacity: 1; }
-        100% { opacity: .6; }
-      }
-    `}</style>
+  {/* Wallet status (non-interactive) */}
+  <div className="absolute top-2 left-2 z-[40]">
+    <div
+      className={`${isConnected ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white/70"} px-2 py-0.5 rounded-md text-[11px] font-semibold`}
+    >
+      {isConnected ? "● Connected" : "○ Not connected"}
+    </div>
   </div>
 
+  {/* keep glow keyframes for diamonds */}
+  <style jsx global>{`
+    @keyframes glowPulse {
+      0% { opacity: .55; transform: scale(.98); }
+      50% { opacity: 1; transform: scale(1); }
+      100% { opacity: .55; transform: scale(.98); }
+    }
+    @keyframes glowRing {
+      0% { opacity: .6; }
+      50% { opacity: 1; }
+      100% { opacity: .6; }
+    }
+  `}</style>
+
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
-    {/* Coins + ad ring (clickable info) */}
+    {/* Coins + ad ring */}
     <button
       onClick={()=>setHudModal('coins')}
       className="px-2 py-1 rounded-lg flex items-center gap-2 hover:bg-white/10"
@@ -1936,30 +1967,29 @@ return (
       RESET
     </button>
   </div>
-{/* Mining status + CLAIM */}
-<div className="w-full flex justify-center mt-2">
-  <div className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm">
-    <span className="font-semibold">🪙 MLEO Mining</span>
-    <span className="text-gray-200">
-      Balance: <b className="text-yellow-300">{formatShort(mining?.balance || 0)}</b>
-    </span>
-    <span className="text-gray-400 text-xs">
-      Today: {formatShort(mining?.minedToday || 0)} / {formatShort(DAILY_CAP)}
-    </span>
-    <button
-      onClick={onClaimMined}
-      disabled={claiming || (mining?.balance || 0) <= 0}
-      className={`px-3 py-1.5 rounded-lg font-extrabold text-xs ${
-        (mining?.balance || 0) > 0
-          ? "bg-yellow-400 hover:bg-yellow-300 text-black"
-          : "bg-slate-500 text-white/70 cursor-not-allowed"
-      }`}
-      title={(mining?.balance || 0) > 0 ? "Claim mined tokens" : "No tokens to claim"}
-    >
-      CLAIM
-    </button>
+
+  {/* Mining status + CLAIM (compact) */}
+  <div className="w-full flex justify-center mt-1">
+    <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs">
+      <span className="font-bold">🪙</span>
+      <span className="text-yellow-300 font-extrabold">{formatShort(mining?.balance || 0)}</span>
+      <span className="text-gray-400 hidden sm:inline">
+        • {formatShort(mining?.minedToday || 0)}/{formatShort(DAILY_CAP)}
+      </span>
+      <button
+        onClick={onClaimMined}
+        disabled={claiming || (mining?.balance || 0) <= 0}
+        className={`px-2.5 py-1 rounded-md font-extrabold ${
+          (mining?.balance || 0) > 0
+            ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+            : "bg-slate-500 text-white/70 cursor-not-allowed"
+        }`}
+        title={(mining?.balance || 0) > 0 ? "Claim" : "No tokens to claim"}
+      >
+        CLAIM
+      </button>
+    </div>
   </div>
-</div>
 </div>
 
 {/* === END PART 9 === */}
@@ -2066,19 +2096,110 @@ return (
         )}
 {showHowTo && (
   <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
-    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
-      <h2 className="text-2xl font-extrabold mb-2">How to Play</h2>
-      <ol className="list-decimal ml-5 text-sm text-slate-700 space-y-2 mb-4">
-        <li>Tap <b>ADD</b> on an empty slot to place a dog (cost shown on the button).</li>
-        <li>Drag two dogs of the same level together to merge and level up.</li>
-        <li>Dogs deal DPS to rocks. When a rock breaks — you earn coins.</li>
-        <li>Use coins to buy more dogs or upgrade <b>DPS</b> and <b>GOLD</b> multipliers.</li>
-        <li>🎁 Gifts arrive on a global timer. Claim them for bonuses.</li>
-        <li>🐶 Auto-dog fills a small bank over time and deploys when there’s a free slot.</li>
-      </ol>
-      <div className="flex justify-end gap-2">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
+      <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
+
+      <div className="space-y-4 text-sm text-slate-700">
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Goal</h3>
+          <p>Merge miners (dogs), break rocks, and earn Coins. More Coins mean faster upgrades and stronger mining.</p>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Board & Merging</h3>
+          <ol className="list-decimal ml-5 space-y-1">
+            <li>Tap <b>ADD</b> on an empty slot to place a dog. The cost is shown on the button and increases over time.</li>
+            <li>Drag two dogs of the same level onto the same slot to merge them into a higher level.</li>
+            <li>Each dog adds <b>DPS</b> (damage per second) to the lane’s rock. When a rock breaks, you get Coins.</li>
+            <li>Rocks level up as you progress. Higher rocks have more HP and pay out more Coins.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Upgrades & Bonuses</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li><b>🪓 DPS +10%</b> – increases damage rate so rocks break faster.</li>
+            <li><b>🟡 GOLD +10%</b> – increases Coins earned from each rock.</li>
+            <li><b>🎁 Global Gifts</b> – arrive on a global timer (20–60s by phase). Rewards: Coins, a free dog, DPS/GOLD boost, or 💎.</li>
+            <li><b>💎 Diamonds</b> – collect 3 to open a chest (Coins ×10/×100/×1000 or a high-level dog). If the board is full, the dog waits until a slot is free.</li>
+            <li><b>GAIN (video)</b> – watch to get a 50% bonus based on your current progression; 10-minute cooldown.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Auto-Dog & Offline</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li><b>🐶 Auto-Dog</b> – a small bank fills over time (up to 6). When a slot is free, one dog is placed automatically.</li>
+            <li><b>Offline</b> – up to 12 hours of simulated progress. When you return, press <b>COLLECT</b> to claim the Coins.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Tips</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>Keep the board busy—higher total DPS breaks more rocks per minute.</li>
+            <li>Early game: prioritize <b>GOLD</b> to grow income; later: add <b>DPS</b> to scale speed.</li>
+            <li>Grab gifts and use <b>GAIN</b> whenever ready—they give strong momentum.</li>
+          </ul>
+        </section>
+
+        <p className="text-xs text-slate-500">Want details about MLEO mining? Use the <b>MINING</b> button on the start screen or open the “Mining & Tokens” modal.</p>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-4">
         <button
           onClick={() => setShowHowTo(false)}
+          className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{showMiningInfo && (
+  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
+      <h2 className="text-2xl font-extrabold mb-3">Mining & Tokens</h2>
+
+      <div className="space-y-4 text-sm text-slate-700">
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Coins vs. MLEO</h3>
+          <p><b>Coins</b> are the in-game currency for dogs and upgrades. <b>MLEO</b> is the token you accrue through play—shown in the <b>MLEO Mining</b> bar (Balance / Today) and claimable to your wallet.</p>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">How MLEO accrues</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>Breaking rocks earns Coins. Those earnings generate <b>mining points</b> in the background.</li>
+            <li>Mining points accumulate during the day up to a <b>player daily cap</b>. The “Today” line shows progress toward that cap.</li>
+            <li>Points convert automatically into your <b>MLEO balance</b>. When ready, press <b>CLAIM</b> (wallet required) to withdraw.</li>
+          </ul>
+          <p className="text-xs text-slate-500 mt-1">Until the on-chain contract is live, claiming may be simulated locally, but the UI flow remains the same.</p>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Daily emission & fairness</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>The system has a fixed <b>daily emission</b> distributed over time.</li>
+            <li>Each player has a <b>daily cap</b>—a fair share for that day. You can’t exceed it; it resets tomorrow.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">Maximizing mining</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>Upgrade <b>GOLD xN</b> to increase Coins per rock—this accelerates mining points.</li>
+            <li>Keep the board filled and merge up to raise <b>DPS</b> and break rocks faster.</li>
+            <li>Use <b>🎁 Gifts</b> and <b>GAIN</b> for quick boosts when available.</li>
+          </ul>
+        </section>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-4">
+        <button
+          onClick={() => setShowMiningInfo(false)}
           className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
         >
           Close
