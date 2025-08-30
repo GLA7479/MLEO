@@ -4,6 +4,11 @@
 // v5.8
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
+import { ConnectButton, useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
+import { useAccount } from "wagmi";
+
+
+
 
 // ====== Config ======
 const LANES = 4;
@@ -165,6 +170,10 @@ export default function MleoMiners() {
   const rafRef    = useRef(0);
   const dragRef   = useRef({ active:false });
   const stateRef  = useRef(null);
+const { openConnectModal } = useConnectModal();
+const { openAccountModal } = useAccountModal();
+const { isConnected } = useAccount();
+
 const [hudInfo, setHudInfo] = useState(null); // {title, text} | null
 
 
@@ -1534,10 +1543,9 @@ const price=(n)=>formatShort(n??0);
   // ——— iOS detection ———
   const [isIOS, setIsIOS] = useState(false);
 
-// מרחק HUD מהחלק העליון: iOS = רק ה-safe-area, Android = הרבה יותר
-const HUD_TOP_IOS_PX = 0;     // לא לרדת בכלל (מעבר ל-safe-area)
-const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונן לפי הצורך)
-
+  // מרחק HUD מהחלק העליון: iOS = רק ה-safe-area, Android = הרבה יותר
+  const HUD_TOP_IOS_PX = 0;     // לא לרדת בכלל (מעבר ל-safe-area)
+  const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונן לפי הצורך)
 
   // ——— Track fullscreen state (משמש רק לעיצוב) ———
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1593,66 +1601,53 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
 
             <p className="text-sm sm:text-base text-gray-200 mb-6">Merge miners, break rocks, earn gold.</p>
 
-            <div className="flex gap-3 flex-wrap justify-center">
-              <button
-                onClick={async () => {
-                  try { play?.(S_CLICK); } catch {}
-                  const s = stateRef.current;
-                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-                  setShowIntro(false);
-                  setGamePaused(false);
-                  try { await enterFullscreenAndLockMobile(); } catch {}
-                }}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
-              >
-                CONNECT WALLET
-              </button>
+          <div className="flex gap-3 flex-wrap justify-center">
+<button
+  onClick={async () => {
+    try { play?.(S_CLICK); } catch {}
+    const s = stateRef.current;
+    if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
 
-              <button
-                onClick={async () => {
-                  try { play?.(S_CLICK); } catch {}
-                  const s = stateRef.current;
-                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-                  setShowIntro(false);
-                  setGamePaused(false);
-                  try { await enterFullscreenAndLockMobile(); } catch {}
-                }}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
-              >
-                SKIP
-              </button>
+    setShowIntro(false);
+    setGamePaused(false);
+    try { await enterFullscreenAndLockMobile(); } catch {}
 
-              <button
-                onClick={() => setShowHowTo(true)}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
-              >
-                HOW TO PLAY
-              </button>
-            </div>
-          </div>
-        )}
+    setTimeout(() => {
+      if (isConnected) {
+        openAccountModal?.();
+      } else {
+        openConnectModal?.();
+      }
+    }, 0);
+  }}
+  className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
+>
+  CONNECT WALLET
+</button>
 
-        {/* HOW TO modal */}
-        {showHowTo && (
-          <div className="fixed inset-0 z-[10000] bg-black/70 flex items-center justify-center p-4">
-            <div className="bg-white text-slate-900 max-w-lg w-full rounded-2xl p-5 shadow-2xl">
-              <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
-              <ul className="list-disc pl-5 space-y-2 text-sm">
-                <li>Merge two same-level miners to upgrade.</li>
-                <li>Breaking rocks yields coins that scale with rock level.</li>
-                <li>Regular Gift = <b>10%</b> of the multi-lane reward.</li>
-                <li>Ad Gift (after video) = <b>50%</b> of the multi-lane reward.</li>
-                <li>Diamond Chest (3💎) gives large coin multipliers or dog levels.</li>
-              </ul>
-              <div className="flex justify-end mt-4">
-                <button
-                  onClick={() => setShowHowTo(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
+
+
+  <button
+    onClick={async () => {
+      try { play?.(S_CLICK); } catch {}
+      const s = stateRef.current;
+      if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+      setShowIntro(false);
+      setGamePaused(false);
+      try { await enterFullscreenAndLockMobile(); } catch {}
+    }}
+    className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
+  >
+    PLAY
+  </button>
+
+  <button
+    onClick={() => setShowHowTo(true)}
+    className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
+  >
+    HOW TO PLAY
+  </button>
+</div>
           </div>
         )}
 {/* === END PART 8 === */}
@@ -1742,6 +1737,10 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
   <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-center mb-2">
     MLEO - MINERS
   </h1>
+<div className="absolute top-2 right-2 z-[40]">
+  <ConnectButton showBalance={false} accountStatus="address" chainStatus="icon" />
+</div>
+
 
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
     {/* Coins + ad ring (clickable info) */}
@@ -1989,6 +1988,30 @@ const HUD_TOP_ANDROID_PX = 5; // באנדרואיד לרדת הרבה (כוונ�
             </div>
           </div>
         )}
+{showHowTo && (
+  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
+      <h2 className="text-2xl font-extrabold mb-2">How to Play</h2>
+      <ol className="list-decimal ml-5 text-sm text-slate-700 space-y-2 mb-4">
+        <li>Tap <b>ADD</b> on an empty slot to place a dog (cost shown on the button).</li>
+        <li>Drag two dogs of the same level together to merge and level up.</li>
+        <li>Dogs deal DPS to rocks. When a rock breaks — you earn coins.</li>
+        <li>Use coins to buy more dogs or upgrade <b>DPS</b> and <b>GOLD</b> multipliers.</li>
+        <li>🎁 Gifts arrive on a global timer. Claim them for bonuses.</li>
+        <li>🐶 Auto-dog fills a small bank over time and deploys when there’s a free slot.</li>
+      </ol>
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={() => setShowHowTo(false)}
+          className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
         {/* Diamond Rewards Modal */}
         {showDiamondInfo && (
