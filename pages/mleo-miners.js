@@ -1635,6 +1635,10 @@ const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
 const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
 const boughtCount = sNow?.totalPurchased || 0;
 const toNextLv    = 30 - (boughtCount % 30); // 30 → 1..30
+const BTN_H = "h-9"; // 36px – אותו גובה לכולם
+const BTN_BASE = "inline-flex items-center gap-1 px-3 rounded-xl font-extrabold text-[13px] leading-none transition ring-2";
+const BTN_DIS  = "opacity-60 cursor-not-allowed";
+
 
 // === END PART 7 ===
 
@@ -1973,18 +1977,17 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
 
   {/* Actions row */}
   <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
-<button
-  onClick={addMiner}
-  disabled={!canBuyMiner}
-  className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold transition inline-flex items-center
-    ${canBuyMiner
-      ? "bg-emerald-500 hover:bg-emerald-400 ring-2 ring-emerald-300"
-      : "bg-emerald-500 opacity-60 cursor-not-allowed"}`}
->
-{/* פלוס נקי — אותו פונט/עובי כמו LV, ללא עיגול */}
-    <span className="mr-1 align-middle font-extrabold tracking-tight">+</span>
-
-    {/* אייקון — גדל ויזואלית בלבד עם scale, בלי להשפיע על פריסה */}
+  {/* ADD (spawn) */}
+  <button
+    onClick={addMiner}
+    disabled={!canBuyMiner}
+    className={`${BTN_BASE} ${BTN_H} ${
+      canBuyMiner
+        ? "bg-emerald-500 hover:bg-emerald-400 ring-emerald-300 text-slate-900"
+        : `bg-emerald-500 ring-emerald-300 text-slate-900 ${BTN_DIS}`
+    }`}
+  >
+    <span className="mr-1 align-middle font-extrabold">+</span>
     <span
       className="relative mr-1 inline-grid place-items-center align-middle"
       style={{ width: UI_SPAWN_ICON_BOX, height: UI_SPAWN_ICON_BOX }}
@@ -2001,56 +2004,66 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
         }}
       />
     </span>
+    <b className="tracking-tight align-middle">
+      (LV {stateRef.current?.spawnLevel || 1} — {formatShort(spawnCostNow)})
+    </b>
+  </button>
 
-  {/* טקסט */}
-  <b className="tracking-tight align-middle font-extrabold">
-    (LV {stateRef.current?.spawnLevel || 1} — {formatShort(spawnCostNow)})
-  </b>
-</button>
+  {/* DPS */}
+  <button
+    onClick={upgradeDps}
+    disabled={!canBuyDps}
+    className={`${BTN_BASE} ${BTN_H} ${
+      canBuyDps
+        ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
+        : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
+    }`}
+    title={`Cost ${formatShort(dpsCostNow)}`}
+  >
+    <span className="align-middle">🪓</span>
+    <span className="align-middle">+10% (Cost {formatShort(dpsCostNow)})</span>
+  </button>
 
-    <button
-      onClick={upgradeDps}
-      disabled={!canBuyDps}
-      className={`h-8 px-2.5 rounded-lg text-[13px] leading-none inline-flex items-center
-        text-slate-900 font-bold transition
-        ${canBuyDps
-          ? "bg-sky-500 hover:bg-sky-400 ring-2 ring-sky-300"
-          : "bg-sky-500 opacity-60 cursor-not-allowed"}`}
-    >
-      🪓 +10% (Cost {formatShort(dpsCostNow)})
-    </button>
+  {/* GOLD */}
+  <button
+    onClick={upgradeGold}
+    disabled={!canBuyGold}
+    className={`${BTN_BASE} ${BTN_H} ${
+      canBuyGold
+        ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
+        : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
+    }`}
+    title={`Cost ${formatShort(goldCostNow)}`}
+  >
+    <span className="align-middle">🟡</span>
+    <span className="align-middle">+10% (Cost {formatShort(goldCostNow)})</span>
+  </button>
 
-    <button
-      onClick={upgradeGold}
-      disabled={!canBuyGold}
-      className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold transition
-        ${canBuyGold
-          ? "bg-amber-400 hover:bg-amber-300 ring-2 ring-amber-300"
-          : "bg-amber-400 opacity-60 cursor-not-allowed"}`}
-    >
-      🟡 +10% (Cost {formatShort(goldCostNow)})
-    </button>
+  {/* GAIN */}
+  <button
+    onClick={onAdd}
+    disabled={addDisabled}
+    className={`${BTN_BASE} ${BTN_H} ${
+      addDisabled
+        ? `bg-indigo-400 ring-indigo-300 text-slate-900 ${BTN_DIS}`
+        : "bg-indigo-400 hover:bg-indigo-300 ring-indigo-300 text-slate-900"
+    }`}
+    title={addRemainMs > 0 ? `Ad bonus in ${addRemainLabel}` : "Watch ad to earn"}
+  >
+    <span className="align-middle">GAIN</span>
+    {addRemainMs > 0 && <span className="opacity-80 align-middle">({addRemainLabel})</span>}
+  </button>
 
-    <button
-      onClick={onAdd}
-      disabled={addDisabled}
-      className={`px-3 py-1.5 rounded-xl text-slate-900 font-bold transition
-        ${addDisabled
-          ? "bg-indigo-400 opacity-60 cursor-not-allowed"
-          : "bg-indigo-400 hover:bg-indigo-300 ring-2 ring-indigo-300"}`}
-      title={addRemainMs > 0 ? `Ad bonus in ${addRemainLabel}` : "Watch ad to earn"}
-    >
-      GAIN {addRemainMs > 0 ? `(${addRemainLabel})` : ""}
-    </button>
+  {/* RESET */}
+  <button
+    onClick={() => setShowResetConfirm(true)}
+    className={`${BTN_BASE} ${BTN_H} bg-rose-500 hover:bg-rose-400 ring-rose-300 text-white`}
+    title="Reset all progress"
+  >
+    RESET
+  </button>
+</div>
 
-    <button
-      onClick={() => setShowResetConfirm(true)}
-      className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold transition ring-2 ring-rose-300"
-      title="Reset all progress"
-    >
-      RESET
-    </button>
-  </div>
 
 {/* Mining status + CLAIM (with Vault) */}
 <div className="w-full flex justify-center mt-1">
