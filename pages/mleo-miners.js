@@ -1641,7 +1641,7 @@ const BTN_H = `h-[${UI_BTN_H_PX}px]`; // גובה מתוך הקבוע
 
  // רינגים של Coin/🎁/🐶 (במקום w-8 h-8)
  const RING_SZ = `w-[${UI_BTN_H_PX}px] h-[${UI_BTN_H_PX}px]`;
-const BTN_BASE = "inline-flex items-center gap-1 px-2 rounded-xl font-extrabold text-[12px] leading-none transition ring-2";
+const BTN_BASE = "appearance-none inline-flex items-center justify-center gap-1 px-2 !py-0 rounded-xl font-extrabold text-[12px] leading-none whitespace-nowrap transition ring-2";
 const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
 
@@ -2048,7 +2048,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
   <button
     onClick={onAdd}
     disabled={addDisabled}
-    className={`${BTN_BASE} ${BTN_H} ${
+    className={`${BTN_BASE} ${BTN_H} min-h-[28px] ${
       addDisabled
         ? `bg-indigo-400 ring-indigo-300 text-slate-900 ${BTN_DIS}`
         : "bg-indigo-400 hover:bg-indigo-300 ring-indigo-300 text-slate-900"
