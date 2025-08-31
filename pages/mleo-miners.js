@@ -121,6 +121,27 @@ function phaseAtGlobal(nowMs = Date.now()) {
   return { index: GIFT_PHASES.length - 1, intervalSec: last.intervalSec, into: 0, phaseRemainSec: last.durSec, remainToNextGiftSec: last.intervalSec };
 }
 
+// === Gift timing helpers (global-cycle based) ===
+// משתמשים בפאזה הגלובלית כדי לקבל את אורך המרווח הנוכחי,
+// ומעדכנים s.lastGiftIntervalSec כדי שה-HUD יציג את אותו מרווח.
+function getPhaseInfo(s, now = Date.now()) {
+  const ph = phaseAtGlobal(now);
+  return {
+    index: ph.index,
+    into: ph.into,
+    remain: ph.remainToNextGiftSec,
+    intervalSec: ph.intervalSec,
+    phaseRemainSec: ph.phaseRemainSec,
+  };
+}
+
+function currentGiftIntervalSec(s, now = Date.now()) {
+  const ph = phaseAtGlobal(now);
+  if (s) s.lastGiftIntervalSec = ph.intervalSec; // לשמירה לשכבת ה־HUD בלבד
+  return ph.intervalSec;
+}
+
+
 
 // פרסים
 const DIAMOND_PRIZES = [
@@ -828,14 +849,17 @@ function freshState(){
     onceSpawned:false,
     totalPurchased:0, spawnLevel:1,
     lastSeen:now, pendingOfflineGold:0,
+    pendingOfflineMleo:0, // ← חדש: כמה MLEO נצבר באופליין להצגה בחלון
 
     // Gifts/diamonds
     cycleStartAt: now, lastGiftIntervalSec: 20,
     giftNextAt: now + 20000, giftReady:false,
     diamonds:0, nextDiamondPrize: rollDiamondPrize(),
 
-    // Auto-dog (בנק)
-    autoDogLastAt: now, autoDogBank: 0,
+    // Auto-dog
+    autoDogLastAt: now,
+    autoDogBank: 0,
+    autoDogPending: false, // כלב “מוכן” שממתין לסלוט פנוי
 
     // מודעות
     adCooldownUntil: 0,
@@ -844,6 +868,7 @@ function freshState(){
     pendingDiamondDogLevel: null,
   };
 }
+
 
 function loadSafe(){
   try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -1368,7 +1393,9 @@ function save() {
       minerScale: s.minerScale || 1.6,
       minerWidth: s.minerWidth || 0.8,
 
-      lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
+      lastSeen: s.lastSeen,
+      pendingOfflineGold: s.pendingOfflineGold || 0,
+      pendingOfflineMleo: s.pendingOfflineMleo || 0, // ← חדש
       totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
 
       cycleStartAt: s.cycleStartAt,
@@ -1378,7 +1405,10 @@ function save() {
       diamonds: s.diamonds || 0,
       nextDiamondPrize: s.nextDiamondPrize,
 
-      autoDogLastAt: s.autoDogLastAt, autoDogBank: s.autoDogBank,
+      autoDogLastAt: s.autoDogLastAt,
+      autoDogBank: s.autoDogBank,
+      autoDogPending: !!s.autoDogPending,
+
       costBase: s.costBase,
       adCooldownUntil: s.adCooldownUntil || 0,
 
@@ -1386,6 +1416,9 @@ function save() {
     }));
   } catch {}
 }
+
+
+
 function load() { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 
 function _baseCost(s) { if (!s) return 160; return Math.max(80, s.costBase || 120); }
@@ -1507,21 +1540,28 @@ function upgradeGold() {
 
 function onOfflineCollect() {
   const s = stateRef.current; if (!s) return;
-  const add = s.pendingOfflineGold || 0;
-  if (add > 0) {
-    s.gold += add;
+  const addCoins = s.pendingOfflineGold || 0;
+  const addMleo  = Number(s.pendingOfflineMleo || 0);
+
+  if (addCoins > 0) {
+    s.gold += addCoins;
     s.pendingOfflineGold = 0;
     setUi(u => ({ ...u, gold: s.gold }));
-    save();
-    const mleoPrev = previewMleoFromCoins(add); // הצגה בלבד; ה-MLEO כבר נוספה בזמן offline accrual
-setCenterPopup({
-  text: `⛏️ +${formatShort(add)} coins • +${Number(mleoPrev).toFixed(2)} MLEO`,
-  id: Math.random()
-});
+  }
+  // ה-MLEO כבר נזקף בזמן האופליין; כאן רק מאפסים את מונה ההצגה
+  s.pendingOfflineMleo = 0;
 
+  save();
+
+  if (addCoins > 0 || addMleo > 0) {
+    setCenterPopup({
+      text: `⛏️ +${formatShort(addCoins)} coins • +${addMleo.toFixed(2)} MLEO`,
+      id: Math.random()
+    });
+  }
+  setShowCollect(false);
 }
-setShowCollect(false);
-}
+
 
 // ===== לוגיקת אוטו־דוג והמתנות =====
 
@@ -1537,86 +1577,102 @@ function chooseGiftDogLevelForRegularGift(s) {
   return chooseAutoDogLevel(s);
 }
 
-// צבירת כלבים לבנק לפי זמן (לא מחלק OFFLINE; רק צובר עד קאפ)
+// צבירת “כלב אוטומטי” ONLINE (ללא בנק אמיתי)
 function accrueBankDogsUpToNow(s) {
   if (!s) return;
   const intervalMs = DOG_INTERVAL_SEC * 1000;
-  const cap        = DOG_BANK_CAP;
-  const now        = Date.now();
-  const last       = s.autoDogLastAt || now;
+  const now  = Date.now();
+  const last = s.autoDogLastAt || now;
 
-  if (now <= last) return;
-  if ((s.autoDogBank || 0) >= cap) { s.autoDogLastAt = now; return; }
+  // אם יש כלב ממתין – ננסה להציבו כשיש מקום; אחרת נשאיר את הטיימר “מוכן” (הרינג נשאר מלא)
+  if (s.autoDogPending) {
+    if (hasFreeSlot(s)) {
+      const lvl = chooseAutoDogLevel(s);
+      const ok  = spawnMiner(s, lvl);
+      if (ok) {
+        s.autoDogPending = false;
+        s.autoDogLastAt  = now; // אתחול טיימר
+        setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
+        save?.();
+      }
+    }
+    return;
+  }
 
-  const diffMs = now - last;
-  const made   = Math.floor(diffMs / intervalMs);
-  if (made <= 0) return;
-
-  const room = Math.max(0, cap - (s.autoDogBank || 0));
-  const add  = Math.min(made, room);
-  if (add <= 0) return;
-
-  s.autoDogBank = (s.autoDogBank || 0) + add;
-
-  // שמירת remainder לזמן הטבעת
-  if (s.autoDogBank >= cap) {
-    s.autoDogLastAt = now;
-  } else {
-    const consumed  = add * intervalMs;
-    const remainder = diffMs - consumed;
-    s.autoDogLastAt = now - remainder;
+  // אין pending: האם הגיע הזמן לכלב חדש?
+  if (now - last >= intervalMs) {
+    if (hasFreeSlot(s)) {
+      const lvl = chooseAutoDogLevel(s);
+      const ok  = spawnMiner(s, lvl);
+      if (ok) {
+        s.autoDogLastAt = now; // אתחול טיימר מהתחלה
+        setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
+        save?.();
+      }
+    } else {
+      // אין מקום: מסמנים כלב ממתין אחד; לא מאתחלים lastAt כדי שהרינג יישאר מלא
+      s.autoDogPending = true;
+    }
   }
 }
 
-// מחלק כלב אחד מהבנק כשיש מקום פנוי. מאפס טיימר (autoDogLastAt = עכשיו).
+// מפַזר “בנק” — כאן לא נדרש; משאירים קונטרול עדין על pending בלבד
 function tryDistributeBankDog(s) {
   if (!s) return;
-  if ((s.autoDogBank || 0) <= 0) return;
-
-  // יש סלוט פנוי?
-  if (countMiners(s) >= MAX_MINERS) return;
+  if (!s.autoDogPending) return;
+  if (!hasFreeSlot(s)) return;
 
   const lvl = chooseAutoDogLevel(s);
   const ok  = spawnMiner(s, lvl);
   if (ok) {
-    s.autoDogBank = Math.max(0, (s.autoDogBank || 0) - 1);
-    s.autoDogLastAt = Date.now(); // אתחול הטיימר מחדש
-    setCenterPopup({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
+    s.autoDogPending = false;
+    s.autoDogLastAt  = Date.now(); // אתחול טיימר
+    setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
     save?.();
   }
 }
 
-// אין המרה למטבעות כשאין מקום — החזרה false בלבד.
-function trySpawnDogOrConvert(_s, _level) {
-  const s = _s; const level = _level;
-  if (!s) return false;
-  if (countMiners(s) >= MAX_MINERS) return false;
-  const ok = spawnMiner(s, level);
-  if (ok) { save?.(); return true; }
-  return false;
-}
-
-// OFFLINE: רק צבירת בנק; לא חלוקה
+// OFFLINE: להציב עד 6 כלבים בפועל; נעצר כשאין מקום ומסמן pending 1
 function handleOfflineAccrual(s, elapsedMs) {
   if (!s) return 0;
 
-  // צבירת בנק אוטו־דוג (לא מחלק בפועל בזמן offline)
+  // ---- Auto-dog OFFLINE (כמו שתיקנו קודם) ----
   const intervalMs = DOG_INTERVAL_SEC * 1000;
-  const cap        = DOG_BANK_CAP;
+  const OFF_CAP = 6;
+  let ticks = Math.floor(elapsedMs / intervalMs);
+  if (ticks > OFF_CAP) ticks = OFF_CAP;
 
-  let toAdd = Math.floor(elapsedMs / intervalMs);
-  if (toAdd > 0) {
-    const room = Math.max(0, cap - (s.autoDogBank || 0));
-    const add  = Math.min(toAdd, room);
-    if (add > 0) {
-      s.autoDogBank = (s.autoDogBank || 0) + add;
-      const consumed  = add * intervalMs;
-      const remainder = Math.max(0, elapsedMs - consumed);
-      s.autoDogLastAt = Date.now() - remainder;
+  let placed = 0;
+  for (let i = 0; i < ticks; i++) {
+    if (!hasFreeSlot(s)) {
+      s.autoDogPending = true;
+      if ((Date.now() - (s.autoDogLastAt || 0)) < intervalMs) {
+        s.autoDogLastAt = Date.now() - intervalMs;
+      }
+      break;
     }
+    const lvl = chooseAutoDogLevel(s);
+    const ok  = spawnMiner(s, lvl);
+    if (!ok) {
+      s.autoDogPending = true;
+      if ((Date.now() - (s.autoDogLastAt || 0)) < intervalMs) {
+        s.autoDogLastAt = Date.now() - intervalMs;
+      }
+      break;
+    }
+    placed += 1;
   }
 
-  // סימולציית שבירת סלעים עד תקרה של 12 שעות — עם OFFLINE_DPS_FACTOR
+  if (s.autoDogPending) {
+    // להשאיר הטיימר “מוכן”
+  } else if (placed > 0) {
+    s.autoDogLastAt = Date.now();
+  } else {
+    const rem = elapsedMs % intervalMs;
+    s.autoDogLastAt = Date.now() - rem;
+  }
+
+  // ---- סימולציית שבירת סלעים (כמו שהיה) ----
   const CAP_MS = 12 * 60 * 60 * 1000;
   const simMs = Math.min(elapsedMs, CAP_MS);
   let totalCoins = 0;
@@ -1651,12 +1707,27 @@ function handleOfflineAccrual(s, elapsedMs) {
   if (totalCoins > 0) {
     s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
     try {
-      addPlayerScorePoints(s, totalCoins); // מכבד חיתוך רך+קאפ
+      // מודדים MLEO לפני ואחרי, כדי לדעת כמה באמת זוכה באופליין
+      const before = loadMiningState();
+      const balBefore = Number(before?.balance || 0);
+
+      addPlayerScorePoints(s, totalCoins);
       finalizeDailyRewardOncePerTick();
+
+      const after = loadMiningState();
+      const balAfter = Number(after?.balance || 0);
+      const delta = Math.max(0, +(balAfter - balBefore).toFixed(2));
+
+      s.pendingOfflineMleo = +((s.pendingOfflineMleo || 0) + delta).toFixed(2);
     } catch {}
   }
 
   return totalCoins;
+}
+
+// יש סלוט פנוי להצבה?
+function hasFreeSlot(s) {
+  return countMiners(s) < MAX_MINERS;
 }
 
 
@@ -2527,11 +2598,18 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
                 <img src={IMG_COIN} alt="coin" className="w-6 h-6" />
                 <h3 className="text-xl font-extrabold text-white">While you were away…</h3>
               </div>
-              <p className="text-gray-200 mb-4">
-                Earned{" "}
-                <b className="text-yellow-300">{formatShort(stateRef.current?.pendingOfflineGold || 0)}</b>{" "}
-                coins in the background.
-              </p>
+           <p className="text-gray-200 mb-4">
+  Earned{" "}
+  <b className="text-yellow-300">
+    {formatShort(stateRef.current?.pendingOfflineGold || 0)}
+  </b>{" "}
+  coins and{" "}
+  <b className="text-yellow-300">
+    {Number(stateRef.current?.pendingOfflineMleo || 0).toFixed(2)}
+  </b>{" "}
+  MLEO in the background.
+</p>
+
               <button
                 onClick={onOfflineCollect}
                 className="mx-auto px-6 py-3 rounded-xl bg-yellow-400 text-black font-extrabold text-lg shadow active:scale-95"
