@@ -240,6 +240,16 @@ const { isConnected } = useAccount();
     muted: false,
   });
 
+// === QA (hidden) ===
+const [showQAPanel, setShowQAPanel] = useState(false);
+function qaEnabled() {
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get("qa") === "1") return true;
+  } catch {}
+  return isLocalHost(); // פונקציה קיימת אצלך למעלה
+}
+
   
   const [isDesktop,  setIsDesktop]  = useState(false);
   const [isMobileLandscape, setIsMobileLandscape] = useState(false);
@@ -304,6 +314,22 @@ useEffect(() => {
    window.addEventListener("keydown", onKey);
    return () => window.removeEventListener("keydown", onKey);
  }, []);
+
+useEffect(() => {
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get("reset") === "1") { resetGame(true); }
+    else if (qs.get("softreset") === "1") { resetGame(false); }
+  } catch {}
+
+  const onKey = (e) => {
+    const k = (e.key || "").toLowerCase();
+    if (e.shiftKey && k === "r") setShowResetConfirm(true); // Shift+R
+  };
+  window.addEventListener("keydown", onKey);
+  return () => window.removeEventListener("keydown", onKey);
+}, []);
+
 
 
 
@@ -1531,22 +1557,27 @@ async function enterFullscreenAndLockMobile() { try {
 } catch {} }
 async function exitFullscreenIfAny() { try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {} }
 
-async function resetGame() {
+async function resetGame(includeTerms = false) {
   try { play?.(S_CLICK); } catch {}
 
-  // מוחק את שתי השמירות
+  // מוחק שמירות
   try {
     localStorage.removeItem(LS_KEY);         // שמירת המשחק
-    localStorage.removeItem(MINING_LS_KEY);  // שמירת הכרייה (Balance/Vault/History)
+    localStorage.removeItem(MINING_LS_KEY);  // שמירת הכרייה
+    if (includeTerms) localStorage.removeItem(TERMS_KEY); // איפוס אישור תקנון (אופציונלי)
+    // ניקוי תוספות דיבוג/טיונינג ויזואלי
+    localStorage.removeItem("SPAWN_ICON_ZOOM");
+    localStorage.removeItem("SPAWN_ICON_SHIFT_Y");
+    localStorage.removeItem(DEBUG_LS);
   } catch {}
 
-  // מאפס סטייט הכרייה במסך
+  // מאפס סטייט הכרייה בחזית
   setMining({
     balance: 0, minedToday: 0, lastDay: getTodayKey(),
     scoreToday: 0, vault: 0, claimedTotal: 0, history: []
   });
 
-  // בונה משחק חדש מאפס
+  // בונה fresh state
   const fresh = makeFreshState();
   fresh.costBase = Math.max(80, expectedRockCoinReward(fresh));
   stateRef.current = fresh;
@@ -1564,11 +1595,18 @@ async function resetGame() {
   setShowDiamondInfo(false);
   setShowResetConfirm(false);
 
+  // חזרה למסך פתיחה
   setShowIntro(true);
   setGamePaused(true);
   await exitFullscreenIfAny();
 
-  save(); // שומר את ה־fresh החדש
+  save();
+
+  // אם איפסנו תקנון — נדרוש אישור מחדש
+  if (includeTerms) {
+    setFirstTimeNeedsTerms(true);
+    setShowTerms(true);
+  }
 }
 
 // === END PART 6 ===
@@ -1823,6 +1861,17 @@ return (
               <div className="mb-4 w-full max-w-md">
                 <div className="px-3 py-2 rounded-lg bg-yellow-300/20 text-yellow-200 border border-yellow-300/40 text-xs sm:text-sm">
                   You must read and accept the <b>Terms &amp; Conditions</b> before playing for the first time.
+{/* QA button (hidden; localhost or ?qa=1) */}
+{qaEnabled() && (
+  <button
+    onClick={() => setShowQAPanel(true)}
+    className="fixed bottom-3 right-3 z-[10060] px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold border border-white/20"
+    title="QA tools"
+  >
+    QA
+  </button>
+)}
+
                 </div>
               </div>
             )}
@@ -2317,19 +2366,29 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
               </p>
 
               <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setShowResetConfirm(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={resetGame}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold"
-                >
-                  Yes, reset
-                </button>
-              </div>
+  <button
+    onClick={() => setShowResetConfirm(false)}
+    className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 font-semibold"
+  >
+    Cancel
+  </button>
+
+  <button
+    onClick={() => resetGame(false)}
+    className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-extrabold"
+    title="Reset progress (keep Terms accepted)"
+  >
+    Reset
+  </button>
+
+  <button
+    onClick={() => resetGame(true)}
+    className="px-4 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white font-extrabold"
+    title="Full factory reset including Terms"
+  >
+    Reset + Terms
+  </button>
+</div>
             </div>
           </div>
         )}
@@ -2803,5 +2862,70 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
 </div>
 </Layout>
 );
+
+{/* === QA PANEL (hidden) === */}
+{showQAPanel && (
+  <div className="fixed inset-0 z-[10080] bg-black/70 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-sm w-full rounded-2xl p-5 shadow-2xl">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-extrabold">QA Tools</h2>
+        <button
+          onClick={() => setShowQAPanel(false)}
+          className="px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="space-y-2 text-sm">
+        <button
+          onClick={() => { resetGame(false); setShowQAPanel(false); }}
+          className="w-full px-3 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-extrabold"
+          title="Reset progress (keep Terms accepted)"
+        >
+          Reset (keep Terms)
+        </button>
+
+        <button
+          onClick={() => { resetGame(true); setShowQAPanel(false); }}
+          className="w-full px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white font-extrabold"
+          title="Full factory reset including Terms"
+        >
+          Reset + Terms
+        </button>
+
+        <hr className="my-2 border-slate-200" />
+
+        <button
+          onClick={() => {
+            const s = stateRef.current; if (!s) return;
+            s.gold = (s.gold || 0) + 50000;
+            setUi(u => ({ ...u, gold: s.gold }));
+            save?.();
+          }}
+          className="w-full px-3 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold"
+          title="Add 50,000 coins to player balance"
+        >
+          + 50,000 Coins
+        </button>
+
+        <button
+          onClick={() => {
+            const s = stateRef.current; if (!s) return;
+            s.giftReady = true;
+            s.giftNextAt = Date.now();
+            setGiftReadyFlag(true);
+            save?.();
+          }}
+          className="w-full px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold"
+          title="Make the gift available immediately"
+        >
+          Gift Now
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 } 
 // === END PART 10 ===
