@@ -9,6 +9,27 @@ import { useAccount } from "wagmi";
 
 
 
+// --- iOS 100vh fix (sets --app-100vh = window.innerHeight) ---
+function useIOSViewportFix() {
+  useEffect(() => {
+    const setVH = () => {
+      if (typeof window === "undefined") return;
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty("--app-100vh", `${vh * 100}px`);
+    };
+    setVH();
+    window.addEventListener("resize", setVH);
+    window.addEventListener("orientationchange", setVH);
+    document.addEventListener("fullscreenchange", setVH);
+    return () => {
+      window.removeEventListener("resize", setVH);
+      window.removeEventListener("orientationchange", setVH);
+      document.removeEventListener("fullscreenchange", setVH);
+    };
+  }, []);
+}
+
+
 
 // ====== Config ======
 const LANES = 4;
@@ -60,7 +81,7 @@ const S_GIFT  = "/sounds/gift.mp3";
 const UI_BTN_H_PX = 60;
 const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 const UI_SPAWN_ICON_ZOOM =
-  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2;
+  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 1.55;
 const UI_SPAWN_ICON_SHIFT_Y =
   (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
 
@@ -310,6 +331,7 @@ function remainingWalletClaimRoom(){
 
 // === START PART 2 ===
 export default function MleoMiners() {
+  useIOSViewportFix();
   const wrapRef   = useRef(null);
   const canvasRef = useRef(null);
   const rafRef    = useRef(0);
@@ -472,10 +494,10 @@ async function onClaimMined() {
 
 // Debug live values for the panel (controlled inputs)
 const [debugVals, setDebugVals] = useState({
-  minerScale: stateRef.current?.minerScale ?? 1.10,
-  minerWidth: stateRef.current?.minerWidth ?? 1.12,
+  minerScale: stateRef.current?.minerScale ?? 1.60,
+  minerWidth: stateRef.current?.minerWidth ?? 0.8,
   spawnIconZoom:
-    (typeof window !== "undefined" && (window.SPAWN_ICON_ZOOM ?? Number(localStorage.getItem("SPAWN_ICON_ZOOM")))) || 2.2,
+    (typeof window !== "undefined" && (window.SPAWN_ICON_ZOOM ?? Number(localStorage.getItem("SPAWN_ICON_ZOOM")))) || 1.5,
   spawnIconShiftY:
     (typeof window !== "undefined" && (window.SPAWN_ICON_SHIFT_Y ?? Number(localStorage.getItem("SPAWN_ICON_SHIFT_Y")))) || 0,
 });
@@ -487,8 +509,8 @@ useEffect(() => {
   const zoom = (typeof window !== "undefined" && (window.SPAWN_ICON_ZOOM ?? Number(localStorage.getItem("SPAWN_ICON_ZOOM")))) || 2.2;
   const shift = (typeof window !== "undefined" && (window.SPAWN_ICON_SHIFT_Y ?? Number(localStorage.getItem("SPAWN_ICON_SHIFT_Y")))) || 0;
   setDebugVals({
-    minerScale: s.minerScale ?? 1.10,
-    minerWidth: s.minerWidth ?? 1.12,
+    minerScale: s.minerScale ?? 1.6,
+    minerWidth: s.minerWidth ?? 0.8,
     spawnIconZoom: Number(zoom) || 2.2,
     spawnIconShiftY: Number(shift) || 0,
   });
@@ -590,8 +612,8 @@ useEffect(() => {
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
 
   // אם אין minerScale/Width בשמירה – ברירות מחדל
-  if (loaded && loaded.minerScale == null) init.minerScale = 1.10;
-  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 1.12;
+  if (loaded && loaded.minerScale == null) init.minerScale = 1.60;
+  if (loaded && loaded.minerWidth  == null) init.minerWidth  = 0.8;
 
   // עוגן עלות ראשוני
   if (init.costBase == null) {
@@ -781,8 +803,8 @@ function freshState(){
     gold:0, spawnCost:50, dpsMult:1, goldMult:1,
 
     // קנה מידה לכלב
-    minerScale: 1.10, // גובה/סקייל כולל
-    minerWidth: 1.12, // הרחבת רוחב בלבד
+    minerScale: 1.6, // גובה/סקייל כולל
+    minerWidth: 0.8, // הרחבת רוחב בלבד
 
     anim:{ t:0, coins:[], hint:1, fx:[] },
     onceSpawned:false,
@@ -1325,8 +1347,8 @@ function save() {
       onceSpawned: s.onceSpawned,
 
       // קני מידה של הכלב
-      minerScale: s.minerScale || 1.10,
-      minerWidth: s.minerWidth || 1.12,
+      minerScale: s.minerScale || 1.6,
+      minerWidth: s.minerWidth || 0.8,
 
       lastSeen: s.lastSeen, pendingOfflineGold: s.pendingOfflineGold || 0,
       totalPurchased: s.totalPurchased, spawnLevel: s.spawnLevel,
@@ -1929,13 +1951,15 @@ return (
     <Layout>
       <div
         ref={wrapRef}
-        className="
-          flex flex-col items-center justify-start
+       className="
+          relative flex flex-col items-center justify-start
           bg-gray-900 text-white
-          min-h-[100dvh] w-full relative overflow-hidden select-none
-          pt-[calc(env(safe-area-inset-top)+8px)]
-          pb-[calc(env(safe-area-inset-bottom)+24px)]
+          w-full min-h-[var(--app-100vh,100dvh)]
+          overflow-hidden select-none
+          pt-[calc(env(safe-area-inset-top,0px)+8px)]
+          pb-[calc(env(safe-area-inset-bottom,0px)+16px)]
         "
+
         // במסך מלא: מבטלים padding כדי שהקאנבס יישב הכי גבוה וימלא את כל הגובה
         style={{
           paddingTop: isFullscreen ? 0 : undefined,
@@ -2103,8 +2127,9 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
             height: isDesktop
               ? undefined
               : (isFullscreen
-                  ? "100vh"
-                  : `calc(100svh - 65px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))`),
+                  ? "var(--app-100vh,100dvh)"
+                  : "calc(var(--app-100vh,100dvh) - 65px)"),
+
             aspectRatio: isDesktop ? "4 / 3" : undefined,
           }}
         >
@@ -2359,14 +2384,17 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
   title="Open MLEO details"
 >
  {(mining?.balance || 0) > 0 && (
-  <span
-    aria-hidden
-    className="absolute -inset-1 rounded-full"
-    style={{
-      animation: "glowPulse 2.4s infinite",
-      border: "1px solid rgba(250,204,21,.5)"
-    }}
-  />
+<span
+  aria-hidden
+  className="absolute -inset-px rounded-full"
+  style={{
+    animation: "glowPulse 1.2s infinite",
+    border: "2px solid rgba(250,204,21,.8)",
+    boxShadow: "0 0 10px rgba(250,204,21,.55), 0 0 20px rgba(250,204,21,.35)"
+  }}
+/>
+
+
 )}
 
   <img src={IMG_TOKEN} alt="MLEO" className="w-6 h-6 rounded-full pointer-events-none" />
@@ -2412,7 +2440,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
     >
       Vault: <b className="text-cyan-300 tabular-nums">
         {Math.floor(Number(mining?.vault || 0)).toLocaleString()}
-      </b> MLEO
+      </b> C
     </button>
   </div>
 </div>
@@ -2935,127 +2963,160 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
       <div className="mb-1">minerScale (height)</div>
       <div className="flex items-center gap-2">
         <input
-          type="range" min="0.6" max="1.8" step="0.01"
-          value={debugVals.minerScale}
+          type="range" min="0.6" max="2.0" step="0.01"
+          value={Number(debugVals.minerScale)}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            const s = stateRef.current; if (!s) return;
-            s.minerScale = v; safeSave();
-            setDebugVals(d => ({ ...d, minerScale: v }));
+            const v = Math.max(0.6, Math.min(2, parseFloat(e.target.value) || 1.10));
+            setDebugVals(x => ({ ...x, minerScale: v }));
+            if (stateRef.current) { stateRef.current.minerScale = v; save?.(); }
           }}
-          className="flex-1"
+          className="w-full"
         />
-        <div className="w-12 text-right tabular-nums">{debugVals.minerScale.toFixed(2)}</div>
+        <input
+          type="number" step="0.01"
+          value={Number(debugVals.minerScale)}
+          onChange={(e) => {
+            const v = Math.max(0.6, Math.min(2, parseFloat(e.target.value) || 1.10));
+            setDebugVals(x => ({ ...x, minerScale: v }));
+            if (stateRef.current) { stateRef.current.minerScale = v; save?.(); }
+          }}
+          className="w-16 px-1 py-0.5 rounded bg-white/10 border border-white/20"
+        />
       </div>
-      <input
-        type="number" step="0.01"
-        className="mt-1 w-24 bg-white/10 rounded px-1"
-        value={debugVals.minerScale}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value) || 1;
-          const s = stateRef.current; if (!s) return;
-          s.minerScale = v; safeSave();
-          setDebugVals(d => ({ ...d, minerScale: v }));
-        }}
-      />
     </label>
 
-    {/* minerWidth (width) */}
+    {/* minerWidth */}
     <label className="block mb-2">
-      <div className="mb-1">minerWidth (width)</div>
+      <div className="mb-1">minerWidth (stretch)</div>
       <div className="flex items-center gap-2">
         <input
-          type="range" min="0.7" max="1.8" step="0.01"
-          value={debugVals.minerWidth}
+          type="range" min="0.8" max="2.0" step="0.01"
+          value={Number(debugVals.minerWidth)}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            const s = stateRef.current; if (!s) return;
-            s.minerWidth = v; safeSave();
-            setDebugVals(d => ({ ...d, minerWidth: v }));
+            const v = Math.max(0.8, Math.min(2, parseFloat(e.target.value) || 1.12));
+            setDebugVals(x => ({ ...x, minerWidth: v }));
+            if (stateRef.current) { stateRef.current.minerWidth = v; save?.(); }
           }}
-          className="flex-1"
+          className="w-full"
         />
-        <div className="w-12 text-right tabular-nums">{debugVals.minerWidth.toFixed(2)}</div>
+        <input
+          type="number" step="0.01"
+          value={Number(debugVals.minerWidth)}
+          onChange={(e) => {
+            const v = Math.max(0.8, Math.min(2, parseFloat(e.target.value) || 1.12));
+            setDebugVals(x => ({ ...x, minerWidth: v }));
+            if (stateRef.current) { stateRef.current.minerWidth = v; save?.(); }
+          }}
+          className="w-16 px-1 py-0.5 rounded bg-white/10 border border-white/20"
+        />
       </div>
-      <input
-        type="number" step="0.01"
-        className="mt-1 w-24 bg-white/10 rounded px-1"
-        value={debugVals.minerWidth}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value) || 1;
-          const s = stateRef.current; if (!s) return;
-          s.minerWidth = v; safeSave();
-          setDebugVals(d => ({ ...d, minerWidth: v }));
-        }}
-      />
     </label>
 
-    <hr className="my-2 border-white/10" />
-
-    {/* SPAWN_ICON_ZOOM */}
+    {/* Spawn icon zoom */}
     <label className="block mb-2">
-      <div className="mb-1">SPAWN_ICON_ZOOM</div>
+      <div className="mb-1">Spawn Icon Zoom</div>
       <div className="flex items-center gap-2">
         <input
-          type="range" min="0.6" max="3" step="0.01"
-          value={debugVals.spawnIconZoom}
+          type="range" min="0.5" max="3.0" step="0.05"
+          value={Number(debugVals.spawnIconZoom)}
           onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            if (typeof window !== "undefined") window.SPAWN_ICON_ZOOM = v;
-            try { localStorage.setItem("SPAWN_ICON_ZOOM", String(v)); } catch {}
-            setDebugVals(d => ({ ...d, spawnIconZoom: v }));
+            const v = Math.max(0.5, Math.min(3, parseFloat(e.target.value) || 2.2));
+            setDebugVals(x => ({ ...x, spawnIconZoom: v }));
+            try {
+              window.SPAWN_ICON_ZOOM = v;
+              localStorage.setItem("SPAWN_ICON_ZOOM", String(v));
+            } catch {}
           }}
-          className="flex-1"
+          className="w-full"
         />
-        <div className="w-12 text-right tabular-nums">{debugVals.spawnIconZoom.toFixed(2)}</div>
+        <input
+          type="number" step="0.05"
+          value={Number(debugVals.spawnIconZoom)}
+          onChange={(e) => {
+            const v = Math.max(0.5, Math.min(3, parseFloat(e.target.value) || 2.2));
+            setDebugVals(x => ({ ...x, spawnIconZoom: v }));
+            try {
+              window.SPAWN_ICON_ZOOM = v;
+              localStorage.setItem("SPAWN_ICON_ZOOM", String(v));
+            } catch {}
+          }}
+          className="w-16 px-1 py-0.5 rounded bg-white/10 border border-white/20"
+        />
       </div>
     </label>
 
-    {/* SPAWN_ICON_SHIFT_Y */}
-    <label className="block">
-      <div className="mb-1">SPAWN_ICON_SHIFT_Y</div>
+    {/* Spawn icon Y-shift */}
+    <label className="block mb-2">
+      <div className="mb-1">Spawn Icon Shift Y (px)</div>
       <div className="flex items-center gap-2">
         <input
-          type="range" min="-10" max="10" step="1"
-          value={debugVals.spawnIconShiftY}
+          type="range" min="-40" max="40" step="1"
+          value={Number(debugVals.spawnIconShiftY)}
           onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            if (typeof window !== "undefined") window.SPAWN_ICON_SHIFT_Y = v;
-            try { localStorage.setItem("SPAWN_ICON_SHIFT_Y", String(v)); } catch {}
-            setDebugVals(d => ({ ...d, spawnIconShiftY: v }));
+            const v = Math.max(-40, Math.min(40, parseInt(e.target.value, 10) || 0));
+            setDebugVals(x => ({ ...x, spawnIconShiftY: v }));
+            try {
+              window.SPAWN_ICON_SHIFT_Y = v;
+              localStorage.setItem("SPAWN_ICON_SHIFT_Y", String(v));
+            } catch {}
           }}
-          className="flex-1"
+          className="w-full"
         />
-        <div className="w-12 text-right tabular-nums">{String(debugVals.spawnIconShiftY)}</div>
+        <input
+          type="number" step="1"
+          value={Number(debugVals.spawnIconShiftY)}
+          onChange={(e) => {
+            const v = Math.max(-40, Math.min(40, parseInt(e.target.value, 10) || 0));
+            setDebugVals(x => ({ ...x, spawnIconShiftY: v }));
+            try {
+              window.SPAWN_ICON_SHIFT_Y = v;
+              localStorage.setItem("SPAWN_ICON_SHIFT_Y", String(v));
+            } catch {}
+          }}
+          className="w-16 px-1 py-0.5 rounded bg-white/10 border border-white/20"
+        />
       </div>
     </label>
 
-    <div className="mt-3 flex gap-2">
+    {/* Quick stats */}
+    <div className="text-xs space-y-1 mt-2">
+      <div>minerScale: <b>{(stateRef.current?.minerScale ?? 1.10).toFixed(2)}</b></div>
+      <div>minerWidth: <b>{(stateRef.current?.minerWidth ?? 1.12).toFixed(2)}</b></div>
+      <div>spawnLevel: <b>{stateRef.current?.spawnLevel ?? 1}</b></div>
+      <div>diamonds: <b>{stateRef.current?.diamonds ?? 0}</b></div>
+    </div>
+
+    <div className="flex gap-2 mt-3">
       <button
         onClick={() => {
-          try {
-            localStorage.removeItem("SPAWN_ICON_ZOOM");
-            localStorage.removeItem("SPAWN_ICON_SHIFT_Y");
-          } catch {}
-          if (typeof window !== "undefined") {
-            delete window.SPAWN_ICON_ZOOM;
-            delete window.SPAWN_ICON_SHIFT_Y;
+          const reset = { minerScale: 1.10, minerWidth: 1.12 };
+          setDebugVals(v => ({ ...v, ...reset, spawnIconZoom: 2.2, spawnIconShiftY: 0 }));
+          if (stateRef.current) {
+            stateRef.current.minerScale = 1.10;
+            stateRef.current.minerWidth = 1.12;
+            save?.();
           }
-          setDebugVals(d => ({ ...d, spawnIconZoom: 2.2, spawnIconShiftY: 0 }));
+          try {
+            window.SPAWN_ICON_ZOOM = 2.2;
+            window.SPAWN_ICON_SHIFT_Y = 0;
+            localStorage.setItem("SPAWN_ICON_ZOOM", "2.2");
+            localStorage.setItem("SPAWN_ICON_SHIFT_Y", "0");
+          } catch {}
         }}
         className="px-2 py-1 rounded bg-white/15 hover:bg-white/25"
       >
-        Reset ADD icon
+        Reset defaults
       </button>
       <button
-        onClick={() => location.reload()}
-        className="px-2 py-1 rounded bg-yellow-400 text-black font-bold ml-auto"
+        onClick={() => { setDebugUI(false); setDebugFlag(false); }}
+        className="px-2 py-1 rounded bg-white/15 hover:bg-white/25"
       >
-        Reload
+        Close
       </button>
     </div>
   </div>
 )}
+
 </div>
 </Layout>
 );
