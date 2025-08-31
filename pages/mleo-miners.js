@@ -357,6 +357,38 @@ function remainingWalletClaimRoom(){
   return Math.max(0, maxCumulative - already);
 }
 
+// === helper components: TGE countdown + release bar ===
+// שים ברמת הקובץ, לא בתוך onClaimMined/useEffect/return!
+
+function TgeCountdown() {
+  const [ts, setTs] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!TGE_MS) return <div className="text-xs">TGE date not set.</div>;
+
+  const remain = Math.max(0, TGE_MS - ts);
+  if (remain === 0) return <div className="text-xs">TGE has started.</div>;
+
+  const d = Math.floor(remain / (24*3600*1000));
+  const h = Math.floor((remain % (24*3600*1000)) / (3600*1000));
+  const m = Math.floor((remain % (3600*1000)) / (60*1000));
+  const s = Math.floor((remain % (60*1000)) / 1000);
+  return <div className="text-sm">{d}d {h}h {m}m {s}s</div>;
+}
+
+function WalletReleaseBar() {
+  const pct = Math.round(currentClaimPct(Date.now()) * 100);
+  return (
+    <div className="w-full h-2 bg-white/60 rounded overflow-hidden mb-1">
+      <div className="h-2 bg-amber-500" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+
 // === END PART 1 ===
 
 
@@ -393,6 +425,7 @@ const { isConnected } = useAccount();
   const [gamePaused, setGamePaused] = useState(true);
   const [showTerms, setShowTerms] = useState(false);
   const [firstTimeNeedsTerms, setFirstTimeNeedsTerms] = useState(false);
+const [showFullHistory, setShowFullHistory] = useState(false);
 
   const [showHowTo, setShowHowTo] = useState(false);
 const [showMiningInfo, setShowMiningInfo] = useState(false);
@@ -418,6 +451,21 @@ const [mining, setMining] = useState({
   vault: 0, claimedTotal: 0, history: []
 });
 const [claiming, setClaiming] = useState(false); // ← הוסף את זה
+
+// === PATCH: auto-open "How it works" (Mining) once per session, when game starts ===
+useEffect(() => {
+  // open only after intro is closed (in mining screen)
+  if (showIntro) return;
+  try {
+    const K = "mleo_howitworks_seen";
+    if (sessionStorage.getItem(K) !== "1") {
+      setShowMiningInfo(true);     // reuse the Mining modal for "how it works"
+      sessionStorage.setItem(K, "1");
+    }
+  } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [showIntro]);
+
 
 // Check terms status on mount
 useEffect(() => {
@@ -611,43 +659,54 @@ function theStateFix_maybeMigrateLocalStorage(){
 }
 
 
-  // איסוף מתנה (כפתור 🎁) — לפי חלוקה שביקשת
-  function grantGift(){
-    const s = stateRef.current; if (!s) return;
-    const type = rollGiftType(); // PART 6
+function grantGift(){
+  const s = stateRef.current; if (!s) return;
+  const type = rollGiftType(); // updated weights (no dog in regular gifts)
 
-    if (type === "coins") {
-      const base = Math.max(10, expectedGiftCoinReward(s));
-      const gain = Math.round(base * 0.10);
-      s.gold += gain;
-      setUi(u => ({ ...u, gold: s.gold }));
-      setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
-    } else if (type === "dog") {
-      const lvl = chooseGiftDogLevelForRegularGift(s);
-      const ok = trySpawnDogOrConvert(s, lvl);
-      setCenterPopup({ text: ok ? `🎁 Free Dog (LV ${lvl})` : `🎁 Board full → converted to coins`, id: Math.random() });
-    } else if (type === "dps") {
-      s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(2);
-      setCenterPopup({ text: `🎁 DPS +10% (×${(s.dpsMult||1).toFixed(2)})`, id: Math.random() });
-    } else if (type === "gold") {
-      s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(2);
-      setCenterPopup({ text: `🎁 GOLD +10% (×${(s.goldMult||1).toFixed(2)})`, id: Math.random() });
-    } else if (type === "diamond") {
-      s.diamonds = (s.diamonds || 0) + 1;
-      setCenterPopup({ text: `🎁 +1 💎 (Diamonds: ${s.diamonds})`, id: Math.random() });
-    }
+  if (type === "coins20") {
+    // 70% → coins worth 20% of the rock
+    const base = Math.max(10, expectedGiftCoinReward(s));
+    const gain = Math.round(base * 0.20);
+    s.gold += gain;
+    setUi(u => ({ ...u, gold: s.gold }));
+    setCenterPopup({ text: `🎁 +${formatShort(gain)} coins (20%)`, id: Math.random() });
 
-    s.giftReady = false;
-    {
-const now = Date.now();
-const stepSec = currentGiftIntervalSec(s, now);
-s.giftNextAt = now + stepSec * 1000; // מרווח מלא מה־claim
+  } else if (type === "coins40") {
+    // 8% → coins worth 40% of the rock
+    const base = Math.max(10, expectedGiftCoinReward(s));
+    const gain = Math.round(base * 0.40);
+    s.gold += gain;
+    setUi(u => ({ ...u, gold: s.gold }));
+    setCenterPopup({ text: `🎁 +${formatShort(gain)} coins (40%)`, id: Math.random() });
+
+  } else if (type === "dps") {
+    // 8% → DPS +10%
+    s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(2);
+    setCenterPopup({ text: `🎁 DPS +10% (×${(s.dpsMult||1).toFixed(2)})`, id: Math.random() });
+
+  } else if (type === "gold") {
+    // 8% → GOLD +10%
+    s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(2);
+    setCenterPopup({ text: `🎁 GOLD +10% (×${(s.goldMult||1).toFixed(2)})`, id: Math.random() });
+
+  } else if (type === "diamond") {
+    // 6% → +1 Diamond
+    s.diamonds = (s.diamonds || 0) + 1;
+    setCenterPopup({ text: `🎁 +1 💎 (Diamonds: ${s.diamonds})`, id: Math.random() });
+  }
+
+  s.giftReady = false;
+  {
+    const now = Date.now();
+    const stepSec = currentGiftIntervalSec(s, now);
+    s.giftNextAt = now + stepSec * 1000; // full interval after claim
+  }
+
+  setGiftReadyFlag(false);
+  try { play(S_GIFT); } catch {}
+  save?.();
 }
 
-    setGiftReadyFlag(false);
-    try { play(S_GIFT); } catch {}
-    save?.();
-  }
 // === END PART 2 ===
 
 
@@ -1743,15 +1802,21 @@ function hasFreeSlot(s) {
 }
 
 
-// ===== Gifts: weights & handlers =====
+// Regular gifts only: no dog.
+// 70%: coins20 (20% of rock)
+// 8%:  dps (+10%)
+// 8%:  gold (+10%)
+// 6%:  diamond (+1)
+// 8%:  coins40 (40% of rock)
 function rollGiftType() {
   const r = Math.random() * 100;
-  if (r < 60) return "coins";
-  if (r < 78) return "dog";
-  if (r < 86) return "dps";
-  if (r < 94) return "gold";
-  return "diamond";
+  if (r < 70) return "coins20";    // 70%
+  if (r < 78) return "dps";        // 8%
+  if (r < 86) return "gold";       // 8%
+  if (r < 92) return "diamond";    // 6%
+  return "coins40";                // 8%
 }
+
 
 async function enterFullscreenAndLockMobile() { try {
   const w = window.innerWidth, desktop = w >= 1024;
@@ -2660,52 +2725,58 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
 {showHowTo && (
   <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
     <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
-      <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
+     <h2 className="text-2xl font-extrabold mb-3">How to Play</h2>
 
-      <div className="space-y-4 text-sm text-slate-700">
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">Goal</h3>
-          <p>Merge miners (dogs), break rocks, and earn <b>Coins</b>. From rock breaks only, a portion converts to <b>MLEO</b> (default 10%).</p>
-        </section>
+<div className="space-y-4 text-sm text-slate-700">
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">Goal</h3>
+    <p>
+      Merge dogs (miners), break rocks, and earn <b>Coins</b>. Coins are an in-game
+      resource used for upgrades and buying more miners. Some activity in the
+      game can also accrue <b>MLEO</b> (see “Mining &amp; Tokens” below).
+    </p>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">Board & Merging</h3>
-          <ol className="list-decimal ml-5 space-y-1">
-            <li>Tap <b>ADD</b> on an empty slot to place a dog. Cost rises over time.</li>
-            <li>Drag two dogs of the same level to merge into a higher level.</li>
-            <li>Each dog adds <b>DPS</b> to its lane; breaking a rock grants Coins. The reward popup shows both <b>Coins</b> and the estimated <b>MLEO</b> earned.</li>
-          </ol>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">Board &amp; Merging</h3>
+    <ol className="list-decimal ml-5 space-y-1">
+      <li>Tap <b>ADD</b> on an empty slot to place a dog. Cost rises over time.</li>
+      <li>Drag two dogs of the same level together to merge into a higher level.</li>
+      <li>Each dog adds damage per second (DPS) to its lane. When a rock breaks you receive Coins.</li>
+    </ol>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">Upgrades & Bonuses</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li><b>🪓 DPS +10%</b> – rocks break faster.</li>
-            <li><b>🟡 GOLD +10%</b> – more Coins per rock.</li>
-            <li><b>🎁 Global Gifts</b> – arrive on global timer; may grant Coins, a dog, DPS/GOLD boost, or 💎.</li>
-            <li><b>💎 Diamonds</b> – 3💎 opens a chest (big Coin multipliers or a high-level dog).</li>
-            <li><b>GAIN (video)</b> – +50% Coin bonus, 10m cooldown.</li>
-          </ul>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">Upgrades &amp; Bonuses</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li><b>DPS</b> upgrades make rocks break faster.</li>
+      <li><b>GOLD</b> upgrades increase the Coins you receive from broken rocks.</li>
+      <li>Gifts, auto-dogs and other bonuses may appear from time to time. Exact timings, drop types and balance values are dynamic and may change without notice.</li>
+      <li>Diamonds can be collected and spent for special rewards. Availability and rewards are not guaranteed.</li>
+    </ul>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">Mining (MLEO)</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>Only rock breaks generate MLEO (by converting a portion of the Coins; default 10%).</li>
-            <li>Daily soft-cut applies: as you approach your daily cap, effective MLEO per rock gradually tapers.</li>
-            <li>Offline progress earns at <b>50%</b> dog power and can simulate up to 12h.</li>
-            <li><b>CLAIM</b> moves your MLEO balance into your Vault. Claim to wallet opens per the token schedule.</li>
-          </ul>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">Mining &amp; Tokens (MLEO)</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li><b>How MLEO is accrued:</b> Only breaking rocks can generate MLEO. A portion of the Coins you earn from rock breaks may convert into MLEO at a variable rate that is subject to in-game balancing, daily limits and anti-abuse protections.</li>
+      <li><b>Daily limits &amp; tapering:</b> To keep things fair, daily accrual may taper as you approach your personal limit for the day. Limits and calculations are internal and can change.</li>
+      <li><b>Offline progress:</b> Limited offline progress is simulated at a reduced efficiency compared to active play. Exact values are internal and may change.</li>
+      <li><b>CLAIM:</b> Your accrued MLEO appears as a balance. Claiming moves it into your in-game <b>Vault</b>. If/when on-chain claims become available, additional unlock windows and restrictions may apply.</li>
+      <li><b>No value promise:</b> MLEO in this game is a <u>utility token for entertainment</u>. It has no intrinsic or guaranteed monetary value. Nothing here is an offer, solicitation, or promise of future value.</li>
+    </ul>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">Launch & Presale</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>Game start: on the <b>presale day</b>.</li>
-            <li>Presale duration: <b>X</b> days (to be announced).</li>
-          </ul>
-        </section>
-      </div>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">Good to Know</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Game balance, drop rates, limits and schedules are dynamic and may be changed, paused or reset at any time for stability, fairness or maintenance.</li>
+      <li>Progress may be adjusted to address bugs, exploits or abuse.</li>
+      <li>This is a casual game for fun. It is not financial advice and not an investment product.</li>
+    </ul>
+  </section>
+</div>
+
 
       <div className="flex justify-end gap-2 mt-4">
         <button
@@ -2723,77 +2794,146 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
 {showTerms && (
   <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
     <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-2xl font-extrabold">Terms &amp; Conditions</h2>
-        <button
-          onClick={() => setShowTerms(false)}
-          className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold"
-        >
-          Close
-        </button>
-      </div>
+     <div className="flex items-center justify-between mb-2">
+  <h2 className="text-2xl font-extrabold">Terms &amp; Conditions</h2>
+  <button onClick={() => setShowTerms(false)} className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold">Close</button>
+</div>
 
-      <div className="text-sm text-slate-700 space-y-4 text-left">
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">1) Coins vs. MLEO</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li><b>Coins</b> – in-game currency for upgrades and purchases.</li>
-            <li><b>MLEO</b> – generated <b>only</b> from rock breaks by converting a portion of Coins (default 10%).</li>
-          </ul>
-        </section>
+<div className="text-sm text-slate-700 space-y-4 text-left">
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">1) Acceptance of Terms</h3>
+    <p>
+      By accessing or using the game, you agree to these Terms &amp; Conditions (“Terms”).
+      If you do not agree, do not use the game. We may modify these Terms at any time by
+      posting an updated version in-app or on our site. Continued use constitutes acceptance.
+    </p>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">2) Daily Limits & Soft Cut</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>Each player has a daily MLEO cap.</li>
-            <li>As you approach/overflow the cap, a <b>soft cut</b> reduces effective MLEO per rock (tunable by the operator).</li>
-            <li>Displayed MLEO in popups is an estimate after current soft-cut and remaining room.</li>
-          </ul>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">2) Entertainment-Only; No Monetary Value</h3>
+    <p>
+      This is a casual game for entertainment. In-game items, Coins and the token referred to as
+      “MLEO” are utility features within the game experience. They <b>do not represent money,
+      securities, or any form of financial instrument</b>. We make <b>no promises of price,
+      liquidity, profit or future value</b> of any token or reward at any time.
+    </p>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">3) Offline</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>Offline mining simulates up to 12h at <b>50%</b> dog power.</li>
-          </ul>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">3) No Financial Advice</h3>
+    <p>
+      Nothing in the game or related materials constitutes investment, legal, accounting or tax advice.
+      Do your own research and consult professionals if needed. You are solely responsible for your decisions.
+    </p>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">4) Claim</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li><b>CLAIM</b> from game to Vault is always available.</li>
-            <li>Claim to wallet opens one month after the official token launch (TGE) and follows cumulative limits: <b>10%</b> month 1, <b>30%</b> month 2, <b>50%</b> month 3, <b>70%</b> month 4, <b>90%</b> month 5, and <b>100%</b> from month 6.</li>
-          </ul>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">4) Gameplay, Balancing &amp; Progress</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Game parameters (including rewards, limits, rates, spawn logic, drop tables, schedules and offline behavior) are internal, not publicly disclosed, and may change, be paused or reset at any time without notice.</li>
+      <li>We may adjust or roll back progress, balances and rewards to address bugs, exploits, irregular activity, or to preserve game integrity.</li>
+      <li>Access to features and events is not guaranteed and may be limited by time, geography, device, account status or other criteria.</li>
+    </ul>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">5) Launch & Presale</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>Game starts on presale day. Presale length will be announced (X days).</li>
-          </ul>
-        </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">5) Mining, Vault &amp; Claims</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Only certain in-game actions (e.g., breaking rocks) may accrue MLEO according to internal, variable calculations and daily limits.</li>
+      <li>“CLAIM” moves accrued MLEO into your in-game <b>Vault</b>. If an on-chain claim becomes available in the future, it may be subject to eligibility checks, unlock windows, rate limits, and other restrictions. Availability is not guaranteed.</li>
+      <li>We may change, delay or discontinue vaulting and/or on-chain claiming at any time.</li>
+    </ul>
+  </section>
 
-        <section>
-          <h3 className="font-bold text-slate-900 mb-1">6) Fair Play</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>No bots, exploits or automation. Abuse may lead to suspension/reset.</li>
-            <li>Some values are rounded and may adjust over time.</li>
-          </ul>
-        </section>
-      </div>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">6) Wallets &amp; Third-Party Services</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Connecting a wallet is optional and uses third-party services outside our control. You are solely responsible for the security of your devices, keys and wallets.</li>
+      <li>Blockchain transactions are irreversible and may incur network fees. We are not responsible for losses due to user error, phishing, gas volatility, chain forks, reorgs, downtime or smart-contract risks.</li>
+    </ul>
+  </section>
 
-      <div className="flex justify-end gap-2 mt-4">
-        <button
-          onClick={() => {
-            acceptTerms();
-            setFirstTimeNeedsTerms(false);
-            setShowTerms(false);
-          }}
-          className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-500 font-bold"
-        >
-          I Agree
-        </button>
-      </div>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">7) Fair Play &amp; Prohibited Conduct</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>No bots, automation, multi-account abuse, exploits, reverse engineering or interference with game services.</li>
+      <li>We may suspend, reset or terminate access and remove balances we believe are obtained through prohibited behavior.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">8) Availability, Data &amp; Updates</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>The game may be unavailable, interrupted or updated at any time. We do not guarantee uninterrupted service.</li>
+      <li>We may modify or discontinue features, wipe test data, or migrate saves for technical or balance reasons.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">9) Airdrops, Promotions &amp; Rewards</h3>
+    <p>
+      Any airdrops, events, rewards or promotions are discretionary, subject to change,
+      and may have eligibility requirements. Participation does not guarantee receipt or value.
+    </p>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">10) Taxes</h3>
+    <p>
+      You are solely responsible for determining and paying any taxes associated with your use of the game,
+      including any rewards you may receive.
+    </p>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">11) Limitation of Liability</h3>
+    <p>
+      To the maximum extent permitted by law, we are not liable for any indirect, incidental,
+      special, consequential or exemplary damages, or for any loss of data, tokens, profits or opportunities,
+      arising from or related to your use of the game, even if advised of the possibility of such damages.
+    </p>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">12) Indemnity</h3>
+    <p>
+      You agree to indemnify and hold us harmless from any claim, demand, loss or expense (including reasonable
+      attorneys’ fees) arising out of or related to your use of the game or violation of these Terms.
+    </p>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">13) Governing Law &amp; Disputes</h3>
+    <p>
+      These Terms are governed by the laws of <b>[insert jurisdiction]</b>, without regard to conflict-of-law rules.
+      Any dispute shall be resolved exclusively in the courts of <b>[insert venue]</b>. You consent to such jurisdiction and venue.
+    </p>
+    <p className="text-xs text-slate-500 mt-1">
+      (If you prefer arbitration, replace this clause with your arbitration language.)
+    </p>
+  </section>
+
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">14) Contact</h3>
+    <p>
+      Questions about these Terms? Contact us at <b>[insert contact email]</b>.
+    </p>
+  </section>
+</div>
+
+<div className="flex justify-end gap-2 mt-4">
+  <button
+    onClick={() => {
+      acceptTerms();
+      setFirstTimeNeedsTerms(false);
+      setShowTerms(false);
+    }}
+    className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-500 font-bold"
+  >
+    I Agree
+  </button>
+</div>
+
     </div>
   </div>
 )}
@@ -2809,89 +2949,178 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
   const canWallet = TOKEN_LIVE && walletClaimEnabled(now);
   const room    = remainingWalletClaimRoom();
   const hasRoom = room > 0;
-  const canClaim = vault > 0 && canWallet && hasRoom && !claiming;
 
   const statusLine = !TOKEN_LIVE
     ? "Token not live yet — wallet claim will open after token launch."
     : (canWallet
-        ? (pct100 >= 100 ? "No wallet claim limits (6+ months after launch)." : `Wallet claim window: up to ${pct100}% of your total accrued.`)
+        ? (pct100 >= 100
+            ? "No wallet claim limits (6+ months after launch)."
+            : `Wallet claim window: up to ${pct100}% of your total accrued.`)
         : "Wallet claim locked until 1 month after token launch.");
 
   const roomLine = TOKEN_LIVE
     ? (hasRoom ? `Current allowed to wallet (room): ${room.toFixed(2)} MLEO.` : "Temporary wallet claim limit reached.")
     : "";
 
+  // היסטוריה + טוגל "הצג הכל"
+  const fullHist = Array.isArray(mining?.history) ? mining.history : [];
+  const hist = showFullHistory ? fullHist : fullHist.slice(0, 12);
+
   return (
     <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
       <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
-        <h2 className="text-2xl font-extrabold mb-3">Mining &amp; Tokens</h2>
-
-        {/* ===== Vault display ===== */}
-        <section className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
-          <h3 className="font-bold text-slate-900 mb-2">Vault Balance</h3>
-
-          <div className="text-sm mb-1">
-            Total stored in Vault: <b>{vault3} MLEO</b>
-          </div>
-          <div className="text-xs text-slate-600 mb-3">
-            Unclaimed (pending to Vault): {bal3} MLEO
-          </div>
-
-          <button
-            onClick={onClaimMined}
-            disabled={!canClaim}
-            className={`px-3 py-1.5 rounded-md font-extrabold ${
-              canClaim
-                ? "bg-yellow-400 hover:bg-yellow-300 text-black"
-                : "bg-slate-300 text-slate-600 cursor-not-allowed"
-            }`}
-            title={
-              !TOKEN_LIVE
-                ? "Token not live yet — wallet claim opens after token launch."
-                : (!hasRoom
-                    ? "Wallet claim limit reached for now."
-                    : (vault > 0 ? "Claim to your wallet" : "No tokens to claim"))
-            }
-          >
-            CLAIM TO WALLET
-          </button>
-
-          <p className="text-xs text-slate-500 mt-2">{statusLine}</p>
-          {TOKEN_LIVE && <p className="text-xs text-slate-500 mt-1">{roomLine}</p>}
-        </section>
-
-        {/* ===== Explanations ===== */}
-        <section className="space-y-4 text-sm text-slate-700">
-          <div>
-            <h3 className="font-bold text-slate-900 mb-1">Coins vs. MLEO</h3>
-            <ul className="list-disc ml-5 space-y-1">
-              <li><b>Coins</b> are for upgrades and buying miners.</li>
-              <li><b>MLEO</b> accrues from rock breaks → goes to <i>Balance</i> → when you CLAIM it moves into your <b>Vault</b>.</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-bold text-slate-900 mb-1">Wallet Claim Schedule</h3>
-            <ol className="list-decimal ml-5 space-y-1">
-              <li><b>Month 1</b>: up to 10% of total.</li>
-              <li><b>Month 2</b>: up to 30% total.</li>
-              <li><b>Month 3</b>: up to 50% total.</li>
-              <li><b>Month 4</b>: up to 70% total.</li>
-              <li><b>Month 5</b>: up to 90% total.</li>
-              <li><b>6+ months</b>: 100% available.</li>
-            </ol>
-            <div className="mt-2 text-xs text-slate-600">
-              {TOKEN_LIVE
-                ? (pct100 >= 100 ? "Current status: No wallet claim limits." : `Current window: up to ${pct100}% total.`)
-                : "Launch date not set yet — schedule activates when the token goes live."}
-            </div>
-          </div>
-        </section>
-
-        <div className="flex justify-end gap-2 mt-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-2xl font-extrabold">Mining &amp; Tokens</h2>
           <button
             onClick={() => setShowMiningInfo(false)}
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+            className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold"
+          >
+            Close
+          </button>
+        </div>
+
+        {/* ===== Vault & Balance ===== */}
+        <section className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
+          <h3 className="font-bold text-slate-900 mb-2">Vault &amp; Balance</h3>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-md bg-white border border-slate-200 p-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">Unclaimed</div>
+              <div className="text-lg font-extrabold">{bal3} MLEO</div>
+              <div className="text-[11px] text-slate-500">Ready to move to Vault / Wallet</div>
+            </div>
+            <div className="rounded-md bg-white border border-slate-200 p-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500">In Vault</div>
+              <div className="text-lg font-extrabold">{vault3} MLEO</div>
+              <div className="text-[11px] text-slate-500">Stored off the board</div>
+            </div>
+          </div>
+
+          {/* פעולות מהירות */}
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button
+              onClick={onClaimMined}
+              disabled={claiming || bal <= 0}
+              className={`px-4 py-2 rounded-lg font-extrabold ${
+                bal > 0 && !claiming
+                  ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                  : "bg-slate-300 text-slate-500 cursor-not-allowed"
+              }`}
+              title={bal > 0 ? "Move unclaimed to Vault / Wallet" : "No tokens to claim"}
+            >
+              {claiming ? "Claiming..." : "CLAIM"}
+            </button>
+
+            <button
+              onClick={claimCoinsToMining}
+              className="px-4 py-2 rounded-lg font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
+              title="Convert your current Coins into MLEO (subject to daily cap & softcut)"
+            >
+              Claim Coins → MLEO
+            </button>
+          </div>
+
+          {/* CTA להתחברות כשמותר קליים לארנק אבל לא מחוברים */}
+          {TOKEN_LIVE && canWallet && !isConnected && (
+            <div className="mt-3 p-2 rounded-md bg-amber-100 text-amber-900 text-sm border border-amber-200">
+              <div className="flex items-center justify-between gap-2">
+                <span>You can claim to your wallet. Connect to continue.</span>
+                <button
+                  onClick={() => (isConnected ? openAccountModal?.() : openConnectModal?.())}
+                  className="px-3 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-black font-extrabold"
+                >
+                  CONNECT
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ===== Token Timeline / TGE ===== */}
+        <section className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
+          <h3 className="font-bold text-slate-900 mb-2">Token Timeline</h3>
+
+          <div className="text-xs text-slate-600 mb-1">TGE Countdown</div>
+          <div className="mb-2">
+            <TgeCountdown />
+            <div className="text-[11px] text-slate-500">
+              Wallet claim will be enabled after TGE with staged unlocks.
+            </div>
+          </div>
+
+          <div className="mb-1">
+            <div className="text-xs text-slate-600 mb-1">Wallet unlock progress</div>
+            <WalletReleaseBar />
+            <div className="text-[12px] text-slate-700">
+              Current unlock: <b>{pct100}%</b> of your total accrued{TOKEN_LIVE ? "" : " (token not live yet)"}.
+            </div>
+          </div>
+
+          <div className="text-[12px] mt-2 text-slate-700">{statusLine}</div>
+          {roomLine && <div className="text-[12px] text-slate-600">{roomLine}</div>}
+        </section>
+
+        {/* ===== Info notes ===== */}
+        <section className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
+          <h3 className="font-bold text-slate-900 mb-2">Notes</h3>
+          <ul className="list-disc ml-5 space-y-1 text-sm text-slate-700">
+            <li>Only breaking rocks can accrue MLEO. Conversions are subject to daily limits and soft cut.</li>
+            <li>“CLAIM”:
+              {!TOKEN_LIVE
+                ? " moves Unclaimed to your in-game Vault for now. On-chain claim may be enabled after TGE."
+                : " moves Unclaimed to your wallet (subject to unlock window)."}
+            </li>
+            <li>Schedules, limits and parameters are dynamic and may change.</li>
+          </ul>
+        </section>
+
+        {/* ===== Recent activity + טוגל ===== */}
+        <section className="rounded-lg p-3 bg-slate-50 border border-slate-200">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-bold text-slate-900">Recent Activity</h3>
+            {fullHist.length > 12 && (
+              <button
+                onClick={() => setShowFullHistory(v => !v)}
+                className="text-xs px-2 py-1 rounded-md bg-slate-900 text-white hover:bg-slate-800 font-extrabold"
+              >
+                {showFullHistory ? `Show recent (12)` : `Show all (${fullHist.length})`}
+              </button>
+            )}
+          </div>
+
+          {hist.length === 0 ? (
+            <div className="text-sm text-slate-600">No mining activity yet.</div>
+          ) : (
+            <ul className="divide-y divide-slate-200">
+              {hist.map((h, i) => {
+                const dt = new Date(h.ts || Date.now());
+                const amt = Number(h.amt || 0).toFixed(2);
+                const kind =
+                  h.type === "to_wallet" ? "To Wallet" :
+                  h.type === "to_vault"  ? "To Vault"  :
+                  h.type || "entry";
+                return (
+                  <li key={i} className="py-2 text-sm flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="font-semibold">{kind}</span>
+                      <span className="text-[11px] text-slate-500">
+                        {dt.toLocaleString?.() || dt.toISOString()}
+                      </span>
+                    </div>
+                    <div className="font-extrabold tabular-nums">{amt} MLEO</div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* Footer buttons */}
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <button
+            onClick={() => setShowMiningInfo(false)}
+            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-extrabold"
           >
             Close
           </button>
@@ -2923,12 +3152,19 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
                 Diamonds: <b className="text-yellow-300">{stateRef.current?.diamonds ?? 0}</b>
               </p>
 
-              <div className="rounded-lg p-3 bg-white/5 border border-white/10 mb-3 text-sm">
-                <div className="text-gray-100 mb-1 font-semibold">Next reward:</div>
-                <div className="text-gray-100">
-                  {DIAMOND_PRIZES.find(p => p.key === (stateRef.current?.nextDiamondPrize))?.label || "Mystery reward"}
-                </div>
-              </div>
+ <div className="rounded-lg p-3 bg-white/5 border border-white/10 mb-3 text-sm">
+  <div className="text-gray-100 mb-1 font-semibold">Next reward:</div>
+  <div className="text-gray-100 mb-2">
+    {DIAMOND_PRIZES.find(p => p.key === (stateRef.current?.nextDiamondPrize))?.label || "Mystery reward"}
+  </div>
+  <div className="text-gray-200/90 font-semibold mb-1">Probabilities</div>
+  <ul className="text-gray-200 list-disc list-inside space-y-0.5">
+    <li>Tier 1 (55%): either <i>Coins ×10</i> or <i>Dog +3</i> (50/50)</li>
+    <li>Tier 2 (30%): either <i>Coins ×100</i> or <i>Dog +5</i> (50/50)</li>
+    <li>Tier 3 (15%): either <i>Coins ×1000</i> or <i>Dog +7</i> (50/50)</li>
+  </ul>
+</div>
+
 
               <ul className="space-y-1 mb-4 text-sm">
                 {DIAMOND_PRIZES.map(p => {
@@ -2981,55 +3217,82 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
             </div>
           </div>
         )}
-{/* MLEO Modal – exact (3dp) + CLAIM */}
+
+{/* MLEO Modal – exact (3dp) + CLAIM + How it works + TGE info */}
 {showMleoModal && (
   <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
-    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
-      <div className="flex items-start justify-between mb-3">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
+      <div className="flex items-center justify-between mb-3">
         <h2 className="text-2xl font-extrabold">MLEO</h2>
         <button
-          onClick={() => setShowMleoModal(false)}
+          onClick={()=>setShowMleoModal(false)}
           className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold"
         >
           Close
         </button>
       </div>
 
-      <div className="space-y-3 text-sm">
-        <div className="flex items-center gap-2">
-          <img src={IMG_TOKEN} alt="MLEO" className="w-7 h-7 rounded-full" />
-          <div>
-            <div className="text-slate-700">Current Balance (exact):</div>
-            <div className="text-2xl font-extrabold tabular-nums">
-             {Number(mining?.balance || 0).toFixed(2)} MLEO
-
-
-            </div>
-          </div>
+      {/* Balances */}
+      <div className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
+        <div className="text-sm">
+          Balance: <b>{Number(mining?.balance || 0).toFixed(3)} MLEO</b>
         </div>
-
-        <div className="rounded-lg p-3 bg-slate-50 border border-slate-200">
-          <div className="font-bold mb-1">What happens on CLAIM?</div>
-          <p className="text-slate-700">
-            Your accrued MLEO is claimed according to the token schedule:
-            before token is live it moves to your <b>Vault</b>; after launch it can be claimed to your <b>wallet</b> (per limits).
-          </p>
+        <div className="text-sm">
+          Vault: <b>{Number(mining?.vault || 0).toFixed(3)} MLEO</b>
+        </div>
+        <div className="text-xs text-slate-600">
+          Total claimed (all time): {Number(mining?.claimedTotal || 0).toFixed(3)} MLEO
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 mt-5">
-        <button
-          onClick={() => { onClaimMined(); setShowMleoModal(false); }}
-          disabled={!(mining?.balance > 0) || claiming}
-          className={`px-4 py-2 rounded-lg font-extrabold ${
-            mining?.balance > 0 && !claiming
-              ? "bg-yellow-400 hover:bg-yellow-300 text-black"
-              : "bg-slate-300 text-slate-600 cursor-not-allowed"
-          }`}
-          title={mining?.balance > 0 ? "Claim MLEO" : "No tokens to claim"}
-        >
-          CLAIM
-        </button>
+      {/* Claim to Vault / Wallet */}
+      <div className="rounded-lg p-3 bg-amber-50 border border-amber-200 mb-4">
+        <div className="text-sm text-amber-900 space-y-2">
+          {!TOKEN_LIVE ? (
+            <>
+              <div className="font-semibold">TGE Countdown</div>
+              <TgeCountdown />
+              <div className="text-xs opacity-80">
+                Wallet claim will be enabled after TGE with staged unlocks.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-semibold">Wallet Claim Unlock</div>
+              <WalletReleaseBar />
+              <div className="text-xs">
+                Unlocked window: <b>{Math.round(currentClaimPct(Date.now()) * 100)}%</b> (10% → 30% → 50% → 70% → 90% → 100%)
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={onClaimMined}
+            disabled={claiming || (mining?.balance || 0) <= 0}
+            className={`px-3 py-1.5 rounded-md font-extrabold ${
+              (mining?.balance || 0) > 0 && !claiming
+                ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                : "bg-slate-300 text-slate-600 cursor-not-allowed"
+            }`}
+            title={(mining?.balance || 0) > 0 ? "Claim" : "No tokens to claim"}
+          >
+            CLAIM
+          </button>
+        </div>
+      </div>
+
+      {/* How it works – inline inside the MLEO modal */}
+      <div className="mt-1 p-3 rounded-lg bg-slate-100 border border-slate-200">
+        <h3 className="font-semibold mb-2">How it works</h3>
+        <ul className="list-disc list-inside text-sm space-y-1 text-slate-700">
+          <li><b>Daily cap</b> with softcut to keep things fair.</li>
+          <li><b>Only rock coins convert</b> to MLEO, based on softcut and remaining daily room.</li>
+          <li><b>Regular gifts</b>: 70% coins (20%), 8% DPS +10%, 8% GOLD +10%, 6% +1 diamond, 8% coins (40%).</li>
+          <li><b>Diamonds</b>: 3 diamonds → chest (next prize & probabilities shown in the Diamond panel).</li>
+          <li><b>Wallet claim</b>: Gradual unlock after TGE with countdown & progress.</li>
+        </ul>
       </div>
     </div>
   </div>
