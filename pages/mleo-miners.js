@@ -247,7 +247,7 @@ function softcutFactor(minedToday, dailyCap){
 }
 
 // === REPLACE: previewMleoFromCoins / addPlayerScorePoints / finalizeDailyRewardOncePerTick ===
-const PREC = 3;
+const PREC = 2;
 const round3 = (x) => Number((x || 0).toFixed(PREC));
 
 // תצוגה מקדימה: כמה MLEO יתווספו עבור X Coins (כולל חיתוך רך ותקרה יומית) — עשרוני
@@ -436,7 +436,7 @@ async function onClaimMined() {
   try { play?.(S_CLICK); } catch {}
 
   const st  = loadMiningState();
-  const amt = Number((st?.balance || 0).toFixed(3));
+  const amt = Number((st?.balance || 0).toFixed(2));
 
   if (!amt) {
     setGiftToastWithTTL("No tokens to claim");
@@ -445,8 +445,8 @@ async function onClaimMined() {
 
   // לפני שהטוקן חי → מעבירים ל-Vault בלבד
   if (!TOKEN_LIVE) {
-    st.vault        = Number(((st.vault || 0) + amt).toFixed(3));
-    st.claimedTotal = Number(((st.claimedTotal || 0) + amt).toFixed(3));
+    st.vault        = Number(((st.vault || 0) + amt).toFixed(2));
+    st.claimedTotal = Number(((st.claimedTotal || 0) + amt).toFixed(2));
     st.history      = Array.isArray(st.history) ? st.history : [];
     st.history.unshift({ ts: Date.now(), amt, type: "to_vault" });
     st.balance = 0;
@@ -471,17 +471,17 @@ async function onClaimMined() {
 
   setClaiming(true);
   try {
-    const sendAmt = Number(Math.min(amt, room).toFixed(3));
+    const sendAmt = Number(Math.min(amt, room).toFixed(2));
     // await writeContract(...)
 
-    st.balance         = Number(((st.balance || 0) - sendAmt).toFixed(3));
-    st.claimedToWallet = Number(((st.claimedToWallet || 0) + sendAmt).toFixed(3));
-    st.claimedTotal    = Number(((st.claimedTotal || 0)    + sendAmt).toFixed(3));
+    st.balance         = Number(((st.balance || 0) - sendAmt).toFixed(2));
+    st.claimedToWallet = Number(((st.claimedToWallet || 0) + sendAmt).toFixed(2));
+    st.claimedTotal    = Number(((st.claimedTotal || 0)    + sendAmt).toFixed(2));
     st.history = Array.isArray(st.history) ? st.history : [];
     st.history.unshift({ ts: Date.now(), amt: sendAmt, type: "to_wallet" });
     saveMiningState(st);
     setMining(st);
-    setGiftToastWithTTL(`🪙 CLAIMED ${sendAmt.toFixed(3)} MLEO to wallet`);
+    setGiftToastWithTTL(`🪙 CLAIMED ${sendAmt.toFixed(2)} MLEO to wallet`);
     // ❌ אין פתיחת Mining Info כאן
   } catch (err) {
     console.error(err);
@@ -548,15 +548,33 @@ const rockSfxCooldownRef = useRef(0);
   }, [centerPopup]);
 
   // ── סטאבים/עזר ──
-  function theStateFix_maybeMigrateLocalStorage(){ /* no-op safe */ }
-function currentGiftIntervalSec(_s, now = Date.now()) {
-  const ph = phaseAtGlobal(now);
-  // אופציונלי: נשמור עקבות לשימושים קיימים
-  if (_s) _s.lastGiftIntervalSec = ph.intervalSec;
-  return ph.intervalSec;
-}
-function getPhaseInfo(_s, now = Date.now()) {
-  return phaseAtGlobal(now);
+// ── מיגרציית שמירה קיימת (מעדכן מידות + זום אייקון ה-ADD) ──
+function theStateFix_maybeMigrateLocalStorage(){
+  try {
+    const K = LS_KEY; // "mleoMiners_v5_83_reset3"
+    const raw = localStorage.getItem(K);
+
+    // עדכון/קיבוע זום האייקון גם בלי שמירה קיימת
+    const zLS = localStorage.getItem("SPAWN_ICON_ZOOM");
+    if (zLS === null || Number(zLS) !== 1.55) {
+      localStorage.setItem("SPAWN_ICON_ZOOM", "1.55");
+      if (typeof window !== "undefined") window.SPAWN_ICON_ZOOM = 1.55; // רינדור מיידי
+    }
+
+    if (!raw) return; // אין שמירה – freshState כבר נותן 1.6/0.8
+
+    const s = JSON.parse(raw);
+    let changed = false;
+
+    if (typeof s.minerScale !== "number" || s.minerScale !== 1.6) {
+      s.minerScale = 1.6; changed = true;
+    }
+    if (typeof s.minerWidth !== "number" || s.minerWidth !== 0.8) {
+      s.minerWidth = 0.8; changed = true;
+    }
+
+    if (changed) localStorage.setItem(K, JSON.stringify(s));
+  } catch {}
 }
 
 
@@ -576,10 +594,10 @@ function getPhaseInfo(_s, now = Date.now()) {
       const ok = trySpawnDogOrConvert(s, lvl);
       setCenterPopup({ text: ok ? `🎁 Free Dog (LV ${lvl})` : `🎁 Board full → converted to coins`, id: Math.random() });
     } else if (type === "dps") {
-      s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(3);
+      s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(2);
       setCenterPopup({ text: `🎁 DPS +10% (×${(s.dpsMult||1).toFixed(2)})`, id: Math.random() });
     } else if (type === "gold") {
-      s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(3);
+      s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(2);
       setCenterPopup({ text: `🎁 GOLD +10% (×${(s.goldMult||1).toFixed(2)})`, id: Math.random() });
     } else if (type === "diamond") {
       s.diamonds = (s.diamonds || 0) + 1;
@@ -1483,7 +1501,7 @@ function upgradeDps() {
 function upgradeGold() {
   const s = stateRef.current; if (!s) return;
   const cost = _goldCost(s); if (s.gold < cost) return;
-  s.gold -= cost; s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(3);
+  s.gold -= cost; s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(2);
   setUi(u => ({ ...u, gold: s.gold })); save();
 }
 
@@ -2695,9 +2713,9 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
 
 {showMiningInfo && (() => {
   const vault   = Number(mining?.vault || 0);
-  const vault3  = vault.toFixed(3);
+  const vault3  = vault.toFixed(2);
   const bal     = Number(mining?.balance || 0);
-  const bal3    = bal.toFixed(3);
+  const bal3    = bal.toFixed(2);
   const now     = Date.now();
   const pct     = currentClaimPct(now);
   const pct100  = Math.round(pct * 100);
@@ -2713,7 +2731,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
         : "Wallet claim locked until 1 month after token launch.");
 
   const roomLine = TOKEN_LIVE
-    ? (hasRoom ? `Current allowed to wallet (room): ${room.toFixed(3)} MLEO.` : "Temporary wallet claim limit reached.")
+    ? (hasRoom ? `Current allowed to wallet (room): ${room.toFixed(2)} MLEO.` : "Temporary wallet claim limit reached.")
     : "";
 
   return (
@@ -2896,7 +2914,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
           <div>
             <div className="text-slate-700">Current Balance (exact):</div>
             <div className="text-2xl font-extrabold tabular-nums">
-             {Number(mining?.balance || 0).toFixed(3)} MLEO
+             {Number(mining?.balance || 0).toFixed(2)} MLEO
 
 
             </div>
