@@ -15,9 +15,9 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_82_reset2";
+const LS_KEY = "mleoMiners_v5_83_reset3";
 // First–play terms acceptance gate (global versioned)
-const TERMS_VERSION = "v1"; // ⬅️ bump to "v2", "v3"... to force everyone to re-accept
+const TERMS_VERSION = "v1.1"; // ⬅️ bump to "v2", "v3"... to force everyone to re-accept
 const TERMS_KEY = `mleoMiners_termsAccepted_${TERMS_VERSION}`;
 
 // Assets
@@ -64,7 +64,7 @@ const UI_BTN_H_PX = 50; // שנה פה פעם אחת: 28/32/36/40...
  const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 // זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
 const UI_SPAWN_ICON_ZOOM =
-  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2.2;
+  (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2;
 // היסט אנכי עדין ליישור (px) – אופציונלי
 const UI_SPAWN_ICON_SHIFT_Y =
   (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
