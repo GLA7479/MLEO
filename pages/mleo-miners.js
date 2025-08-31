@@ -1,7 +1,7 @@
 // === START PART 1 ===
 
 // pages/mleo-miners.js
-// v5.8
+// v5.9-patches
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
@@ -17,7 +17,7 @@ const MAX_MINERS = LANES * SLOTS_PER_LANE;
 const PADDING = 6;
 const LS_KEY = "mleoMiners_v5_83_reset3";
 // First–play terms acceptance gate (global versioned)
-const TERMS_VERSION = "v1.1"; // ⬅️ bump to "v2", "v3"... to force everyone to re-accept
+const TERMS_VERSION = "v1.2"; // ⬅️ bump to force re-accept if text changes
 const TERMS_KEY = `mleoMiners_termsAccepted_${TERMS_VERSION}`;
 
 // Assets
@@ -46,7 +46,6 @@ const S_GIFT  = "/sounds/gift.mp3";
  function isLocalHost(){
    try { return DEBUG_HOSTS.includes(location.hostname); } catch { return false; }
  }
- // (אופציונלי: אם יש ערכים שמורים לאייקון ה-ADD—טען ל-window כדי לאפשר טיונינג חי)
  try {
    if (typeof window !== "undefined") {
      const z = localStorage.getItem("SPAWN_ICON_ZOOM");
@@ -58,14 +57,10 @@ const S_GIFT  = "/sounds/gift.mp3";
  
 
 // ===== UI constants =====
-// קופסת פריסה לאייקון (לא משנה את גובה הכפתור)
-const UI_BTN_H_PX = 60; // שנה פה פעם אחת: 28/32/36/40...
- // קופסת אייקון ADD נגזרת מהגובה (חצי גובה נראה טוב)
- const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
-// זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
+const UI_BTN_H_PX = 60;
+const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 const UI_SPAWN_ICON_ZOOM =
   (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 2;
-// היסט אנכי עדין ליישור (px) – אופציונלי
 const UI_SPAWN_ICON_SHIFT_Y =
   (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
 
@@ -78,41 +73,29 @@ const GOLD_FACTOR = 0.12;
 
 // ===== Global gift phases (same for everyone) =====
 const GIFT_PHASES = [
-  { durSec: 30 * 60, intervalSec: 20 }, // 30m @ 20s
-  { durSec: 30 * 60, intervalSec: 30 }, // 30m @ 30s
-  { durSec: 30 * 60, intervalSec: 40 }, // 30m @ 40s
-  { durSec: 30 * 60, intervalSec: 50 }, // 30m @ 50s
-  { durSec: 60 * 60, intervalSec: 60 }, // 60m @ 60s
+  { durSec: 30 * 60, intervalSec: 20 },
+  { durSec: 30 * 60, intervalSec: 30 },
+  { durSec: 30 * 60, intervalSec: 40 },
+  { durSec: 30 * 60, intervalSec: 50 },
+  { durSec: 60 * 60, intervalSec: 60 },
 ];
 const GIFT_TOTAL_SEC = GIFT_PHASES.reduce((a, p) => a + p.durSec, 0);
-
-// עוגן גלובלי קבוע (UTC) — כל הלקוחות מחשבים יחסית אליו
 const GLOBAL_ANCHOR_MS = Date.UTC(2025, 0, 1, 0, 0, 0); // 2025-01-01 00:00:00Z
 
 function phaseAtGlobal(nowMs = Date.now()) {
-  const intoCycleSec = Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000) % GIFT_TOTAL_SEC < 0
-    ? (GIFT_TOTAL_SEC + (Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000) % GIFT_TOTAL_SEC))
-    : Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000) % GIFT_TOTAL_SEC;
-
+  const cyc = Math.floor((nowMs - GLOBAL_ANCHOR_MS) / 1000);
+  const mod = ((cyc % GIFT_TOTAL_SEC) + GIFT_TOTAL_SEC) % GIFT_TOTAL_SEC;
   let acc = 0;
   for (let i = 0; i < GIFT_PHASES.length; i++) {
     const ph = GIFT_PHASES[i];
-    if (intoCycleSec < acc + ph.durSec) {
-      const intoPhaseSec = intoCycleSec - acc;
+    if (mod < acc + ph.durSec) {
+      const into = mod - acc;
       const step = ph.intervalSec;
-      const mod = intoPhaseSec % step;
-      const remainToNextGiftSec = mod === 0 ? step : (step - mod);
-      return {
-        index: i,
-        intervalSec: step,
-        into: intoPhaseSec,
-        phaseRemainSec: ph.durSec - intoPhaseSec,
-        remainToNextGiftSec,
-      };
+      const remainToNextGiftSec = step - (into % step || step);
+      return { index:i, intervalSec: step, into, phaseRemainSec: ph.durSec - into, remainToNextGiftSec };
     }
     acc += ph.durSec;
   }
-  // fallback
   const last = GIFT_PHASES[GIFT_PHASES.length - 1];
   return { index: GIFT_PHASES.length - 1, intervalSec: last.intervalSec, into: 0, phaseRemainSec: last.durSec, remainToNextGiftSec: last.intervalSec };
 }
@@ -157,14 +140,55 @@ function getImg(src) {
 }
 
 // ===== Mining Economy Layer (safe, local-only) =====
-const MINING_LS_KEY = "mleoMiningEconomy_v1";
+const MINING_LS_KEY = "mleoMiningEconomy_v2";
+
+// —— Token & schedule (editable) ——
+// הגדר כאן את תאריכי ההשקה (UTC ms). השאר null אם עדיין לא נקבע.
+const PRESALE_START_MS = null;               // לדוגמה: Date.UTC(2025,0,15)
+const PRESALE_DURATION_DAYS = 0;             // X ימים (כשיהיה)
+const TGE_MS = null;                          // “השקה רשמית” של הטוקן
+
+// האם הטוקן חי ברשת (מפעיל קליימים ל־Wallet UI)? זה נפרד מהחלון הלגאלי לפתיחה.
+const TOKEN_LIVE = false;
+
+// Claim unlock schedule (מצטבר): חודש 1=10%, 2=30%, 3=50%, 4=70%, 5=90%, 6+=100%
+const CLAIM_SCHEDULE = [
+  { monthFromTGE: 1, pct: 0.10 },
+  { monthFromTGE: 2, pct: 0.30 },
+  { monthFromTGE: 3, pct: 0.50 },
+  { monthFromTGE: 4, pct: 0.70 },
+  { monthFromTGE: 5, pct: 0.90 },
+  { monthFromTGE: 6, pct: 1.00 },
+];
+
+// —— Conversion & daily limit (editable) ——
+// אחוז המרה מיידית של Coins→MLEO רק משבירת סלעים (ברירת מחדל 10%)
+const MLEO_FROM_COINS_PCT = 0.10;
+
+// חיתוך רך לפי אחוז שימוש מה-DAILY_CAP – ערכי דוגמה (תוכל לשנות)
+const SOFTCUT = [
+  // עד 80% מהקאפ – 100% יעילות
+  { upto: 0.80, factor: 1.00 },
+  // 80–100% – 50% יעילות
+  { upto: 1.00, factor: 0.50 },
+  // 100–120% – 25% יעילות
+  { upto: 1.20, factor: 0.25 },
+  // מעבר לכך – 10% יעילות
+  { upto: 9.99, factor: 0.10 },
+];
+
+// DPS במצב Offline יורד ב-50%
+const OFFLINE_DPS_FACTOR = 0.5;
+
+// פלח יומי כולל (דוגמה, נשאר כמו שהיה; ניתן לשנות)
 const TOTAL_SUPPLY = 100_000_000_000; // 100B
 const DAYS = 1825;                     // 5y
 const DAILY_EMISSION = Math.floor(TOTAL_SUPPLY / DAYS);
-const DAILY_CAP = Math.floor(DAILY_EMISSION * 0.02); // 2% per player/day
-const TOKEN_LIVE = false; // set to true at token launch (enables Withdraw)
+// תקרת שחקן ליום (דוגמה: 2% מהפלח היומי)
+const DAILY_CAP = Math.floor(DAILY_EMISSION * 0.02);
 
 
+// ——— State I/O ———
 function getTodayKey(){ return new Date().toISOString().slice(0,10); }
 function loadMiningState(){
   try {
@@ -174,16 +198,17 @@ function loadMiningState(){
       st.claimedTotal = st.claimedTotal || 0;
       st.history = Array.isArray(st.history) ? st.history : [];
       st.vault = st.vault || 0;
+      st.claimedToWallet = st.claimedToWallet || 0; // מצטבר ל־Wallet
       return st;
     }
   } catch {}
-  return { balance:0, minedToday:0, lastDay:getTodayKey(), scoreToday:0, claimedTotal:0, history:[], vault:0 };
+  return { balance:0, minedToday:0, lastDay:getTodayKey(), scoreToday:0, claimedTotal:0, history:[], vault:0, claimedToWallet:0 };
 }
 function saveMiningState(st){
   try { localStorage.setItem(MINING_LS_KEY, JSON.stringify(st)); } catch {}
 }
 
-// ===== Terms helpers =====
+// ——— Terms helpers ———
 function isTermsAccepted() {
   try { return localStorage.getItem(TERMS_KEY) === "yes"; } catch { return false; }
 }
@@ -191,30 +216,95 @@ function acceptTerms() {
   try { localStorage.setItem(TERMS_KEY, "yes"); } catch {}
 }
 
-function addPlayerScorePoints(_s, baseGoldEarned){
-  if(!baseGoldEarned || baseGoldEarned<=0) return;
+// ——— Softcut helpers ———
+function softcutFactor(minedToday, dailyCap){
+  const used = dailyCap>0 ? minedToday / dailyCap : 0;
+  for (const seg of SOFTCUT){
+    if (used <= seg.upto) return seg.factor;
+  }
+  return 0.10;
+}
+
+// === REPLACE: previewMleoFromCoins / addPlayerScorePoints / finalizeDailyRewardOncePerTick ===
+const PREC = 3;
+const round3 = (x) => Number((x || 0).toFixed(PREC));
+
+// תצוגה מקדימה: כמה MLEO יתווספו עבור X Coins (כולל חיתוך רך ותקרה יומית) — עשרוני
+function previewMleoFromCoins(coins){
+  if (!coins || coins<=0) return 0;
+  const st = loadMiningState();
+  const base   = (coins * MLEO_FROM_COINS_PCT);                      // בלי floor
+  const factor = softcutFactor(st.minedToday||0, DAILY_CAP);
+  let eff = base * factor;
+  const room = Math.max(0, (DAILY_CAP - (st.minedToday||0)));        // עשרוני
+  eff = Math.min(eff, room);
+  return round3(eff);
+}
+
+// נקודות “כרייה” מתווספות רק משבירת סלעים — עשרוני
+function addPlayerScorePoints(_s, coinsFromRocks){
+  if(!coinsFromRocks || coinsFromRocks<=0) return;
   const st = loadMiningState();
   const today = getTodayKey();
   if(st.lastDay!==today){ st.minedToday=0; st.scoreToday=0; st.lastDay=today; }
-  st.scoreToday += baseGoldEarned;
+
+  const factor = softcutFactor(st.minedToday||0, DAILY_CAP);
+  const baseMleo = (coinsFromRocks * MLEO_FROM_COINS_PCT);           // בלי floor
+  let eff = baseMleo * factor;
+  const room = Math.max(0, DAILY_CAP - (st.minedToday||0));
+  eff = Math.min(eff, room);
+
+  st.minedToday = round3((st.minedToday||0) + eff);
+  st.balance    = round3((st.balance||0)    + eff);
   saveMiningState(st);
 }
+
+// מחסום קשיח — אם עברנו קאפ מסיבה כלשהי, לחתוך בעשרוני
 function finalizeDailyRewardOncePerTick(){
   const st = loadMiningState();
   const today = getTodayKey();
   if(st.lastDay!==today) return;
-  if(st.scoreToday>0){
-    let reward = st.scoreToday;
-    if(reward>DAILY_CAP) reward = DAILY_CAP;
-    st.minedToday = reward;
-    st.balance += reward;
-    st.scoreToday = 0;
-    st.lastDay = today;
+  if((st.minedToday||0) > DAILY_CAP) {
+    const diff = round3((st.minedToday||0) - DAILY_CAP);
+    st.minedToday = round3(DAILY_CAP);
+    st.balance    = round3(Math.max(0, (st.balance||0) - diff));
     saveMiningState(st);
   }
 }
 
+
+
+// ——— Claim schedule logic ———
+function monthsSinceTGE(now=Date.now()){
+  if (!TGE_MS) return null;
+  if (now < TGE_MS) return -1;
+  const diff = now - TGE_MS;
+  return Math.floor(diff / (30*24*60*60*1000)); // חודש=30 יום
+}
+function currentClaimPct(now=Date.now()){
+  const m = monthsSinceTGE(now);
+  if (m===null || m<0) return 0;
+  let pct = 0;
+  for (const step of CLAIM_SCHEDULE){
+    if (m >= step.monthFromTGE) pct = Math.max(pct, step.pct);
+  }
+  return pct;
+}
+function walletClaimEnabled(now=Date.now()){
+  const m = monthsSinceTGE(now);
+  return TOKEN_LIVE && m!==null && m>=1; // מותר מחודש אחרי TGE
+}
+function remainingWalletClaimRoom(){
+  const st = loadMiningState();
+  const totalAccrued = (st.claimedTotal||0) + (st.vault||0) + (st.balance||0);
+  const pct = currentClaimPct();
+  const maxCumulative = Math.floor(totalAccrued * pct);
+  const already = st.claimedToWallet || 0;
+  return Math.max(0, maxCumulative - already);
+}
+
 // === END PART 1 ===
+
 
 
 
@@ -254,6 +344,8 @@ const [showMiningInfo, setShowMiningInfo] = useState(false);
     const [adCooldownUntil, setAdCooldownUntil] = useState(0);
   const [showAdModal, setShowAdModal] = useState(false);
   const [adVideoEnded, setAdVideoEnded] = useState(false);
+const [showMleoModal, setShowMleoModal] = useState(false);
+
 
   const [showCollect, setShowCollect] = useState(false);
 
@@ -317,47 +409,58 @@ useEffect(() => {
   return () => clearInterval(id);
 }, [mounted]);
 
-// === REPLACE: Part 2 → onClaimMined ===
+// onClaimMined — CLAIM → Vault (כשלא חי), פותח את חלון Claim to Wallet; ארנק כשחי
 async function onClaimMined() {
   try { play?.(S_CLICK); } catch {}
 
   const st  = loadMiningState();
-  const amt = Math.floor(st?.balance || 0);
+  const amt = Number((st?.balance || 0).toFixed(3));
 
   if (!amt) {
     setGiftToastWithTTL("No tokens to claim");
-    return;
+    return;   // ❌ בלי פתיחת חלון Mining
   }
 
-  // עד שהטוקן חי — מעבירים ל־Vault מקומי
+  // לפני שהטוקן חי → מעבירים ל-Vault בלבד
   if (!TOKEN_LIVE) {
-    st.vault        = (st.vault || 0) + amt;
-    st.claimedTotal = (st.claimedTotal || 0) + amt;
+    st.vault        = Number(((st.vault || 0) + amt).toFixed(3));
+    st.claimedTotal = Number(((st.claimedTotal || 0) + amt).toFixed(3));
     st.history      = Array.isArray(st.history) ? st.history : [];
     st.history.unshift({ ts: Date.now(), amt, type: "to_vault" });
     st.balance = 0;
     saveMiningState(st);
     setMining(st);
-    setGiftToastWithTTL(`Moved ${formatShort(amt)} MLEO to Vault`);
-    return;
+    setGiftToastWithTTL(`Moved ${amt.toFixed(3)} MLEO to Vault`);
+    return;   // ❌ בלי setShowMiningInfo
   }
 
-  // הטוקן חי → צריך ארנק מחובר
-  if (!isConnected) {
-    openConnectModal?.();
+  // אחרי שהטוקן חי → לארנק
+  const now = Date.now();
+  if (!walletClaimEnabled(now)) {
+    setGiftToastWithTTL("Wallet claim locked until 1 month after TGE");
     return;
   }
+  const room = remainingWalletClaimRoom();
+  if (room <= 0) {
+    setGiftToastWithTTL("Wallet claim limit reached for now");
+    return;
+  }
+  if (!isConnected) { openConnectModal?.(); return; }
 
-  // כאן תבוא כתיבה לשרשרת עם wagmi כשה-contract מוכן
   setClaiming(true);
   try {
-    // דוגמה (כשתהיה לך ABI):
-    // await writeContract({ address, abi, functionName: 'claim', args: [amt] });
+    const sendAmt = Number(Math.min(amt, room).toFixed(3));
+    // await writeContract(...)
 
-    st.balance = 0;                // אפס מקומית אחרי קליימינג מוצלח
+    st.balance         = Number(((st.balance || 0) - sendAmt).toFixed(3));
+    st.claimedToWallet = Number(((st.claimedToWallet || 0) + sendAmt).toFixed(3));
+    st.claimedTotal    = Number(((st.claimedTotal || 0)    + sendAmt).toFixed(3));
+    st.history = Array.isArray(st.history) ? st.history : [];
+    st.history.unshift({ ts: Date.now(), amt: sendAmt, type: "to_wallet" });
     saveMiningState(st);
     setMining(st);
-    setGiftToastWithTTL(`🪙 CLAIMED ${formatShort(amt)} MLEO`);
+    setGiftToastWithTTL(`🪙 CLAIMED ${sendAmt.toFixed(3)} MLEO to wallet`);
+    // ❌ אין פתיחת Mining Info כאן
   } catch (err) {
     console.error(err);
     setGiftToastWithTTL("Claim failed");
@@ -365,6 +468,7 @@ async function onClaimMined() {
     setClaiming(false);
   }
 }
+
 
 // Debug live values for the panel (controlled inputs)
 const [debugVals, setDebugVals] = useState({
@@ -989,7 +1093,6 @@ function drawMiner(ctx,lane,slot,m){
   const cx = r.x + r.w*0.52;
   const cy = r.y + r.h*0.56;
 
-  // קנה מידה: גובה + רוחב
   const scaleH = (stateRef.current?.minerScale || 1);
   const base   = Math.min(r.w, r.h) * 0.84 * scaleH;
   const wH     = base;
@@ -1118,7 +1221,7 @@ function tick(dt){
   const now = Date.now();
   if (s.paused){ s.lastSeen = now; return; }
 
-  // שבירת סלעים + מטבעות
+  // שבירת סלעים + מטבעות + MLEO (הצגת שני הערכים)
   for (let l=0; l<LANES; l++){
     let dps = 0;
     for (let k=0; k<SLOTS_PER_LANE; k++){
@@ -1128,21 +1231,26 @@ function tick(dt){
     }
     const rock = s.lanes[l].rock;
     rock.hp -= dps * dt;
-if (rock.hp <= 0) {
-  const nowT = Date.now();
-  if (nowT - (rockSfxCooldownRef.current || 0) > 200) {
-    rockSfxCooldownRef.current = nowT;
-    try { play?.(S_ROCK); } catch {}
-  }
-  const gain = Math.floor(rock.maxHp * GOLD_FACTOR * (s.goldMult || 1));
-  s.gold += gain; setUi(u => ({ ...u, gold: s.gold }));
-  addPlayerScorePoints(s, gain);
-  setCenterPopup({ text: `⛏️ +${formatShort(gain)} coins`, id: Math.random() });
-  s.lanes[l].rockCount += 1;
-  s.lanes[l].rock = newRock(l, s.lanes[l].rockCount);
-  safeSave();
-}
+    if (rock.hp <= 0) {
+      const nowT = Date.now();
+      if (nowT - (rockSfxCooldownRef.current || 0) > 200) {
+        rockSfxCooldownRef.current = nowT;
+        try { play?.(S_ROCK); } catch {}
+      }
+      const coinsGain = Math.floor(rock.maxHp * GOLD_FACTOR * (s.goldMult || 1));
+      const mleoGainPreview = previewMleoFromCoins(coinsGain);
 
+      s.gold += coinsGain; setUi(u => ({ ...u, gold: s.gold }));
+      addPlayerScorePoints(s, coinsGain);
+
+const mleoTxt = Number(mleoGainPreview || 0).toFixed(2); // הצגת עשרוניות
+setCenterPopup({ text: `⛏️ +${formatShort(coinsGain)} coins • +${mleoTxt} MLEO`, id: Math.random() });
+
+
+      s.lanes[l].rockCount += 1;
+      s.lanes[l].rock = newRock(l, s.lanes[l].rockCount);
+      safeSave();
+    }
   }
 
   // טיימר מתנות
@@ -1153,30 +1261,28 @@ if (rock.hp <= 0) {
     }
   }
 
-  // אם יש כלב יהלום מושהה ואין מקום – נחכה; אם התפנה מקום – נכניס ונאפס טיימר מתנה
+  // כלב יהלום מושהה
   if (s.pendingDiamondDogLevel && countMiners(s) < MAX_MINERS) {
     const placed = spawnMiner(s, s.pendingDiamondDogLevel);
     if (placed) {
-     const placedLvl = s.pendingDiamondDogLevel;
-s.pendingDiamondDogLevel = null;
-s.giftReady  = false;
-s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
-setGiftToastWithTTL(`💎 Dog (LV ${placedLvl}) placed`);
-save?.();
-
+      const placedLvl = s.pendingDiamondDogLevel;
+      s.pendingDiamondDogLevel = null;
+      s.giftReady  = false;
+      s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
+      setGiftToastWithTTL(`💎 Dog (LV ${placedLvl}) placed`);
+      save?.();
     }
   }
 
-  // אוטו־דוג:
-  // 1) צבירה לבנק לפי הזמן (בלי חלוקה OFFLINE)
-  // 2) אם יש בנק>0 ויש סלוט פנוי → מכניס, מאפס טיימר ומפחית מהבנק
-  accrueBankDogsUpToNow(s);   // PART 6
-  tryDistributeBankDog(s);    // PART 6
+  // אוטו־דוג
+  accrueBankDogsUpToNow(s);
+  tryDistributeBankDog(s);
 
   finalizeDailyRewardOncePerTick();
   s.lastSeen = now;
 }
 // === END PART 5 ===
+
 
 
 
@@ -1367,7 +1473,12 @@ function onOfflineCollect() {
     s.pendingOfflineGold = 0;
     setUi(u => ({ ...u, gold: s.gold }));
     save();
-    setCenterPopup({ text: `⛏️ +${formatShort(add)} coins`, id: Math.random() });
+    const mleoPrev = previewMleoFromCoins(add); // הצגה בלבד; ה-MLEO כבר נוספה בזמן offline accrual
+setCenterPopup({
+  text: `⛏️ +${formatShort(add)} coins • +${Number(mleoPrev).toFixed(2)} MLEO`,
+  id: Math.random()
+});
+
 }
 setShowCollect(false);
 }
@@ -1465,13 +1576,13 @@ function handleOfflineAccrual(s, elapsedMs) {
     }
   }
 
-  // סימולציית שבירת סלעים עד תקרה של 12 שעות
-  const CAP_MS = 12 * 60 * 60 * 1000; // 12h
+  // סימולציית שבירת סלעים עד תקרה של 12 שעות — עם OFFLINE_DPS_FACTOR
+  const CAP_MS = 12 * 60 * 60 * 1000;
   const simMs = Math.min(elapsedMs, CAP_MS);
   let totalCoins = 0;
 
   for (let lane = 0; lane < LANES; lane++) {
-    let dps = laneDpsSum(s, lane);
+    let dps = laneDpsSum(s, lane) * OFFLINE_DPS_FACTOR;
     if (dps <= 0) continue;
 
     let idx = s.lanes[lane].rock.idx;
@@ -1497,13 +1608,10 @@ function handleOfflineAccrual(s, elapsedMs) {
     s.lanes[lane].rockCount = idx;
   }
 
-  // הוספת Coins לקרדיט לאסוף + עדכון כריית MLEO בדיוק כמו אונליין
   if (totalCoins > 0) {
     s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
     try {
-      // נקודות כרייה יומיות (נשמר ב-localStorage תחת MINING_LS_KEY)
-      addPlayerScorePoints(s, totalCoins);
-      // בדיוק כמו בטיקט אונליין — ממיר נקודות ליתרה בפועל עד DAILY_CAP
+      addPlayerScorePoints(s, totalCoins); // מכבד חיתוך רך+קאפ
       finalizeDailyRewardOncePerTick();
     } catch {}
   }
@@ -1691,6 +1799,39 @@ function onAdd(){
   setAdVideoEnded(false); 
   setShowAdModal(true); 
 }
+// Coins modal (details + claim-to-mining)
+const [showCoinsModal, setShowCoinsModal] = useState(false);
+
+function claimCoinsToMining() {
+  try { play?.(S_CLICK); } catch {}
+
+  const s = stateRef.current; 
+  if (!s) return;
+
+  const coins = Number(s.gold || 0);
+  if (!coins) { setGiftToastWithTTL("No coins to claim"); return; }
+
+  // כמה MLEO יתווספו (מכבד חיתוך רך ותקרת היום)
+  const eff = previewMleoFromCoins(coins);
+  if (!eff) { setGiftToastWithTTL("Daily cap reached or nothing to add"); return; }
+
+  // עדכון סטטוס הכרייה
+  const mst = loadMiningState();
+  const today = getTodayKey();
+  if (mst.lastDay !== today) { mst.minedToday = 0; mst.scoreToday = 0; mst.lastDay = today; }
+
+  const room = Math.max(0, DAILY_CAP - (mst.minedToday || 0));
+  const add  = Math.min(eff, room);
+
+  mst.minedToday += add;
+  mst.balance    += add;
+
+  saveMiningState(mst);
+  setMining(mst);
+
+  setGiftToastWithTTL(`Claimed ${add.toFixed(2)} MLEO from coins`);
+}
+
 
 // ===== HUD Info modal state & content =====
 const [hudModal, setHudModal] = useState(null); // 'coins'|'dps'|'gold'|'spawn'|'gifts'|'giftRing'|'dogRing'
@@ -1987,19 +2128,31 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
     </div>
   </div>
 
-  {/* keep glow keyframes for diamonds */}
-  <style jsx global>{`
-    @keyframes glowPulse {
-      0% { opacity: .55; transform: scale(.98); }
-      50% { opacity: 1; transform: scale(1); }
-      100% { opacity: .55; transform: scale(.98); }
-    }
-    @keyframes glowRing {
-      0% { opacity: .6; }
-      50% { opacity: 1; }
-      100% { opacity: .6; }
-    }
-  `}</style>
+{/* keep glow keyframes for diamonds + global UI pulses */}
+<style jsx global>{`
+  @keyframes glowPulse {
+    0% { opacity: .55; transform: scale(.98); }
+    50% { opacity: 1; transform: scale(1); }
+    100% { opacity: .55; transform: scale(.98); }
+  }
+  @keyframes glowRing {
+    0% { opacity: .6; }
+    50% { opacity: 1; }
+    100% { opacity: .6; }
+  }
+  /* === added for CLAIM glow === */
+  @keyframes btnPulse {
+    0%   { box-shadow:0 0 0 0 rgba(250,204,21,.45); }
+    70%  { box-shadow:0 0 0 10px rgba(250,204,21,0); }
+    100% { box-shadow:0 0 0 0 rgba(250,204,21,0); }
+  }
+  /* === added for digits nudge === */
+  @keyframes nudge {
+    0%,100% { transform: translateY(0); }
+    50%     { transform: translateY(-1px); }
+  }
+`}</style>
+
 
   <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
     {/* Coins + ad ring */}
@@ -2194,40 +2347,76 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
 </div>
 
 
-{/* Mining status + CLAIM (with Vault) */}
+{/* Mining status + CLAIM (Icon becomes a button) */}
 <div className="w-full flex justify-center mt-1">
   <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
-    <img src={IMG_TOKEN} alt="MLEO" className="w-6 h-6 rounded-full" />
-    <span className="text-yellow-300 font-extrabold">
-      {formatShort(mining?.balance || 0)}
-    </span>
-    <span className="text-gray-400 hidden sm:inline">
-      • {formatShort(mining?.minedToday || 0)}/{formatShort(DAILY_CAP)}
-    </span>
+    {/* ← האייקון הוא כפתור */}
+  <button
+  onClick={() => setShowMleoModal(true)}
+  className={`relative w-6 h-6 rounded-full grid place-items-center transition
+    ${(mining?.balance || 0) > 0 ? "hover:opacity-90 active:scale-95 cursor-pointer" : "opacity-90"}`}
+  aria-label="Open MLEO details"
+  title="Open MLEO details"
+>
+ {(mining?.balance || 0) > 0 && (
+  <span
+    aria-hidden
+    className="absolute -inset-1 rounded-full"
+    style={{
+      animation: "glowPulse 2.4s infinite",
+      border: "1px solid rgba(250,204,21,.5)"
+    }}
+  />
+)}
 
-    <button
-      onClick={onClaimMined}
-      disabled={claiming || (mining?.balance || 0) <= 0}
-      className={`px-2.5 py-1 rounded-md font-extrabold ${
-        (mining?.balance || 0) > 0
-          ? "bg-yellow-400 hover:bg-yellow-300 text-black"
-          : "bg-slate-500 text-white/70 cursor-not-allowed"
-      }`}
-      title={(mining?.balance || 0) > 0 ? "Claim" : "No tokens to claim"}
-    >
-      CLAIM
-    </button>
+  <img src={IMG_TOKEN} alt="MLEO" className="w-6 h-6 rounded-full pointer-events-none" />
+</button>
 
-    {/* Vault preview (Clickable → opens Mining modal) */}
+
+  {/* BALANCE — שלמים + ניעור כשיש מה לטעון */}
+<span
+  className={`text-yellow-300 font-extrabold tabular-nums ${
+    (mining?.balance || 0) > 0 ? "inline-block" : ""
+  }`}
+  style={(mining?.balance || 0) > 0 ? { animation: "nudge 1.8s ease-in-out infinite" } : undefined}
+>
+  {Math.floor(Number(mining?.balance || 0)).toLocaleString()} MLEO
+</span>
+
+ <button
+  onClick={onClaimMined}
+  disabled={claiming || (mining?.balance || 0) <= 0}
+  className={`relative px-2.5 py-1 rounded-md font-extrabold transition active:scale-95
+    ${(mining?.balance || 0) > 0 && !claiming
+      ? "bg-yellow-400 hover:bg-yellow-300 text-black cursor-pointer"
+      : "bg-slate-500 text-white/70 cursor-not-allowed"
+    }`}
+  title={(mining?.balance || 0) > 0 ? "Claim" : "No tokens to claim"}
+>
+  {(mining?.balance || 0) > 0 && !claiming && (
+    <span
+      aria-hidden
+      className="absolute -inset-1 rounded-lg"
+      style={{ animation: "btnPulse 1.8s ease-in-out infinite" }}
+    />
+  )}
+  CLAIM
+</button>
+
+
+    {/* VAULT — תצוגה שלמה בלבד */}
     <button
       onClick={() => setShowMiningInfo(true)}
       className="ml-2 text-gray-300 hover:text-white underline-offset-2 hover:underline"
       title="Open Mining"
     >
-      Vault: <b className="text-cyan-300">{formatShort(mining?.vault || 0)}</b>
+      Vault: <b className="text-cyan-300 tabular-nums">
+        {Math.floor(Number(mining?.vault || 0)).toLocaleString()}
+      </b> MLEO
     </button>
   </div>
 </div>
+
 </div>
 
 {/* === END PART 9 === */}
@@ -2333,6 +2522,8 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
             </div>
           </div>
         )}
+
+
 {showHowTo && (
   <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
     <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
@@ -2341,48 +2532,46 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
       <div className="space-y-4 text-sm text-slate-700">
         <section>
           <h3 className="font-bold text-slate-900 mb-1">Goal</h3>
-          <p>Merge miners (dogs), break rocks, and earn Coins. More Coins mean faster upgrades and stronger mining.</p>
+          <p>Merge miners (dogs), break rocks, and earn <b>Coins</b>. From rock breaks only, a portion converts to <b>MLEO</b> (default 10%).</p>
         </section>
 
         <section>
           <h3 className="font-bold text-slate-900 mb-1">Board & Merging</h3>
           <ol className="list-decimal ml-5 space-y-1">
-            <li>Tap <b>ADD</b> on an empty slot to place a dog. The cost is shown on the button and increases over time.</li>
-            <li>Drag two dogs of the same level onto the same slot to merge them into a higher level.</li>
-            <li>Each dog adds <b>DPS</b> (damage per second) to the lane’s rock. When a rock breaks, you get Coins.</li>
-            <li>Rocks level up as you progress. Higher rocks have more HP and pay out more Coins.</li>
+            <li>Tap <b>ADD</b> on an empty slot to place a dog. Cost rises over time.</li>
+            <li>Drag two dogs of the same level to merge into a higher level.</li>
+            <li>Each dog adds <b>DPS</b> to its lane; breaking a rock grants Coins. The reward popup shows both <b>Coins</b> and the estimated <b>MLEO</b> earned.</li>
           </ol>
         </section>
 
         <section>
           <h3 className="font-bold text-slate-900 mb-1">Upgrades & Bonuses</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li><b>🪓 DPS +10%</b> – increases damage rate so rocks break faster.</li>
-            <li><b>🟡 GOLD +10%</b> – increases Coins earned from each rock.</li>
-            <li><b>🎁 Global Gifts</b> – arrive on a global timer (20–60s by phase). Rewards: Coins, a free dog, DPS/GOLD boost, or 💎.</li>
-            <li><b>💎 Diamonds</b> – collect 3 to open a chest (Coins ×10/×100/×1000 or a high-level dog). If the board is full, the dog waits until a slot is free.</li>
-            <li><b>GAIN (video)</b> – watch to get a 50% bonus based on your current progression; 10-minute cooldown.</li>
+            <li><b>🪓 DPS +10%</b> – rocks break faster.</li>
+            <li><b>🟡 GOLD +10%</b> – more Coins per rock.</li>
+            <li><b>🎁 Global Gifts</b> – arrive on global timer; may grant Coins, a dog, DPS/GOLD boost, or 💎.</li>
+            <li><b>💎 Diamonds</b> – 3💎 opens a chest (big Coin multipliers or a high-level dog).</li>
+            <li><b>GAIN (video)</b> – +50% Coin bonus, 10m cooldown.</li>
           </ul>
         </section>
 
         <section>
-          <h3 className="font-bold text-slate-900 mb-1">Auto-Dog & Offline</h3>
+          <h3 className="font-bold text-slate-900 mb-1">Mining (MLEO)</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li><b>🐶 Auto-Dog</b> – a small bank fills over time (up to 6). When a slot is free, one dog is placed automatically.</li>
-            <li><b>Offline</b> – up to 12 hours of simulated progress. When you return, press <b>COLLECT</b> to claim the Coins.</li>
+            <li>Only rock breaks generate MLEO (by converting a portion of the Coins; default 10%).</li>
+            <li>Daily soft-cut applies: as you approach your daily cap, effective MLEO per rock gradually tapers.</li>
+            <li>Offline progress earns at <b>50%</b> dog power and can simulate up to 12h.</li>
+            <li><b>CLAIM</b> moves your MLEO balance into your Vault. Claim to wallet opens per the token schedule.</li>
           </ul>
         </section>
 
         <section>
-          <h3 className="font-bold text-slate-900 mb-1">Tips</h3>
+          <h3 className="font-bold text-slate-900 mb-1">Launch & Presale</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li>Keep the board busy—higher total DPS breaks more rocks per minute.</li>
-            <li>Early game: prioritize <b>GOLD</b> to grow income; later: add <b>DPS</b> to scale speed.</li>
-            <li>Grab gifts and use <b>GAIN</b> whenever ready—they give strong momentum.</li>
+            <li>Game start: on the <b>presale day</b>.</li>
+            <li>Presale duration: <b>X</b> days (to be announced).</li>
           </ul>
         </section>
-
-        <p className="text-xs text-slate-500">Want details about MLEO mining? Use the <b>MINING</b> button on the start screen or open the “Mining & Tokens” modal.</p>
       </div>
 
       <div className="flex justify-end gap-2 mt-4">
@@ -2396,6 +2585,7 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
     </div>
   </div>
 )}
+
 
 {showTerms && (
   <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
@@ -2414,42 +2604,47 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
         <section>
           <h3 className="font-bold text-slate-900 mb-1">1) Coins vs. MLEO</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li><b>Coins</b> are in-game currency for upgrades and purchases.</li>
-            <li><b>MLEO</b> is earned only via mining activity (see below).</li>
+            <li><b>Coins</b> – in-game currency for upgrades and purchases.</li>
+            <li><b>MLEO</b> – generated <b>only</b> from rock breaks by converting a portion of Coins (default 10%).</li>
           </ul>
         </section>
 
         <section>
-          <h3 className="font-bold text-slate-900 mb-1">2) How MLEO is earned</h3>
+          <h3 className="font-bold text-slate-900 mb-1">2) Daily Limits & Soft Cut</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li><b>Only</b> by breaking rocks. Gifts/ads/diamonds do not directly grant MLEO.</li>
-            <li>Each rock break adds daily mining points which convert to MLEO up to your daily cap.</li>
-            <li>Offline simulation (up to 12h) also counts if rocks are virtually broken.</li>
+            <li>Each player has a daily MLEO cap.</li>
+            <li>As you approach/overflow the cap, a <b>soft cut</b> reduces effective MLEO per rock (tunable by the operator).</li>
+            <li>Displayed MLEO in popups is an estimate after current soft-cut and remaining room.</li>
           </ul>
         </section>
 
         <section>
-          <h3 className="font-bold text-slate-900 mb-1">3) Fairness: Daily Pool & Cap</h3>
+          <h3 className="font-bold text-slate-900 mb-1">3) Offline</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li>There is a fixed global daily pool of MLEO.</li>
-            <li>Each player has a daily cap. After reaching it, no further MLEO is added that day.</li>
-            <li>If total demand exceeds the pool, rewards are scaled down equally for everyone (pro-rata).</li>
+            <li>Offline mining simulates up to 12h at <b>50%</b> dog power.</li>
           </ul>
         </section>
 
         <section>
-          <h3 className="font-bold text-slate-900 mb-1">4) Claim & Vault</h3>
+          <h3 className="font-bold text-slate-900 mb-1">4) Claim</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li>Your daily earned balance can be <b>CLAIM</b>ed into your Vault.</li>
-            <li>Before token launch this is off-chain; after launch, transfers to wallet may be enabled.</li>
+            <li><b>CLAIM</b> from game to Vault is always available.</li>
+            <li>Claim to wallet opens one month after the official token launch (TGE) and follows cumulative limits: <b>10%</b> month 1, <b>30%</b> month 2, <b>50%</b> month 3, <b>70%</b> month 4, <b>90%</b> month 5, and <b>100%</b> from month 6.</li>
           </ul>
         </section>
 
         <section>
-          <h3 className="font-bold text-slate-900 mb-1">5) Fair Play & Security</h3>
+          <h3 className="font-bold text-slate-900 mb-1">5) Launch & Presale</h3>
           <ul className="list-disc ml-5 space-y-1">
-            <li>No bots, exploits or automation. Abusive behavior may lead to suspension or reset.</li>
-            <li>Data shown in the HUD may include rounding and can change as the system updates.</li>
+            <li>Game starts on presale day. Presale length will be announced (X days).</li>
+          </ul>
+        </section>
+
+        <section>
+          <h3 className="font-bold text-slate-900 mb-1">6) Fair Play</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>No bots, exploits or automation. Abuse may lead to suspension/reset.</li>
+            <li>Some values are rounded and may adjust over time.</li>
           </ul>
         </section>
       </div>
@@ -2470,102 +2665,109 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
   </div>
 )}
 
-{showMiningInfo && (
-  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
-    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
-      <h2 className="text-2xl font-extrabold mb-3">Mining & Tokens</h2>
+{showMiningInfo && (() => {
+  const vault   = Number(mining?.vault || 0);
+  const vault3  = vault.toFixed(3);
+  const bal     = Number(mining?.balance || 0);
+  const bal3    = bal.toFixed(3);
+  const now     = Date.now();
+  const pct     = currentClaimPct(now);
+  const pct100  = Math.round(pct * 100);
+  const canWallet = TOKEN_LIVE && walletClaimEnabled(now);
+  const room    = remainingWalletClaimRoom();
+  const hasRoom = room > 0;
+  const canClaim = vault > 0 && canWallet && hasRoom && !claiming;
 
-      {/* === Claim box (top) === */}
-      <section className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
-        <h3 className="font-bold text-slate-900 mb-2">Claim</h3>
-        <p className="text-sm mb-2">
-          Available balance: <b>{formatShort(mining?.balance || 0)} MLEO</b>
-        </p>
+  const statusLine = !TOKEN_LIVE
+    ? "Token not live yet — wallet claim will open after token launch."
+    : (canWallet
+        ? (pct100 >= 100 ? "No wallet claim limits (6+ months after launch)." : `Wallet claim window: up to ${pct100}% of your total accrued.`)
+        : "Wallet claim locked until 1 month after token launch.");
 
-        <button
-          onClick={onClaimMined}
-          disabled={claiming || (mining?.balance || 0) <= 0}
-          className={`px-3 py-1.5 rounded-md font-extrabold ${
-            (mining?.balance || 0) > 0
-              ? "bg-yellow-400 hover:bg-yellow-300 text-black"
-              : "bg-slate-300 text-slate-600 cursor-not-allowed"
-          }`}
-        >
-          {TOKEN_LIVE ? "CLAIM to Wallet" : "CLAIM to Vault"}
-        </button>
+  const roomLine = TOKEN_LIVE
+    ? (hasRoom ? `Current allowed to wallet (room): ${room.toFixed(3)} MLEO.` : "Temporary wallet claim limit reached.")
+    : "";
 
-        {!TOKEN_LIVE && (
-          <p className="text-xs text-slate-500 mt-2">
-            Token not live yet — claims are stored locally in your Vault until launch.
-          </p>
-        )}
-      </section>
+  return (
+    <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+      <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
+        <h2 className="text-2xl font-extrabold mb-3">Mining &amp; Tokens</h2>
 
-      {/* === Main info === */}
-      <section className="space-y-4 text-sm text-slate-700">
-        <div>
-          <h3 className="font-bold text-slate-900 mb-1">Coins vs. MLEO</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li><b>Coins</b> are the in-game currency you use for upgrades and buying miners.</li>
-            <li><b>MLEO</b> accrues from your gameplay and appears in the Mining bar as <i>Today</i> and <i>Balance</i>.</li>
-          </ul>
-        </div>
+        {/* ===== Vault display ===== */}
+        <section className="rounded-lg p-3 bg-slate-50 border border-slate-200 mb-4">
+          <h3 className="font-bold text-slate-900 mb-2">Vault Balance</h3>
 
-        <div>
-          <h3 className="font-bold text-slate-900 mb-1">How MLEO accrues</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>Breaking rocks grants mining points.</li>
-            <li>Points are auto-converted into your daily <b>Balance</b> up to a per-player daily cap.</li>
-            <li>Press <b>CLAIM</b> to move the Balance to your <b>Vault</b> (and later to wallet when live).</li>
-          </ul>
-        </div>
+          <div className="text-sm mb-1">
+            Total stored in Vault: <b>{vault3} MLEO</b>
+          </div>
+          <div className="text-xs text-slate-600 mb-3">
+            Unclaimed (pending to Vault): {bal3} MLEO
+          </div>
 
-        {/* Vault summary (no "History") */}
-        <div className="rounded-lg p-3 bg-slate-50 border border-slate-200">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-900">Vault</h3>
-            <div className="text-xs text-slate-500">
-              Claimed total: <b>{formatShort(mining?.claimedTotal || 0)} MLEO</b>
+          <button
+            onClick={onClaimMined}
+            disabled={!canClaim}
+            className={`px-3 py-1.5 rounded-md font-extrabold ${
+              canClaim
+                ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                : "bg-slate-300 text-slate-600 cursor-not-allowed"
+            }`}
+            title={
+              !TOKEN_LIVE
+                ? "Token not live yet — wallet claim opens after token launch."
+                : (!hasRoom
+                    ? "Wallet claim limit reached for now."
+                    : (vault > 0 ? "Claim to your wallet" : "No tokens to claim"))
+            }
+          >
+            CLAIM TO WALLET
+          </button>
+
+          <p className="text-xs text-slate-500 mt-2">{statusLine}</p>
+          {TOKEN_LIVE && <p className="text-xs text-slate-500 mt-1">{roomLine}</p>}
+        </section>
+
+        {/* ===== Explanations ===== */}
+        <section className="space-y-4 text-sm text-slate-700">
+          <div>
+            <h3 className="font-bold text-slate-900 mb-1">Coins vs. MLEO</h3>
+            <ul className="list-disc ml-5 space-y-1">
+              <li><b>Coins</b> are for upgrades and buying miners.</li>
+              <li><b>MLEO</b> accrues from rock breaks → goes to <i>Balance</i> → when you CLAIM it moves into your <b>Vault</b>.</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-slate-900 mb-1">Wallet Claim Schedule</h3>
+            <ol className="list-decimal ml-5 space-y-1">
+              <li><b>Month 1</b>: up to 10% of total.</li>
+              <li><b>Month 2</b>: up to 30% total.</li>
+              <li><b>Month 3</b>: up to 50% total.</li>
+              <li><b>Month 4</b>: up to 70% total.</li>
+              <li><b>Month 5</b>: up to 90% total.</li>
+              <li><b>6+ months</b>: 100% available.</li>
+            </ol>
+            <div className="mt-2 text-xs text-slate-600">
+              {TOKEN_LIVE
+                ? (pct100 >= 100 ? "Current status: No wallet claim limits." : `Current window: up to ${pct100}% total.`)
+                : "Launch date not set yet — schedule activates when the token goes live."}
             </div>
           </div>
-          <p className="mt-1">
-            Current Vault balance: <b className="text-slate-900">{formatShort(mining?.vault || 0)} MLEO</b>
-          </p>
+        </section>
 
-          {TOKEN_LIVE ? (
-            <div className="mt-2">
-              <button
-                className="px-3 py-1.5 rounded-md bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold"
-                disabled
-                title="Withdraw Vault to wallet (coming online)"
-              >
-                WITHDRAW to Wallet
-              </button>
-              <span className="text-xs text-slate-500 ml-2">(coming online)</span>
-            </div>
-          ) : null}
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            onClick={() => setShowMiningInfo(false)}
+            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
+          >
+            Close
+          </button>
         </div>
-
-        <div>
-          <h3 className="font-bold text-slate-900 mb-1">Daily emission & fairness</h3>
-          <ul className="list-disc ml-5 space-y-1">
-            <li>There’s a fixed daily emission for the system.</li>
-            <li>Every player has a daily cap which resets each day.</li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="flex justify-end gap-2 mt-4">
-        <button
-          onClick={() => setShowMiningInfo(false)}
-          className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800"
-        >
-          Close
-        </button>
       </div>
     </div>
-  </div>
-)}
+  );
+})()}
+
 
         {/* Diamond Rewards Modal */}
         {showDiamondInfo && (
@@ -2646,6 +2848,60 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
             </div>
           </div>
         )}
+{/* MLEO Modal – exact (3dp) + CLAIM */}
+{showMleoModal && (
+  <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
+      <div className="flex items-start justify-between mb-3">
+        <h2 className="text-2xl font-extrabold">MLEO</h2>
+        <button
+          onClick={() => setShowMleoModal(false)}
+          className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="space-y-3 text-sm">
+        <div className="flex items-center gap-2">
+          <img src={IMG_TOKEN} alt="MLEO" className="w-7 h-7 rounded-full" />
+          <div>
+            <div className="text-slate-700">Current Balance (exact):</div>
+            <div className="text-2xl font-extrabold tabular-nums">
+             {Number(mining?.balance || 0).toFixed(3)} MLEO
+
+
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg p-3 bg-slate-50 border border-slate-200">
+          <div className="font-bold mb-1">What happens on CLAIM?</div>
+          <p className="text-slate-700">
+            Your accrued MLEO is claimed according to the token schedule:
+            before token is live it moves to your <b>Vault</b>; after launch it can be claimed to your <b>wallet</b> (per limits).
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-5">
+        <button
+          onClick={() => { onClaimMined(); setShowMleoModal(false); }}
+          disabled={!(mining?.balance > 0) || claiming}
+          className={`px-4 py-2 rounded-lg font-extrabold ${
+            mining?.balance > 0 && !claiming
+              ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+              : "bg-slate-300 text-slate-600 cursor-not-allowed"
+          }`}
+          title={mining?.balance > 0 ? "Claim MLEO" : "No tokens to claim"}
+        >
+          CLAIM
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
   {!showIntro && (
   <button
