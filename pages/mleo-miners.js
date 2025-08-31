@@ -10,21 +10,33 @@ import { useAccount } from "wagmi";
 
 
 // --- iOS 100vh fix (sets --app-100vh = window.innerHeight) ---
+// --- iOS 100vh fix (sets --app-100vh = visual viewport height) ---
 function useIOSViewportFix() {
   useEffect(() => {
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+
     const setVH = () => {
-      if (typeof window === "undefined") return;
-      const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty("--app-100vh", `${vh * 100}px`);
+      const h = vv ? vv.height : window.innerHeight;
+      root.style.setProperty("--app-100vh", `${Math.round(h)}px`);
     };
+
+    // init + “התייצבות” אחרי שינוי אוריינטציה
+    const onOrient = () => requestAnimationFrame(() => setTimeout(setVH, 250));
+
     setVH();
-    window.addEventListener("resize", setVH);
-    window.addEventListener("orientationchange", setVH);
-    document.addEventListener("fullscreenchange", setVH);
+    if (vv) {
+      vv.addEventListener("resize", setVH);
+      vv.addEventListener("scroll", setVH); // URL bar collapse/expand
+    }
+    window.addEventListener("orientationchange", onOrient);
+
     return () => {
-      window.removeEventListener("resize", setVH);
-      window.removeEventListener("orientationchange", setVH);
-      document.removeEventListener("fullscreenchange", setVH);
+      if (vv) {
+        vv.removeEventListener("resize", setVH);
+        vv.removeEventListener("scroll", setVH);
+      }
+      window.removeEventListener("orientationchange", onOrient);
     };
   }, []);
 }
@@ -2043,7 +2055,7 @@ return (
        className="
           relative flex flex-col items-center justify-start
           bg-gray-900 text-white
-          w-full min-h-[var(--app-100vh,100dvh)]
+          w-full min-h-[var(--app-100vh,100svh)]
           overflow-hidden select-none
           pt-[calc(env(safe-area-inset-top,0px)+8px)]
           pb-[calc(env(safe-area-inset-bottom,0px)+16px)]
@@ -2213,11 +2225,8 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
           className="relative w-full border border-slate-700 rounded-2xl overflow-hidden mt-1"
           style={{
             maxWidth: isDesktop ? "1024px" : "680px",
-            height: isDesktop
-              ? undefined
-              : (isFullscreen
-                  ? "var(--app-100vh,100dvh)"
-                  : "calc(var(--app-100vh,100dvh) - 65px)"),
+            height: isDesktop ? undefined : "var(--app-100vh,100svh)",
+ maxHeight: "var(--app-100vh,100svh)",
 
             aspectRatio: isDesktop ? "4 / 3" : undefined,
           }}
