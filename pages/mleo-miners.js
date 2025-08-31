@@ -203,7 +203,8 @@ const PRESALE_DURATION_DAYS = 0;             // X ימים (כשיהיה)
 const TGE_MS = null;                          // “השקה רשמית” של הטוקן
 
 // האם הטוקן חי ברשת (מפעיל קליימים ל־Wallet UI)? זה נפרד מהחלון הלגאלי לפתיחה.
-const TOKEN_LIVE = false;
+const TOKEN_LIVE = false; // דמו: כבוי. הפוך ל-true רק כשהחוזה וה-ABI מחוברים
+
 
 // Claim unlock schedule (מצטבר): חודש 1=10%, 2=30%, 3=50%, 4=70%, 5=90%, 6+=100%
 const CLAIM_SCHEDULE = [
@@ -512,7 +513,7 @@ useEffect(() => {
   return () => clearInterval(id);
 }, [mounted]);
 
-// onClaimMined — CLAIM → Vault (כשלא חי), פותח את חלון Claim to Wallet; ארנק כשחי
+// onClaimMined — CLAIM (Demo): תמיד שולח ל־Vault
 async function onClaimMined() {
   try { play?.(S_CLICK); } catch {}
 
@@ -521,10 +522,84 @@ async function onClaimMined() {
 
   if (!amt) {
     setGiftToastWithTTL("No tokens to claim");
-    return;   // ❌ בלי פתיחת חלון Mining
+    return;
   }
 
-  // לפני שהטוקן חי → מעבירים ל-Vault בלבד
+// === DEMO handlers for Mining ===
+
+// דמו: מעביר את כל ה-BALANCE ל־Vault ושומר היסטוריה
+function claimBalanceToVaultDemo() {
+  try { play?.(S_CLICK); } catch {}
+  const st  = loadMiningState();
+  const amt = Number((st?.balance || 0).toFixed(2));
+  if (!amt) { setGiftToastWithTTL("No tokens to claim"); return; }
+
+  st.vault        = Number(((st.vault || 0) + amt).toFixed(2));
+  st.claimedTotal = Number(((st.claimedTotal || 0) + amt).toFixed(2));
+  st.history      = Array.isArray(st.history) ? st.history : [];
+  st.history.unshift({ ts: Date.now(), amt, type: "to_vault" });
+  st.balance = 0;
+
+  saveMiningState(st);
+  setMining(st);
+  setGiftToastWithTTL(`Moved ${amt.toFixed(3)} MLEO to Vault`);
+}
+
+// כפתור CLAIM — דמו: תמיד Vault
+async function onClaimMined() {
+  // מצב דמו בלבד
+  claimBalanceToVaultDemo();
+  return;
+
+  /* ================== ENABLE AFTER LAUNCH (Mainnet/Testnet) ==================
+  // אם תרצה לפתוח קליים לארנק אחרי ההשקה, כבה את ה-early return מעל
+  // והפעל את הבלוק להלן (התאם לוגיקה/ABI/כתובת)
+  try { play?.(S_CLICK); } catch {}
+  const st  = loadMiningState();
+  const amt = Number((st?.balance || 0).toFixed(2));
+  if (!amt) { setGiftToastWithTTL("No tokens to claim"); return; }
+
+  const now = Date.now();
+  if (!walletClaimEnabled(now)) {
+    setGiftToastWithTTL("Wallet claim locked until 1 month after TGE");
+    return;
+  }
+  const room = remainingWalletClaimRoom();
+  if (room <= 0) { setGiftToastWithTTL("Wallet claim limit reached for now"); return; }
+  if (!isConnected) { openConnectModal?.(); return; }
+
+  setClaiming(true);
+  try {
+    const sendAmt = Number(Math.min(amt, room).toFixed(2));
+    await writeContract({
+      address: "0xYourTokenAddressHere",
+      abi: ERC20_ABI,
+      functionName: "claim", // עדכן לפי החוזה
+      args: [sendAmt],
+    });
+
+    st.balance         = Number(((st.balance || 0) - sendAmt).toFixed(2));
+    st.claimedToWallet = Number(((st.claimedToWallet || 0) + sendAmt).toFixed(2));
+    st.claimedTotal    = Number(((st.claimedTotal || 0)    + sendAmt).toFixed(2));
+    st.history = Array.isArray(st.history) ? st.history : [];
+    st.history.unshift({ ts: Date.now(), amt: sendAmt, type: "to_wallet" });
+
+    saveMiningState(st);
+    setMining(st);
+    setGiftToastWithTTL(`🪙 CLAIMED ${sendAmt.toFixed(2)} MLEO to wallet`);
+  } catch (err) {
+    console.error(err);
+    setGiftToastWithTTL("Claim failed");
+  } finally {
+    setClaiming(false);
+  }
+  ============================================================================
+  */
+}
+
+
+
+  // אם הטוקן עדיין לא חי → רק Vault (לשלב דמו)
   if (!TOKEN_LIVE) {
     st.vault        = Number(((st.vault || 0) + amt).toFixed(2));
     st.claimedTotal = Number(((st.claimedTotal || 0) + amt).toFixed(2));
@@ -534,10 +609,10 @@ async function onClaimMined() {
     saveMiningState(st);
     setMining(st);
     setGiftToastWithTTL(`Moved ${amt.toFixed(3)} MLEO to Vault`);
-    return;   // ❌ בלי setShowMiningInfo
+    return;
   }
 
-  // אחרי שהטוקן חי → לארנק
+  // אם חי → ניסיון שליחה לארנק
   const now = Date.now();
   if (!walletClaimEnabled(now)) {
     setGiftToastWithTTL("Wallet claim locked until 1 month after TGE");
@@ -553,7 +628,13 @@ async function onClaimMined() {
   setClaiming(true);
   try {
     const sendAmt = Number(Math.min(amt, room).toFixed(2));
-    // await writeContract(...)
+    // ✨ קריאה אמיתית לחוזה (דוגמה ל־BNB Testnet):
+    await writeContract({
+      address: "0xYourTokenAddressHere",
+      abi: ERC20_ABI,
+      functionName: "claim", // או הפונקציה שלך
+      args: [sendAmt],
+    });
 
     st.balance         = Number(((st.balance || 0) - sendAmt).toFixed(2));
     st.claimedToWallet = Number(((st.claimedToWallet || 0) + sendAmt).toFixed(2));
@@ -563,7 +644,6 @@ async function onClaimMined() {
     saveMiningState(st);
     setMining(st);
     setGiftToastWithTTL(`🪙 CLAIMED ${sendAmt.toFixed(2)} MLEO to wallet`);
-    // ❌ אין פתיחת Mining Info כאן
   } catch (err) {
     console.error(err);
     setGiftToastWithTTL("Claim failed");
@@ -571,6 +651,7 @@ async function onClaimMined() {
     setClaiming(false);
   }
 }
+
 
 
 // Debug live values for the panel (controlled inputs)
@@ -2998,28 +3079,46 @@ setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
           </div>
 
           {/* פעולות מהירות */}
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button
-              onClick={onClaimMined}
-              disabled={claiming || bal <= 0}
-              className={`px-4 py-2 rounded-lg font-extrabold ${
-                bal > 0 && !claiming
-                  ? "bg-yellow-400 hover:bg-yellow-300 text-black"
-                  : "bg-slate-300 text-slate-500 cursor-not-allowed"
-              }`}
-              title={bal > 0 ? "Move unclaimed to Vault / Wallet" : "No tokens to claim"}
-            >
-              {claiming ? "Claiming..." : "CLAIM"}
-            </button>
+        <div className="flex flex-wrap gap-2 mt-3">
+  {/* CLAIM → אוסף Unclaimed ומכניס ל־Vault (דמו) */}
+  <button
+    onClick={onClaimMined}
+    disabled={claiming || (Number(mining?.balance || 0) <= 0)}
+    className={`px-4 py-2 rounded-lg font-extrabold ${
+      (Number(mining?.balance || 0) > 0) && !claiming
+        ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+        : "bg-slate-300 text-slate-500 cursor-not-allowed"
+    }`}
+    title={(Number(mining?.balance || 0) > 0) ? "Move unclaimed to Vault (Demo)" : "No tokens to claim"}
+  >
+    {claiming ? "Claiming..." : "CLAIM"}
+  </button>
 
-            <button
-              onClick={claimCoinsToMining}
-              className="px-4 py-2 rounded-lg font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
-              title="Convert your current Coins into MLEO (subject to daily cap & softcut)"
-            >
-              Claim Coins → MLEO
-            </button>
-          </div>
+  {/* CLAIM COIN → שולח Vault אל הארנק (דמו: פותח חיבור/טוסט בלבד) */}
+  <button
+    onClick={() => {
+      try { play?.(S_CLICK); } catch {}
+      const vaultAmt = Number(mining?.vault || 0);
+      if (!isConnected) {
+        openConnectModal?.();
+        setGiftToastWithTTL("🔗 Connect wallet to withdraw Vault (Demo)");
+        return;
+      }
+      if (vaultAmt > 0) {
+        setGiftToastWithTTL(`🪙 Sent ${vaultAmt.toFixed(2)} MLEO from Vault to Wallet (Demo)`);
+      } else {
+        setGiftToastWithTTL("Vault is empty");
+      }
+    }}
+    className="px-4 py-2 rounded-lg font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
+    title="Send Vault contents to Wallet (Demo only)"
+  >
+    CLAIM COIN → MLEO
+  </button>
+</div>
+
+
+
 
           {/* CTA להתחברות כשמותר קליים לארנק אבל לא מחוברים */}
           {TOKEN_LIVE && canWallet && !isConnected && (
