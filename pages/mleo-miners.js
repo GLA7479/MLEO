@@ -316,6 +316,8 @@ useEffect(() => {
  }, []);
 
 useEffect(() => {
+  if (!qaEnabled()) return; // ← QA/Local only
+
   try {
     const qs = new URLSearchParams(window.location.search);
     if (qs.get("reset") === "1") { resetGame(true); }
@@ -324,11 +326,12 @@ useEffect(() => {
 
   const onKey = (e) => {
     const k = (e.key || "").toLowerCase();
-    if (e.shiftKey && k === "r") setShowResetConfirm(true); // Shift+R
+    if (e.shiftKey && k === "r") setShowResetConfirm(true); // Shift+R only in QA
   };
   window.addEventListener("keydown", onKey);
   return () => window.removeEventListener("keydown", onKey);
 }, []);
+
 
 
 
@@ -1861,17 +1864,17 @@ return (
               <div className="mb-4 w-full max-w-md">
                 <div className="px-3 py-2 rounded-lg bg-yellow-300/20 text-yellow-200 border border-yellow-300/40 text-xs sm:text-sm">
                   You must read and accept the <b>Terms &amp; Conditions</b> before playing for the first time.
-{/* QA button (hidden; localhost or ?qa=1) */}
+
+{/* RESET — QA only */}
 {qaEnabled() && (
   <button
-    onClick={() => setShowQAPanel(true)}
-    className="fixed bottom-3 right-3 z-[10060] px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold border border-white/20"
-    title="QA tools"
+    onClick={() => setShowResetConfirm(true)}
+    className={`${BTN_BASE} ${BTN_H} bg-rose-500 hover:bg-rose-400 ring-rose-300 text-white`}
+    title="Reset all progress"
   >
-    QA
+    RESET
   </button>
 )}
-
                 </div>
               </div>
             )}
