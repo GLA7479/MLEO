@@ -59,7 +59,7 @@ const S_GIFT  = "/sounds/gift.mp3";
 
 // ===== UI constants =====
 // קופסת פריסה לאייקון (לא משנה את גובה הכפתור)
-const UI_BTN_H_PX = 50; // שנה פה פעם אחת: 28/32/36/40...
+const UI_BTN_H_PX = 60; // שנה פה פעם אחת: 28/32/36/40...
  // קופסת אייקון ADD נגזרת מהגובה (חצי גובה נראה טוב)
  const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 // זום ויזואלי של האייקון בלבד (אפשר לשנות בזמן ריצה: window.SPAWN_ICON_ZOOM = 1.6)
@@ -1746,7 +1746,7 @@ const BTN_H = `h-[${UI_BTN_H_PX}px]`; // גובה מתוך הקבוע
 
  // רינגים של Coin/🎁/🐶 (במקום w-8 h-8)
  const RING_SZ = `w-[${UI_BTN_H_PX}px] h-[${UI_BTN_H_PX}px]`;
-const BTN_BASE = "appearance-none inline-flex items-center justify-center gap-1 px-2 !py-0 rounded-xl font-extrabold text-[12px] leading-none whitespace-nowrap transition ring-2";
+const BTN_BASE = "appearance-none inline-flex items-center justify-center gap-1 px-3 !py-0 rounded-xl font-extrabold text-[14px] leading-none whitespace-nowrap transition ring-2";
 const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
 
