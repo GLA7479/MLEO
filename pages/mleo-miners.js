@@ -90,7 +90,10 @@ const S_GIFT  = "/sounds/gift.mp3";
  
 
 // ===== UI constants =====
-const UI_BTN_H_PX = 60;
+const UI_BTN_H_PX = 48;         // גובה
+// show/hide floating RESET button (bottom-left on canvas)
+const SHOW_FLOATING_RESET = true; // ← שנה ל-false כדי להסתיר במהירות
+const UI_BTN_MIN_W_PX = 150;    // רוחב מינימלי לכל כפתור (התאם מספר)
 const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 const UI_SPAWN_ICON_ZOOM =
   (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 1.55;
@@ -171,14 +174,65 @@ function rollDiamondPrize() {
 
 
 // ===== Formatting =====
-const formatShort = (n) => {
-  const abs = Math.abs(n || 0);
-  if (abs >= 1e12) return (n / 1e12).toFixed(abs < 1e13 ? 1 : 0) + "T";
-  if (abs >= 1e9)  return (n / 1e9 ).toFixed(abs < 1e10 ? 1 : 0) + "B";
-  if (abs >= 1e6)  return (n / 1e6 ).toFixed(abs < 1e7  ? 1 : 0) + "M";
-  if (abs >= 1e3)  return (n / 1e3 ).toFixed(abs < 1e4  ? 1 : 0) + "K";
-  return String(Math.floor(n || 0));
-};
+
+// בסיס קיצורים (אלפים עד טריליון)
+const SUFFIXES_BASE = ["", "K", "M", "B", "T"];
+
+// ממפה דרגת אלפים לסיומת: 0→"" , 1→K, 2→M, 3→B, 4→T, 5→AA, 6→AB, ... עד אינסוף
+function suffixFromTier(tier) {
+  if (tier < SUFFIXES_BASE.length) return SUFFIXES_BASE[tier];
+  const idx = tier - SUFFIXES_BASE.length; // 0→AA, 1→AB ...
+  // ממיר למחרוזת אותיות בסגנון גיליון (A..Z, AA..), ומבריח ל-2+ אותיות
+  let n = idx + 26; // 26→"AA"
+  let s = "";
+  while (n >= 0) {
+    const q = Math.floor(n / 26) - 1;
+    const r = n - (q + 1) * 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = q;
+  }
+  if (s.length === 1) s = "A" + s; // הבטח מינימום 2 תווים
+  return s;
+}
+
+// קיצור מספרים כלליים (Coins, מחירים, עלויות וכו') — תמיד שלם, בלי נקודה עשרונית
+function formatAbbrevInt(n) {
+  const sign = (n || 0) < 0 ? "-" : "";
+  const abs = Math.abs(Number(n) || 0);
+
+  if (abs < 1000) return sign + String(Math.round(abs));
+
+  let tier = Math.floor(Math.log10(abs) / 3);        // אלפים=1, מיליונים=2...
+  let div = Math.pow(1000, tier);
+  let val = Math.round(abs / div);
+
+  // Normalize: 999.5K → 1M
+  if (val >= 1000) { tier += 1; val = 1; }
+
+  return sign + String(val) + suffixFromTier(tier);
+}
+
+// שמירה על השם הקיים בקוד
+const formatShort = formatAbbrevInt;
+
+// MLEO: ספרה עשרונית אחת רק עד 999.9; מעל 1000 → קיצור בלי עשרוניות
+function formatMleo(n) {
+  const sign = (n || 0) < 0 ? "-" : "";
+  const abs = Math.abs(Number(n) || 0);
+
+  if (abs < 1000) {
+    // תמיד ספרה אחת אחרי הנקודה (כולל ".0")
+    return sign + (abs).toFixed(1);
+  }
+
+  let tier = Math.floor(Math.log10(abs) / 3);
+  let div = Math.pow(1000, tier);
+  let val = Math.round(abs / div);
+  if (val >= 1000) { tier += 1; val = 1; }
+
+  return sign + String(val) + suffixFromTier(tier);
+}
+
 
 // ===== Simple image cache =====
 const IMG_CACHE = {};
@@ -499,7 +553,8 @@ export default function MleoMiners() {
 
     saveMiningState(st);
     setMining(st);
-    setGiftToastWithTTL(`Moved ${amt.toFixed(3)} MLEO to Vault`);
+    setGiftToastWithTTL(`Moved ${formatMleo(amt)} MLEO to Vault`);
+
   }
 
   // כפתור CLAIM — דמו: תמיד Vault
@@ -1266,7 +1321,8 @@ function tick(dt){
       s.gold += coinsGain; setUi(u => ({ ...u, gold: s.gold }));
       addPlayerScorePoints(s, coinsGain);
 
-      const mleoTxt = Number(mleoGainPreview || 0).toFixed(2);
+      const mleoTxt = formatMleo(mleoGainPreview || 0);
+
       setCenterPopup({ text: `⛏️ +${formatShort(coinsGain)} coins • +${mleoTxt} MLEO`, id: Math.random() });
 
       s.lanes[l].rockCount += 1;
@@ -1502,10 +1558,11 @@ function onOfflineCollect() {
   save();
 
   if (addCoins > 0 || addMleo > 0) {
-    setCenterPopup({
-      text: `⛏️ +${formatShort(addCoins)} coins • +${addMleo.toFixed(2)} MLEO`,
-      id: Math.random()
-    });
+  setCenterPopup({
+  text: `⛏️ +${formatShort(addCoins)} coins • +${formatMleo(addMleo)} MLEO`,
+  id: Math.random()
+});
+
   }
   setShowCollect(false);
 }
@@ -1859,7 +1916,7 @@ function claimCoinsToMining() {
   saveMiningState(mst);
   setMining(mst);
 
-  setGiftToastWithTTL(`Claimed ${add.toFixed(2)} MLEO from coins`);
+  setGiftToastWithTTL(`Claimed ${formatMleo(add)} MLEO from coins`);
 }
 
 // ===== HUD Info modal state & content =====
@@ -1910,7 +1967,8 @@ const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
 const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
 const boughtCount = sNow?.totalPurchased || 0;
 const toNextLv    = 30 - (boughtCount % 30);
-const BTN_H = "h-[60px]";
+const BTN_H = `h-[${UI_BTN_H_PX}px]`;             // כבר קיים אצלך – ודא שזה טמפלייט סטרינג
+const BTN_W = `min-w-[${UI_BTN_MIN_W_PX}px]`;     // חדש: רוחב מינימלי
 const RING_SZ = "w-[60px] h-[60px]";
 const BTN_BASE = "appearance-none inline-flex items-center justify-center gap-1 px-3 !py-0 rounded-xl font-extrabold text-[14px] leading-none whitespace-nowrap transition ring-2";
 const BTN_DIS  = "opacity-60 cursor-not-allowed";
@@ -2127,6 +2185,22 @@ return (
       >
         <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
 
+{SHOW_FLOATING_RESET && (
+  <div
+    className="absolute left-2 sm:left-3 z-[40]"
+    style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }}
+  >
+    <button
+      onClick={() => setShowResetConfirm(true)}
+      className="px-3 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 ring-2 ring-rose-300 text-white font-extrabold text-xs shadow-md active:scale-95"
+      title="Reset all progress"
+    >
+      RESET
+    </button>
+  </div>
+)}
+
+
         {/* ==== TOP HUD ==== */}
         <div
           className="absolute left-1/2 -translate-x-1/2 z-[30] w-[calc(100%-16px)] max-w-[980px]"
@@ -2136,14 +2210,17 @@ return (
             MLEO — MINERS
           </h1>
 
-          {/* Wallet status (non-interactive) */}
-          <div className="absolute top-2 left-2 z-[40]">
-            <div
-              className={`${isConnected ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white/70"} px-2 py-0.5 rounded-md text-[11px] font-semibold`}
-            >
-              {isConnected ? "● Connected" : "○ Not connected"}
-            </div>
-          </div>
+        {/* Wallet status (clickable) */}
+<div className="absolute top-2 left-2 z-[40]">
+  <button
+    onClick={() => (isConnected ? openAccountModal?.() : openConnectModal?.())}
+    className={`${isConnected ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white/70"} px-2 py-0.5 rounded-md text-[11px] font-semibold hover:opacity-90 active:scale-95 transition`}
+    title={isConnected ? "Wallet connected — tap for status" : "Wallet not connected — tap to connect"}
+  >
+    {isConnected ? "● Connected" : "○ Not connected"}
+  </button>
+</div>
+
 
           {/* keep glow keyframes for diamonds + global UI pulses */}
           <style jsx global>{`
@@ -2272,15 +2349,16 @@ return (
           {/* Actions row */}
           <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
             {/* ADD (spawn) */}
-            <button
-              onClick={addMiner}
-              disabled={!canBuyMiner}
-              className={`${BTN_BASE} ${BTN_H} ${
-                canBuyMiner
-                  ? "bg-emerald-500 hover:bg-emerald-400 ring-emerald-300 text-slate-900"
-                  : `bg-emerald-500 ring-emerald-300 text-slate-900 ${BTN_DIS}`
-              }`}
-            >
+          <button
+  onClick={addMiner}
+  disabled={!canBuyMiner}
+ className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
+  canBuyMiner
+    ? "bg-emerald-500 hover:bg-emerald-400 ring-emerald-300 text-slate-900"
+    : `bg-emerald-500 ring-emerald-300 text-slate-900 ${BTN_DIS}`
+}`}
+
+>
               <span className="mr-1 align-middle font-extrabold">+</span>
               <span
                 className="relative mr-1 inline-grid place-items-center align-middle"
@@ -2307,13 +2385,13 @@ return (
             <button
               onClick={upgradeDps}
               disabled={!canBuyDps}
-              className={`${BTN_BASE} ${BTN_H} ${
-                canBuyDps
-                  ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
-                  : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
-              }`}
-              title={`Cost ${formatShort(dpsCostNow)}`}
-            >
+ className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
+  canBuyDps
+    ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
+    : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
+}`}
+
+>
               <span className="align-middle">🪓</span>
               <span className="align-middle">+10% (Cost {formatShort(dpsCostNow)})</span>
             </button>
@@ -2322,13 +2400,13 @@ return (
             <button
               onClick={upgradeGold}
               disabled={!canBuyGold}
-              className={`${BTN_BASE} ${BTN_H} ${
-                canBuyGold
-                  ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
-                  : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
-              }`}
-              title={`Cost ${formatShort(goldCostNow)}`}
-            >
+className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
+  canBuyGold
+    ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
+    : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
+}`}
+
+>
               <span className="align-middle">🟡</span>
               <span className="align-middle">+10% (Cost {formatShort(goldCostNow)})</span>
             </button>
@@ -2337,62 +2415,57 @@ return (
             <button
               onClick={onAdd}
               disabled={addDisabled}
-              className={`${BTN_BASE} ${BTN_H} min-h-[28px] ${
-                addDisabled
-                  ? `bg-indigo-400 ring-indigo-300 text-slate-900 ${BTN_DIS}`
-                  : "bg-indigo-400 hover:bg-indigo-300 ring-indigo-300 text-slate-900"
-              }`}
-              title={addRemainMs > 0 ? `Ad bonus in ${addRemainLabel}` : "Watch ad to earn"}
-            >
+className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
+  addDisabled
+    ? `bg-indigo-400 ring-indigo-300 text-slate-900 ${BTN_DIS}`
+    : "bg-indigo-400 hover:bg-indigo-300 ring-indigo-300 text-slate-900"
+}`}
+
+>
               <span className="align-middle">GAIN</span>
               {addRemainMs > 0 && <span className="opacity-80 align-middle">({addRemainLabel})</span>}
             </button>
 
-            {/* RESET */}
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              className={`${BTN_BASE} ${BTN_H} bg-rose-500 hover:bg-rose-400 ring-rose-300 text-white`}
-              title="Reset all progress"
-            >
-              RESET
-            </button>
+
           </div>
 
           {/* Mining status + CLAIM */}
           <div className="w-full flex justify-center mt-1">
             <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
               {/* Icon button */}
-              <button
-                onClick={() => setShowMleoModal(true)}
-                className={`relative w-6 h-6 rounded-full grid place-items-center transition
-                  ${(mining?.balance || 0) > 0 ? "hover:opacity-90 active:scale-95 cursor-pointer" : "opacity-90"}`}
-                aria-label="Open MLEO details"
-                title="Open MLEO details"
-              >
-                {(mining?.balance || 0) > 0 && (
-                  <span
-                    aria-hidden
-                    className="absolute -inset-px rounded-full"
-                    style={{
-                      animation: "glowPulse 1.2s infinite",
-                      border: "2px solid rgba(250,204,21,.8)",
-                      boxShadow: "0 0 10px rgba(250,204,21,.55), 0 0 20px rgba(250,204,21,.35)"
-                    }}
-                  />
-                )}
+              {/* MLEO (icon + number) — both clickable */}
+<button
+  onClick={() => setShowMleoModal(true)}
+  className={`relative inline-flex items-center gap-2 px-2 py-1 rounded-md transition
+    ${(mining?.balance || 0) > 0 ? "hover:bg-white/10 active:scale-95 cursor-pointer" : "opacity-90"}`}
+  aria-label="Open MLEO details"
+  title="Open MLEO details"
+>
+  <div className="relative w-6 h-6 rounded-full grid place-items-center">
+    {(mining?.balance || 0) > 0 && (
+      <span
+        aria-hidden
+        className="absolute -inset-px rounded-full"
+        style={{
+          animation: "glowPulse 1.2s infinite",
+          border: "2px solid rgba(250,204,21,.8)",
+          boxShadow: "0 0 10px rgba(250,204,21,.55), 0 0 20px rgba(250,204,21,.35)"
+        }}
+      />
+    )}
+    <img src={IMG_TOKEN} alt="MLEO" className="w-6 h-6 rounded-full pointer-events-none" />
+  </div>
 
-                <img src={IMG_TOKEN} alt="MLEO" className="w-6 h-6 rounded-full pointer-events-none" />
-              </button>
+  <span
+    className={`text-yellow-300 font-extrabold tabular-nums ${
+      (mining?.balance || 0) > 0 ? "inline-block" : ""
+    }`}
+    style={(mining?.balance || 0) > 0 ? { animation: "nudge 1.8s ease-in-out infinite" } : undefined}
+  >
+    {formatMleo(mining?.balance || 0)} MLEO
+  </span>
+</button>
 
-              {/* BALANCE */}
-              <span
-                className={`text-yellow-300 font-extrabold tabular-nums ${
-                  (mining?.balance || 0) > 0 ? "inline-block" : ""
-                }`}
-                style={(mining?.balance || 0) > 0 ? { animation: "nudge 1.8s ease-in-out infinite" } : undefined}
-              >
-                {Math.floor(Number(mining?.balance || 0)).toLocaleString()} MLEO
-              </span>
 
               <button
                 onClick={onClaimMined}
@@ -2421,8 +2494,9 @@ return (
                 title="Open Mining"
               >
                 Vault: <b className="text-cyan-300 tabular-nums">
-                  {Math.floor(Number(mining?.vault || 0)).toLocaleString()}
-                </b> C
+  {formatMleo(mining?.vault || 0)}
+</b> MLEO
+
               </button>
             </div>
           </div>
@@ -2495,10 +2569,11 @@ return (
                 {formatShort(stateRef.current?.pendingOfflineGold || 0)}
               </b>{" "}
               coins and{" "}
-              <b className="text-yellow-300">
-                {Number(stateRef.current?.pendingOfflineMleo || 0).toFixed(2)}
-              </b>{" "}
-              MLEO in the background.
+             <b className="text-yellow-300">
+  {formatMleo(stateRef.current?.pendingOfflineMleo || 0)}
+</b>{" "}
+MLEO
+
             </p>
 
             <button
@@ -2515,7 +2590,7 @@ return (
       {showResetConfirm && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-2xl font-extrabold mb-2">Reset Progress?</h2>
+            <h2 className="text-2xl font-extrabולד mb-2">Reset Progress?</h2>
             <p className="text-sm text-slate-700 mb-4">
               This will permanently delete your save and send you back to the start.
             </p>
@@ -2538,7 +2613,7 @@ return (
         </div>
       )}
 
-      {/* How to Play modal (as in source) */}
+      {/* How to Play modal */}
       {showHowTo && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
@@ -2606,7 +2681,7 @@ return (
         </div>
       )}
 
-      {/* Terms modal (as in source) */}
+      {/* Terms modal */}
       {showTerms && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
@@ -2615,127 +2690,95 @@ return (
               <button onClick={() => setShowTerms(false)} className="px-3 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-sm font-extrabold">Close</button>
             </div>
 
-            <div className="text-sm text-slate-700 space-y-4 text-left">
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">1) Acceptance of Terms</h3>
-                <p>
-                  By accessing or using the game, you agree to these Terms &amp; Conditions (“Terms”).
-                  If you do not agree, do not use the game. We may modify these Terms at any time by
-                  posting an updated version in-app or on our site. Continued use constitutes acceptance.
-                </p>
-              </section>
+           <div className="text-sm text-slate-700 space-y-4 text-left">
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">1) Acceptance of Terms</h3>
+    <p>By accessing or using the game, you agree to these Terms &amp; Conditions (“Terms”). We may update them in-app; continued use is acceptance.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">2) Entertainment-Only; No Monetary Value</h3>
-                <p>
-                  This is a casual game for entertainment. In-game items, Coins and the token referred to as
-                  “MLEO” are utility features within the game experience. They <b>do not represent money,
-                  securities, or any form of financial instrument</b>. We make <b>no promises of price,
-                  liquidity, profit or future value</b> of any token or reward at any time.
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">2) Entertainment-Only; No Monetary Value</h3>
+    <p>Coins and “MLEO” are utility features for gameplay. They are not money, securities, or financial instruments, and carry no promise of price, liquidity, profit or future value.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">3) No Financial Advice</h3>
-                <p>
-                  Nothing in the game or related materials constitutes investment, legal, accounting or tax advice.
-                  Do your own research and consult professionals if needed. You are solely responsible for your decisions.
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">3) No Financial Advice</h3>
+    <p>Nothing here is investment, legal, accounting or tax advice. You are solely responsible for your decisions.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">4) Gameplay, Balancing &amp; Progress</h3>
-                <ul className="list-disc ml-5 space-y-1">
-                  <li>Game parameters (including rewards, limits, rates, spawn logic, drop tables, schedules and offline behavior) are internal, not publicly disclosed, and may change, be paused or reset at any time without notice.</li>
-                  <li>We may adjust or roll back progress, balances and rewards to address bugs, exploits, irregular activity, or to preserve game integrity.</li>
-                  <li>Access to features and events is not guaranteed and may be limited by time, geography, device, account status or other criteria.</li>
-                </ul>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">4) Gameplay, Balancing &amp; Progress</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Rates/limits/drop tables/schedules/offline behavior are internal and may change, pause or reset at any time.</li>
+      <li>We may adjust/rollback progress to address bugs, exploits or irregular activity.</li>
+      <li>Feature availability may depend on time, region, device or account status.</li>
+    </ul>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">5) Mining, Vault &amp; Claims</h3>
-                <ul className="list-disc ml-5 space-y-1">
-                  <li>Only certain in-game actions (e.g., breaking rocks) may accrue MLEO according to internal, variable calculations and daily limits.</li>
-                  <li>“CLAIM” moves accrued MLEO into your in-game <b>Vault</b>. If an on-chain claim becomes available in the future, it may be subject to eligibility checks, unlock windows, rate limits, and other restrictions. Availability is not guaranteed.</li>
-                  <li>We may change, delay or discontinue vaulting and/or on-chain claiming at any time.</li>
-                </ul>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">5) Mining, Vault &amp; Claims</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Only certain actions (e.g., breaking rocks) may accrue MLEO under variable, capped rules.</li>
+      <li>“CLAIM” moves accrued MLEO to your in-game <b>Vault</b>. If on-chain claims open later, they may be subject to unlock windows, rate limits, eligibility checks and other restrictions.</li>
+      <li>We may change, delay or discontinue vaulting and/or on-chain claiming at any time.</li>
+    </ul>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">6) Wallets &amp; Third-Party Services</h3>
-                <ul className="list-disc ml-5 space-y-1">
-                  <li>Connecting a wallet is optional and uses third-party services outside our control. You are solely responsible for the security of your devices, keys and wallets.</li>
-                  <li>Blockchain transactions are irreversible and may incur network fees. We are not responsible for losses due to user error, phishing, gas volatility, chain forks, reorgs, downtime or smart-contract risks.</li>
-                </ul>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">6) Wallets &amp; Third-Party Services</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Wallet connection is optional and via third parties outside our control. Keep your devices, keys and wallets secure.</li>
+      <li>Blockchain transactions are irreversible and may incur network fees. We are not responsible for losses due to user error, phishing, gas volatility, forks/reorgs, downtime or smart-contract risks.</li>
+    </ul>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">7) Fair Play &amp; Prohibited Conduct</h3>
-                <ul className="list-disc ml-5 space-y-1">
-                  <li>No bots, automation, multi-account abuse, exploits, reverse engineering or interference with game services.</li>
-                  <li>We may suspend, reset or terminate access and remove balances we believe are obtained through prohibited behavior.</li>
-                </ul>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">7) Fair Play &amp; Prohibited Conduct</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>No bots, automation, multi-account abuse, exploits, reverse engineering or service interference.</li>
+      <li>We may suspend, reset or terminate access and remove balances obtained through prohibited behavior.</li>
+    </ul>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">8) Availability, Data &amp; Updates</h3>
-                <ul className="list-disc ml-5 space-y-1">
-                  <li>The game may be unavailable, interrupted or updated at any time. We do not guarantee uninterrupted service.</li>
-                  <li>We may modify or discontinue features, wipe test data, or migrate saves for technical or balance reasons.</li>
-                </ul>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">8) Availability, Data &amp; Updates</h3>
+    <ul className="list-disc ml-5 space-y-1">
+      <li>Service may be unavailable, interrupted or updated at any time.</li>
+      <li>We may modify/discontinue features, wipe test data or migrate saves.</li>
+    </ul>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">9) Airdrops, Promotions &amp; Rewards</h3>
-                <p>
-                  Any airdrops, events, rewards or promotions are discretionary, subject to change,
-                  and may have eligibility requirements. Participation does not guarantee receipt or value.
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">9) Airdrops, Promotions &amp; Rewards</h3>
+    <p>Any events or rewards are discretionary, may change, and can have eligibility requirements. Participation does not guarantee receipt or value.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">10) Taxes</h3>
-                <p>
-                  You are solely responsible for determining and paying any taxes associated with your use of the game,
-                  including any rewards you may receive.
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">10) Taxes</h3>
+    <p>You are solely responsible for any taxes related to your use of the game and any rewards you may receive.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">11) Limitation of Liability</h3>
-                <p>
-                  To the maximum extent permitted by law, we are not liable for any indirect, incidental,
-                  special, consequential or exemplary damages, or for any loss of data, tokens, profits or opportunities,
-                  arising from or related to your use of the game, even if advised of the possibility of such damages.
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">11) Limitation of Liability</h3>
+    <p>To the maximum extent permitted by law, we are not liable for indirect/special/consequential damages or loss of data/tokens/profits/opportunities.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">12) Indemnity</h3>
-                <p>
-                  You agree to indemnify and hold us harmless from any claim, demand, loss or expense (including reasonable
-                  attorneys’ fees) arising out of or related to your use of the game or violation of these Terms.
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">12) Indemnity</h3>
+    <p>You agree to indemnify and hold us harmless from claims or expenses arising from your use of the game or violation of these Terms.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">13) Governing Law &amp; Disputes</h3>
-                <p>
-                  These Terms are governed by the laws of <b>[insert jurisdiction]</b>, without regard to conflict-of-law rules.
-                  Any dispute shall be resolved exclusively in the courts of <b>[insert venue]</b>. You consent to such jurisdiction and venue.
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  (If you prefer arbitration, replace this clause with your arbitration language.)
-                </p>
-              </section>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">13) Governing Law &amp; Disputes</h3>
+    <p>These Terms are governed by the laws of <b>[insert jurisdiction]</b>. Disputes resolved exclusively in <b>[insert venue]</b>.</p>
+  </section>
 
-              <section>
-                <h3 className="font-bold text-slate-900 mb-1">14) Contact</h3>
-                <p>
-                  Questions about these Terms? Contact us at <b>[insert contact email]</b>.
-                </p>
-              </section>
-            </div>
+  <section>
+    <h3 className="font-bold text-slate-900 mb-1">14) Contact</h3>
+    <p>Questions? <b>[insert contact email]</b>.</p>
+  </section>
+</div>
+
 
             <div className="flex justify-end gap-2 mt-4">
               <button
@@ -2773,7 +2816,68 @@ return (
         </div>
       )}
 
-      {/* MLEO quick modal (נפתח מלחיצה על אייקון ה-MLEO ב-HUD) */}
+         {/* Diamonds modal */}
+      {showDiamondInfo && (() => {
+        const s = stateRef.current || {};
+        const diamonds = Number(s.diamonds || 0);
+
+        const prizeLabel = (() => {
+          switch (s.nextDiamondPrize) {
+            case "coins_x10":   return "10x gift";
+            case "coins_x100":  return "100x gift";
+            case "coins_x1000": return "1000x gift";
+            case "dog+3":       return "Dog +3 levels";
+            case "dog+5":       return "Dog +5 levels";
+            case "dog+7":       return "Dog +7 levels";
+            default:            return s.nextDiamondPrize || "";
+          }
+        })();
+
+        const ready = diamonds >= 3;
+
+        return (
+          <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+            <div className="bg-white text-slate-900 max-w-sm w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
+              <h2 className="text-xl font-extrabold mb-1">Diamonds</h2>
+
+              <p className="text-xs text-slate-600 mb-3">
+                Collect <b>3</b> diamonds to open a chest. You can hold more than 3 and open rewards whenever you choose.
+                Possible rewards: <b>10x</b>/<b>100x</b>/<b>1000x</b> coin gifts or a <b>Dog</b> boost (+3/+5/+7 levels).
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                <div className="p-3 rounded-xl bg-slate-100">
+                  <div className="text-slate-500 text-xs">Diamonds</div>
+                  <div className="font-extrabold text-slate-900">{diamonds} / 3</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-100">
+                  <div className="text-slate-500 text-xs">Next Prize</div>
+                  <div className="font-extrabold text-slate-900">{prizeLabel}</div>
+                </div>
+              </div>
+
+              <div className="flex justify-between gap-2">
+                <button
+                  onClick={() => setShowDiamondInfo(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 font-extrabold"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => { openDiamondChestIfReady(); }}
+                  disabled={!ready}
+                  className={`px-4 py-2 rounded-lg font-extrabold ${ready ? "bg-yellow-400 hover:bg-yellow-300 text-black" : "bg-slate-300 text-slate-500 cursor-not-allowed"}`}
+                  title={ready ? "Open chest" : "Need 3 diamonds"}
+                >
+                  OPEN CHEST
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MLEO quick modal (נפתח מלחיצה על אייקון ה-MLEO ב-HUD) + כפתור CLAIM */}
       {showMleoModal && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 max-w-sm w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
@@ -2783,51 +2887,65 @@ return (
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Balance</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {Math.floor(Number(mining?.balance || 0)).toLocaleString()} MLEO
+                  {formatMleo(Number(mining?.balance || 0))} MLEO
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Mined Today</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {Number(mining?.minedToday || 0).toFixed(2)} / {DAILY_CAP.toLocaleString()}
+                  {formatMleo(Number(mining?.minedToday || 0))} / {formatShort(DAILY_CAP)}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Vault</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {Math.floor(Number(mining?.vault || 0)).toLocaleString()}
+                  {formatMleo(Number(mining?.vault || 0))} MLEO
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Claimed (Total)</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {Math.floor(Number(mining?.claimedTotal || 0)).toLocaleString()}
+                  {formatMleo(Number(mining?.claimedTotal || 0))} MLEO
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-between gap-2">
               <button
                 onClick={() => setShowMleoModal(false)}
-                className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-extrabold"
+                className="px-4 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 font-extrabold"
               >
                 Close
+              </button>
+              <button
+                onClick={onClaimMined}
+                disabled={claiming || (Number(mining?.balance || 0) <= 0)}
+                className={`px-4 py-2 rounded-lg font-extrabold ${
+                  (Number(mining?.balance || 0) > 0) && !claiming
+                    ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                    : "bg-slate-300 text-slate-500 cursor-not-allowed"
+                }`}
+                title={(Number(mining?.balance || 0) > 0) ? "Claim" : "No tokens to claim"}
+              >
+                CLAIM
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Mining modal */}
+
+           {/* Mining modal (Wallet connect + Claim UI) */}
       {showMiningInfo && (() => {
         const vault   = Number(mining?.vault || 0);
         const bal     = Number(mining?.balance || 0);
         const mined   = Number(mining?.minedToday || 0);
         const claimed = Number(mining?.claimedTotal || 0);
-        const hist    = Array.isArray(mining?.history) ? mining.history : [];
-        const coins   = Number(stateRef.current?.gold || 0);
-        const preview = previewMleoFromCoins(coins);
-        const pct     = Math.round(currentClaimPct(Date.now()) * 100);
+
+        const pct100   = Math.round(currentClaimPct(Date.now()) * 100);
+        const canWallet = TOKEN_LIVE && walletClaimEnabled(Date.now());
+        const room      = remainingWalletClaimRoom();
+        const hasRoom   = room > 0;
 
         return (
           <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
@@ -2839,74 +2957,100 @@ return (
               <div className="mb-3">
                 <WalletReleaseBar />
                 <div className="flex items-center justify-between text-xs">
-                  <span>Unlock progress: <b>{pct}%</b></span>
+                  <span>Unlock progress: <b>{pct100}%</b></span>
                   <TgeCountdown />
                 </div>
               </div>
 
+              {/* Stats */}
               <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Balance</div>
-                  <div className="font-extrabold text-slate-900 tabular-nums">{Math.floor(bal).toLocaleString()} MLEO</div>
+                  <div className="font-extrabold text-slate-900 tabular-nums">
+                    {formatMleo(bal)} MLEO
+                  </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Mined Today</div>
-                  <div className="font-extrabold text-slate-900 tabular-nums">{mined.toFixed(2)} / {DAILY_CAP.toLocaleString()}</div>
+                  <div className="font-extrabold text-slate-900 tabular-nums">
+                    {formatMleo(mined)} / {formatShort(DAILY_CAP)}
+                  </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Vault</div>
-                  <div className="font-extrabold text-slate-900 tabular-nums">{Math.floor(vault).toLocaleString()}</div>
+                  <div className="font-extrabold text-slate-900 tabular-nums">
+                    {formatMleo(vault)} MLEO
+                  </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Claimed (Total)</div>
-                  <div className="font-extrabold text-slate-900 tabular-nums">{Math.floor(claimed).toLocaleString()}</div>
+                  <div className="font-extrabold text-slate-900 tabular-nums">
+                    {formatMleo(claimed)} MLEO
+                  </div>
                 </div>
               </div>
 
-              {/* Convert coins -> MLEO (demo) */}
-              <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                <div className="flex items-center justify-between text-sm">
-                  <div>
-                    <div className="text-slate-700 font-bold">Convert Coins → MLEO</div>
-                    <div className="text-xs text-slate-600">Coins: <b>{formatShort(coins)}</b> → Preview: <b>{preview.toFixed(2)} MLEO</b></div>
-                  </div>
+              {/* Wallet actions */}
+              <div className="mb-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
-                    onClick={claimCoinsToMining}
-                    className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-black font-extrabold text-xs active:scale-95"
-                    title="Convert current coins into MLEO (subject to daily cap & softcut)"
+                    onClick={() => {
+                      if (!isConnected) {
+                        openConnectModal?.();
+                      } else {
+                        // פותח חלון ארנק ואז מודיע "COMING SOON"
+                        openAccountModal?.();
+                        setGiftToastWithTTL("COMING SOON");
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-extrabold text-xs active:scale-95 ${
+                      isConnected
+                        ? "bg-emerald-500 hover:bg-emerald-400 text-white"
+                        : "bg-indigo-500 hover:bg-indigo-400 text-white"
+                    }`}
                   >
-                    CONVERT
+                    {isConnected ? "WALLET" : "CONNECT WALLET"}
+                  </button>
+
+                  <button
+                    onClick={onClaimMined}
+                    disabled={
+                      claiming ||
+                      bal <= 0 ||
+                      (TOKEN_LIVE && (!canWallet || !hasRoom))
+                    }
+                    className={`px-3 py-1.5 rounded-lg font-extrabold text-xs active:scale-95 ${
+                      (!TOKEN_LIVE || (canWallet && hasRoom && bal > 0)) && !claiming
+                        ? "bg-yellow-400 hover:bg-yellow-300 text-black"
+                        : "bg-slate-300 text-slate-500 cursor-not-allowed"
+                    }`}
+                    title={
+                      !TOKEN_LIVE
+                        ? "Claim to Vault (demo)"
+                        : canWallet
+                          ? (hasRoom ? "Claim to Wallet" : "No wallet claim room yet")
+                          : "Wallet claim locked"
+                    }
+                  >
+                    {TOKEN_LIVE ? "CLAIM TO WALLET" : "CLAIM TO VAULT"}
                   </button>
                 </div>
+
+                {TOKEN_LIVE && (
+                  <p className="text-[11px] text-slate-600 mt-2">
+                    Wallet claims unlock gradually after TGE.
+                    Available now: <b>{formatMleo(room)}</b> MLEO.
+                  </p>
+                )}
               </div>
 
-              {/* History */}
-              <div className="mb-2">
-                <div className="text-sm font-bold mb-1">History</div>
-                {hist.length === 0 ? (
-                  <div className="text-xs text-slate-500">No history yet.</div>
-                ) : (
-                  <div className="space-y-1">
-                    {(showFullHistory ? hist : hist.slice(0, 8)).map((h, i) => {
-                      const d = new Date(h.ts || Date.now());
-                      const kind = h.type === "to_wallet" ? "to wallet" : "to vault";
-                      return (
-                        <div key={i} className="text-xs flex items-center justify-between bg-slate-100 rounded-md px-2 py-1">
-                          <span>{d.toLocaleString()}</span>
-                          <span className="font-semibold">{h.amt?.toFixed?.(2)} — {kind}</span>
-                        </div>
-                      );
-                    })}
-                    {hist.length > 8 && (
-                      <button
-                        onClick={() => setShowFullHistory(v => !v)}
-                        className="text-xs underline underline-offset-2 text-slate-600 hover:text-slate-800"
-                      >
-                        {showFullHistory ? "Show less" : "Show all"}
-                      </button>
-                    )}
-                  </div>
-                )}
+              {/* Notes */}
+              <div className="text-xs text-slate-600 border-t pt-3">
+                <p>
+                  In demo mode, <b>CLAIM</b> moves your MLEO to the in-game <b>Vault</b>.
+                  When on-chain claims go live, this button will switch to wallet claiming
+                  with unlock rules.
+                </p>
               </div>
 
               <div className="flex justify-end gap-2 mt-4">
@@ -2922,9 +3066,9 @@ return (
         );
       })()}
 
+
     </div>
   </Layout>
 );
 }
-
 // === END PART 10 ===
