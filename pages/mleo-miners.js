@@ -90,7 +90,7 @@ const S_GIFT  = "/sounds/gift.mp3";
  
 
 // ===== UI constants =====
-const UI_BTN_H_PX = 30;
+const UI_BTN_H_PX = 60;
 const UI_SPAWN_ICON_BOX = Math.round(UI_BTN_H_PX * 0.5);
 const UI_SPAWN_ICON_ZOOM =
   (typeof window !== "undefined" && window.SPAWN_ICON_ZOOM) || 1.55;
@@ -350,14 +350,12 @@ function walletClaimEnabled(now=Date.now()){
 }
 function remainingWalletClaimRoom(){
   const st = loadMiningState();
-  // "צבירה לכל החיים" = מה שכבר הועבר (vault+wallet) + מה שעדיין ב-balance
-  const totalAccrued = Number(((st.claimedTotal || 0) + (st.balance || 0)).toFixed(2)); // לא מוסיפים vault שוב!
+  const totalAccrued = (st.claimedTotal||0) + (st.vault||0) + (st.balance||0);
   const pct = currentClaimPct();
-  const maxCumulative = Number((totalAccrued * pct).toFixed(2));   // כמה מותר מצטבר בארנק לפי אחוז פתיחה
-  const already = Number(st.claimedToWallet || 0);                 // כמה כבר עבר לארנק
-  return Math.max(0, +(maxCumulative - already).toFixed(2));
+  const maxCumulative = Math.floor(totalAccrued * pct);
+  const already = st.claimedToWallet || 0;
+  return Math.max(0, maxCumulative - already);
 }
-
 
 // === helper components: TGE countdown + release bar ===
 // שים ברמת הקובץ, לא בתוך onClaimMined/useEffect/return!
@@ -764,13 +762,16 @@ setGiftReadyFlag(!!init.giftReady);
 
 
   // טען קירור מודעה
-try {
-  const raw = localStorage.getItem(LS_KEY);
-  const data = raw ? JSON.parse(raw) : {};
-  data.adCooldownUntil = until;
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
-} catch {}
-
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (typeof data.adCooldownUntil === "number") {
+        setAdCooldownUntil(data.adCooldownUntil);
+        if (stateRef.current) stateRef.current.adCooldownUntil = data.adCooldownUntil;
+      }
+    }
+  } catch {}
 
   // בדיקת OFFLINE כבר ב־mount
   try {
@@ -1990,12 +1991,6 @@ function onAdd(){
 const [showCoinsModal, setShowCoinsModal] = useState(false);
 
 function claimCoinsToMining() {
-// ⬅️ תיקון: אם אין חיבור לארנק – לפתוח חיבור במקום להוסיף מטבעות
-  try { play?.(S_CLICK); } catch {}
-  if (!isConnected) {
-    openConnectModal?.();
-    return;
-  }
   try { play?.(S_CLICK); } catch {}
 
   const s = stateRef.current; 
@@ -2076,6 +2071,7 @@ const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
 const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
 const boughtCount = sNow?.totalPurchased || 0;
 const toNextLv    = 30 - (boughtCount % 30); // 30 → 1..30
+const BTN_H = `h-[${UI_BTN_H_PX}px]`; // גובה מתוך הקבוע
 
  // רינגים של Coin/🎁/🐶 (במקום w-8 h-8)
  const RING_SZ = `w-[${UI_BTN_H_PX}px] h-[${UI_BTN_H_PX}px]`;
@@ -2263,7 +2259,17 @@ if (firstTimeNeedsTerms) { setShowTerms(true); return; }
                     const until = Date.now() + 10*60*1000; // 10m cooldown
                     s.adCooldownUntil = until;
                     setAdCooldownUntil(until);
-                    setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() }); save(); setShowAdModal(false); setAdVideoEnded(false);
+                    try {
+                      const raw = localStorage.getItem(LS_KEY);
+                      const data = raw ? JSON.parse(raw) : {};
+                      data.adCooldownUntil = until;
+                      localStorage.setItem(LS_KEY, JSON.stringify(data));
+                    } catch {}
+
+setCenterPopup({ text: `🎬 +${formatShort(gain)} coins`, id: Math.random() });
+                    save();
+                    setShowAdModal(false);
+                    setAdVideoEnded(false);
                   }}
                   disabled={!adVideoEnded}
                   className={`px-4 py-2 rounded-lg font-bold ${
@@ -2444,8 +2450,7 @@ if (firstTimeNeedsTerms) { setShowTerms(true); return; }
   <button
     onClick={addMiner}
     disabled={!canBuyMiner}
-    style={{ height: `${UI_BTN_H_PX}px` }}
-    className={`${BTN_BASE} ${
+    className={`${BTN_BASE} ${BTN_H} ${
       canBuyMiner
         ? "bg-emerald-500 hover:bg-emerald-400 ring-emerald-300 text-slate-900"
         : `bg-emerald-500 ring-emerald-300 text-slate-900 ${BTN_DIS}`
@@ -2478,8 +2483,7 @@ if (firstTimeNeedsTerms) { setShowTerms(true); return; }
   <button
     onClick={upgradeDps}
     disabled={!canBuyDps}
-    style={{ height: `${UI_BTN_H_PX}px` }}
-    className={`${BTN_BASE} ${
+    className={`${BTN_BASE} ${BTN_H} ${
       canBuyDps
         ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
         : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
@@ -2494,8 +2498,7 @@ if (firstTimeNeedsTerms) { setShowTerms(true); return; }
   <button
     onClick={upgradeGold}
     disabled={!canBuyGold}
-    style={{ height: `${UI_BTN_H_PX}px` }}
-    className={`${BTN_BASE} ${
+    className={`${BTN_BASE} ${BTN_H} ${
       canBuyGold
         ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
         : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
@@ -2510,8 +2513,7 @@ if (firstTimeNeedsTerms) { setShowTerms(true); return; }
   <button
     onClick={onAdd}
     disabled={addDisabled}
-    style={{ height: `${UI_BTN_H_PX}px` }}
-    className={`${BTN_BASE} min-h-[28px] ${
+    className={`${BTN_BASE} ${BTN_H} min-h-[28px] ${
       addDisabled
         ? `bg-indigo-400 ring-indigo-300 text-slate-900 ${BTN_DIS}`
         : "bg-indigo-400 hover:bg-indigo-300 ring-indigo-300 text-slate-900"
@@ -2525,8 +2527,7 @@ if (firstTimeNeedsTerms) { setShowTerms(true); return; }
   {/* RESET */}
   <button
     onClick={() => setShowResetConfirm(true)}
-style={{ height: `${UI_BTN_H_PX}px` }}
-    className={`${BTN_BASE} bg-rose-500 hover:bg-rose-400 ring-rose-300 text-white`}
+    className={`${BTN_BASE} ${BTN_H} bg-rose-500 hover:bg-rose-400 ring-rose-300 text-white`}
     title="Reset all progress"
   >
     RESET
