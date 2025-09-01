@@ -877,7 +877,6 @@ function freshState(){
     diamonds:0, nextDiamondPrize: rollDiamondPrize(),
 
     autoDogLastAt: now,
-autoDogNextAt: now + DOG_INTERVAL_SEC * 1000,
     autoDogBank: 0,
     autoDogPending: false,
 
@@ -1413,11 +1412,8 @@ function save() {
       diamonds: s.diamonds || 0,
       nextDiamondPrize: s.nextDiamondPrize,
 
-     // auto-dog
-autoDogLastAt: s.autoDogLastAt,
-autoDogNextAt: s.autoDogNextAt,
-autoDogBank: s.autoDogBank,
-
+      autoDogLastAt: s.autoDogLastAt,
+      autoDogBank: s.autoDogBank,
       autoDogPending: !!s.autoDogPending,
 
       costBase: s.costBase,
@@ -1585,61 +1581,90 @@ function chooseGiftDogLevelForRegularGift(s) {
 
 function accrueBankDogsUpToNow(s) {
   if (!s) return;
-  const period = DOG_INTERVAL_SEC * 1000;
-  const now = Date.now();
+  const intervalMs = DOG_INTERVAL_SEC * 1000;
+  const now  = Date.now();
+  const last = s.autoDogLastAt || now;
 
-  if (!s.autoDogNextAt || Number.isNaN(s.autoDogNextAt)) {
-    s.autoDogNextAt = now + period;
+  if (s.autoDogPending) {
+    if (hasFreeSlot(s)) {
+      const lvl = chooseAutoDogLevel(s);
+      const ok  = spawnMiner(s, lvl);
+      if (ok) {
+        s.autoDogPending = false;
+        s.autoDogLastAt  = now;
+        setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
+        save?.();
+      }
+    }
+    return;
   }
 
-  if (now >= s.autoDogNextAt) {
-    const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
-    s.autoDogBank = Math.min(DOG_BANK_CAP, (s.autoDogBank || 0) + intervals);
-    s.autoDogNextAt += intervals * period;
-    save?.();
+  if (now - last >= intervalMs) {
+    if (hasFreeSlot(s)) {
+      const lvl = chooseAutoDogLevel(s);
+      const ok  = spawnMiner(s, lvl);
+      if (ok) {
+        s.autoDogLastAt = now;
+        setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
+        save?.();
+      }
+    } else {
+      s.autoDogPending = true;
+    }
   }
 }
 
 function tryDistributeBankDog(s) {
   if (!s) return;
+  if (!s.autoDogPending) return;
   if (!hasFreeSlot(s)) return;
-  if ((s.autoDogBank || 0) <= 0) return;
 
   const lvl = chooseAutoDogLevel(s);
-  const ok = spawnMiner(s, lvl);
+  const ok  = spawnMiner(s, lvl);
   if (ok) {
-    s.autoDogBank = Math.max(0, (s.autoDogBank || 0) - 1);
+    s.autoDogPending = false;
+    s.autoDogLastAt  = Date.now();
     setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
     save?.();
   }
 }
 
-
 function handleOfflineAccrual(s, elapsedMs) {
   if (!s) return 0;
 
-   // Auto-dog: accrue by nextAt → bank (cap 6), then try to deploy
-  {
-    const period = DOG_INTERVAL_SEC * 1000;
-    const now = Date.now();
+  const intervalMs = DOG_INTERVAL_SEC * 1000;
+  const OFF_CAP = 6;
+  let ticks = Math.floor(elapsedMs / intervalMs);
+  if (ticks > OFF_CAP) ticks = OFF_CAP;
 
-    if (!s.autoDogNextAt || Number.isNaN(s.autoDogNextAt)) {
-      s.autoDogNextAt = now + period;
+  let placed = 0;
+  for (let i = 0; i < ticks; i++) {
+    if (!hasFreeSlot(s)) {
+      s.autoDogPending = true;
+      if ((Date.now() - (s.autoDogLastAt || 0)) < intervalMs) {
+        s.autoDogLastAt = Date.now() - intervalMs;
+      }
+      break;
     }
-    if (now >= s.autoDogNextAt) {
-      const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
-      s.autoDogBank = Math.min(DOG_BANK_CAP, (s.autoDogBank || 0) + intervals);
-      s.autoDogNextAt += intervals * period;
+    const lvl = chooseAutoDogLevel(s);
+    const ok  = spawnMiner(s, lvl);
+    if (!ok) {
+      s.autoDogPending = true;
+      if ((Date.now() - (s.autoDogLastAt || 0)) < intervalMs) {
+        s.autoDogLastAt = Date.now() - intervalMs;
+      }
+      break;
     }
-
-    while ((s.autoDogBank || 0) > 0 && hasFreeSlot(s)) {
-      const lvl = chooseAutoDogLevel(s);
-      const ok = spawnMiner(s, lvl);
-      if (!ok) break;
-      s.autoDogBank -= 1;
-    }
+    placed += 1;
   }
 
+  if (s.autoDogPending) {
+  } else if (placed > 0) {
+    s.autoDogLastAt = Date.now();
+  } else {
+    const rem = elapsedMs % intervalMs;
+    s.autoDogLastAt = Date.now() - rem;
+  }
 
   const CAP_MS = 12 * 60 * 60 * 1000;
   const simMs = Math.min(elapsedMs, CAP_MS);
@@ -1806,15 +1831,15 @@ const giftProgress = (() => {
   return Math.max(0, Math.min(1, 1 - remain / total)); 
 })();
 
-const dogProgress = (() => {
-  const s = stateRef.current; if (!s) return 0;
-  if ((s.autoDogBank || 0) >= DOG_BANK_CAP) return 1;
-  const now = Date.now();
-  const total = DOG_INTERVAL_SEC * 1000;
-  const remain = Math.max(0, (s.autoDogNextAt || (now + total)) - now);
-  return Math.max(0, Math.min(1, 1 - remain / total));
+const dogProgress = (() => { 
+  const s = stateRef.current; if (!s) return 0; 
+  if ((s.autoDogBank || 0) >= DOG_BANK_CAP) return 1; 
+  const now = Date.now(); 
+  const total = DOG_INTERVAL_SEC * 1000; 
+  const last = s.autoDogLastAt || now; 
+  const elapsed = Math.max(0, now - last); 
+  return Math.max(0, Math.min(1, elapsed / total)); 
 })();
-
 
 const diamondsReady = (stateRef.current?.diamonds || 0) >= 3;
 
