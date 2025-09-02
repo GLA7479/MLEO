@@ -295,6 +295,7 @@ const SOFTCUT = [
 ];
 
 const OFFLINE_DPS_FACTOR = 0.5;
+const IDLE_OFFLINE_MS = 5 * 60 * 1000; // 5 minutes without claiming gift => idle-offli
 
 const TOTAL_SUPPLY = 100_000_000_000; // 100B
 const DAYS = 1825;                     // 5y
@@ -704,6 +705,10 @@ export default function MleoMiners() {
     s.giftNextAt = now + stepSec * 1000; // full interval after claim
   }
 
+// reset idle timer & offline flag on claim
+    s.giftFirstReadyAt = null;
+    s.isIdleOffline = false;
+
   setGiftReadyFlag(false);
   try { play(S_GIFT); } catch {}
   save?.();
@@ -748,6 +753,7 @@ useEffect(() => {
     }
     if ((init.giftNextAt || 0) <= now) {
       init.giftReady = true;
+      if (!init.giftFirstReadyAt) init.giftFirstReadyAt = now; // idle timer if already ready on load
       setGiftReadyFlag(true);
     }
   } catch {}
@@ -855,6 +861,7 @@ useEffect(() => {
 
     if (!s.giftReady && s.giftNextAt <= now) {
       s.giftReady = true;
+      if (!s.giftFirstReadyAt) s.giftFirstReadyAt = now; // start idle timer here
       setGiftReadyFlag(true);
       save();
     }
@@ -898,6 +905,8 @@ function freshState(){
     cycleStartAt: now, lastGiftIntervalSec: 20,
     giftNextAt: now + 20000, giftReady:false,
     diamonds:0, nextDiamondPrize: rollDiamondPrize(),
+    giftFirstReadyAt: null,       // first time current gift became ready
+    isIdleOffline: false,         // force "offline-like" efficiency when idle
 
     autoDogLastAt: now,
 autoDogNextAt: now + DOG_INTERVAL_SEC * 1000,
@@ -1324,12 +1333,18 @@ function tick(dt){
   const now = Date.now();
   if (s.paused){ s.lastSeen = now; return; }
 
+// If a gift has been ready for over 5 minutes without being claimed, force idle-offline
+  if (s.giftReady && s.giftFirstReadyAt && (now - s.giftFirstReadyAt) >= IDLE_OFFLINE_MS) {
+    s.isIdleOffline = true;
+  }
+
   for (let l=0; l<LANES; l++){
     let dps = 0;
     for (let k=0; k<SLOTS_PER_LANE; k++){
       const cell = s.lanes[l].slots[k]; if (!cell) continue;
       const m = s.miners[cell.id]; if (!m) continue;
-      dps += minerDps(m.level, s.dpsMult||1);
+      const onlineEff = s.isIdleOffline ? OFFLINE_DPS_FACTOR : 1;
+      dps += minerDps(m.level, s.dpsMult||1) * onlineEff;
     }
     const rock = s.lanes[l].rock;
     rock.hp -= dps * dt;
