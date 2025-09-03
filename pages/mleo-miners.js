@@ -1072,7 +1072,7 @@ function boardRect(){
 function laneRect(lane){
   const b = boardRect();
   const h = b.h * 0.18;
-  const centers = [0.375,0.525,0.675,0.815];
+  const centers = [0.375,0.525,0.675,0.825];
   const centerY = b.y + b.h * centers[lane];
   const y = Math.max(b.y, Math.min(centerY - h*0.5, b.y + b.h - h));
   return { x:b.x, y, w:b.w, h };
@@ -1089,8 +1089,8 @@ function slotRect(lane,slot){
 function rockRect(lane){
   const L = laneRect(lane);
   const rw = rockWidth(L);
-  const y = L.y + L.h * 0.06;
-  const h = L.h * 0.88;
+  const y = L.y + L.h * 0.15;
+  const h = L.h * 0.90;
   return { x:L.x + L.w - rw - 4, y, w:rw, h };
 }
 function pos(e){
@@ -1205,7 +1205,7 @@ function drawRock(ctx,rect,rock){
 function drawMiner(ctx,lane,slot,m){
   const r  = slotRect(lane,slot);
   const cx = r.x + r.w*0.52;
-  const cy = r.y + r.h*0.56;
+  const cy = r.y + r.h*0.45;
 
   const scaleH = (stateRef.current?.minerScale || 1);
   const base   = Math.min(r.w, r.h) * 0.84 * scaleH;
