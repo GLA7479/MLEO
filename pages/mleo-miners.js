@@ -100,6 +100,15 @@ const UI_SPAWN_ICON_ZOOM =
 const UI_SPAWN_ICON_SHIFT_Y =
   (typeof window !== "undefined" && window.SPAWN_ICON_SHIFT_Y) || 0;
 
+// ==== ACTION BUTTON fixed size (ADD / DPS / GOLD) ====
+const UI_ACTION_BTN_W_PX = 220; // רוחב אחיד לכל שלושת הכפתורים
+const UI_ACTION_BTN_H_PX = 64;  // גובה מעט גבוה כדי להכיל 2 שורות טקסט
+
+// מחלקות Tailwind (ערכים שרירותיים) מתוך הקבועים למעלה
+const BTN_W_FIX = `w-[${UI_ACTION_BTN_W_PX}px]`;
+const BTN_H_FIX = `h-[${UI_ACTION_BTN_H_PX}px]`;
+
+
 // Balance
 const BASE_DPS = 2;
 const LEVEL_DPS_MUL = 1.9;
@@ -148,13 +157,11 @@ function getPhaseInfo(s, now = Date.now()) {
   };
 }
 
-// Vault display – ספרה אחת אחרי הנקודה בלבד
+// Vault display — זהה ל־MLEO button (2 ספרות + קיצור באותיות)
 function formatMleoVault(n) {
-  const num = Number(n || 0);
-  const sign = num < 0 ? "-" : "";
-  const abs = Math.abs(num);
-  return sign + abs.toFixed(1);
+  return formatMleoShort(n);
 }
+
 
 
 function currentGiftIntervalSec(s, now = Date.now()) {
@@ -248,6 +255,16 @@ function formatMleo(n) {
 // MLEO קצר — קיצור עם 2 ספרות (ל-HUD/טוסטים/פופאפים)
 function formatMleoShort(n) {
   return formatAbbrevInt(n);
+}
+
+// MLEO — 2 ספרות אחרי הנקודה (חיתוך, לא עיגול)
+function formatMleo2(n) {
+  const num = Number(n || 0);
+  const sign = num < 0 ? "-" : "";
+  const abs = Math.abs(num);
+  const p = 100; // 2 ספרות
+  const t = Math.trunc(abs * p) / p;
+  return sign + t.toFixed(2);
 }
 
 
@@ -1129,7 +1146,7 @@ function boardRect(){
 function laneRect(lane){
   const b = boardRect();
   const h = b.h * 0.18;
-  const centers = [0.375,0.525,0.675,0.825];
+  const centers = [0.380,0.530,0.680,0.825];
   const centerY = b.y + b.h * centers[lane];
   const y = Math.max(b.y, Math.min(centerY - h*0.5, b.y + b.h - h));
   return { x:b.x, y, w:b.w, h };
@@ -1146,7 +1163,7 @@ function slotRect(lane,slot){
 function rockRect(lane){
   const L = laneRect(lane);
   const rw = rockWidth(L);
-  const y = L.y + L.h * 0.15;
+  const y = L.y + L.h * 0.05;
   const h = L.h * 0.90;
   return { x:L.x + L.w - rw - 4, y, w:rw, h };
 }
@@ -1244,44 +1261,73 @@ function drawBg(ctx,b){
   }
 }
 
-function drawRock(ctx,rect,rock){
+function drawRock(ctx, rect, rock){
+  // בלי צללים
   ctx.shadowColor = "transparent";
   ctx.shadowBlur  = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
 
-  const pct   = Math.max(0, rock.hp/rock.maxHp);
-  const scale = 0.35 + 0.65*pct;
+  // מצב הסלע
+  const pct   = Math.max(0, rock.hp / rock.maxHp);
+  const scale = 0.35 + 0.65 * pct;
 
+  // מסגרות ומידות
   const img   = getImg(IMG_ROCK);
   const pad   = 6;
   const fullW = rect.w - pad*2;
   const fullH = rect.h - pad*2;
 
-  const rw = fullW*scale, rh = fullH*scale;
-  const cx = rect.x + rect.w/2, cy = rect.y + rect.h/2;
-  const dx = cx - rw/2,           dy = cy - rh/2;
+  // גודל/מיקום הסלע (אותו חישוב כמו קודם)
+  const rw = fullW * scale;
+  const rh = fullH * scale;
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  const dx = cx - rw / 2;
+  const dy = cy - rh / 2;
 
-  if (img.complete && img.naturalWidth>0) ctx.drawImage(img,dx,dy,rw,rh);
-  else { ctx.fillStyle="#6b7280"; ctx.fillRect(dx,dy,rw,rh); }
+  // ציור הסלע
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, dx, dy, rw, rh);
+  } else {
+    ctx.fillStyle = "#6b7280";
+    ctx.fillRect(dx, dy, rw, rh);
+  }
 
-  const by   = rect.y + 4;
-  const barW = fullW * 0.75;
-  const bx   = rect.x + pad + (fullW - barW) / 2;
-  const barH = 10;
+  // === מיקומים קבועים בתוך הסלע ===
+  const INNER_PAD = 6;              // רווח פנימי מהשוליים
+  const BAR_H = 18;                           // ↑ בר גבוה יותר (במקום 10)
+  const BAR_W = Math.min(fullW * 0.75, rw - 12);
+  const BAR_X = dx + (rw - BAR_W) / 2;
+ const BAR_Y = dy + rh - (BAR_H / 2);
 
-  ctx.fillStyle   = "#0ea5e9";
-  ctx.fillRect(bx,by,barW*pct,barH);
+ 
+
+
+
+  // רקע הבר
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
+
+  // מילוי הבר
+  ctx.fillStyle = "#0ea5e9";
+  ctx.fillRect(BAR_X, BAR_Y, Math.max(0, BAR_W * pct), BAR_H);
+
+  // מסגרת
   ctx.strokeStyle = "#082f49";
   ctx.lineWidth   = 1;
-  ctx.strokeRect(bx,by,barW,barH);
+  ctx.strokeRect(BAR_X, BAR_Y, BAR_W, BAR_H);
 
-  ctx.fillStyle    = "#e5e7eb";
-  ctx.font         = "bold 11px system-ui";
+  // === טקסט בתוך הבר ===
+  const TXT = `ROCK ${rock.idx + 1}`;
+  ctx.font         = "bold 12px system-ui";
   ctx.textAlign    = "center";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(`Rock ${rock.idx+1}`, bx + barW/2, by - 2);
+  ctx.textBaseline = "middle";
+  ctx.fillStyle    = "#ffffff"; // לבן
+  ctx.fillText(TXT, BAR_X + BAR_W / 2, BAR_Y + BAR_H / 2);
 }
+
+
 
 function drawMiner(ctx,lane,slot,m){
   const r  = slotRect(lane,slot);
@@ -2113,7 +2159,9 @@ const toNextLv    = 30 - (boughtCount % 30);
 const BTN_H = `h-[${UI_BTN_H_PX}px]`;             // כבר קיים אצלך – ודא שזה טמפלייט סטרינג
 const BTN_W = `min-w-[${UI_BTN_MIN_W_PX}px]`;     // חדש: רוחב מינימלי
 const RING_SZ = "w-[60px] h-[60px]";
-const BTN_BASE = "appearance-none inline-flex items-center justify-center gap-1 px-3 !py-0 rounded-xl font-extrabold text-[14px] leading-none whitespace-nowrap transition ring-2";
+const BTN_BASE =
+  "appearance-none inline-flex items-center justify-center gap-1 px-3 !py-0 rounded-xl font-extrabold text-[16px] md:text-[18px] leading-none whitespace-nowrap transition ring-2";
+
 const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
 // === END PART 7 ===
@@ -2513,68 +2561,102 @@ return (
 
           {/* Actions row */}
           <div className="flex gap-2 mt-2 flex-wrap justify-center text-sm">
-            {/* ADD (spawn) */}
-          <button
+
+          {/* ADD (spawn) — שורה 1: + [אייקון] (LV N) ; שורה 2: מחיר בלבד */}
+<button
   onClick={addMiner}
   disabled={!canBuyMiner}
- className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
-  canBuyMiner
-    ? "bg-emerald-500 hover:bg-emerald-400 ring-emerald-300 text-slate-900"
-    : `bg-emerald-500 ring-emerald-300 text-slate-900 ${BTN_DIS}`
-}`}
-
+  className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
+    canBuyMiner
+      ? "bg-emerald-500 hover:bg-emerald-400 ring-emerald-300 text-slate-900"
+      : `bg-emerald-500 ring-emerald-300 text-slate-900 ${BTN_DIS}`
+  }`}
 >
-              <span className="mr-1 align-middle font-extrabold">+</span>
-              <span
-                className="relative mr-1 inline-grid place-items-center align-middle"
-                style={{ width: UI_SPAWN_ICON_BOX, height: UI_SPAWN_ICON_BOX }}
-              >
-                <img
-                  src={IMG_SPAWN_ICON}
-                  alt="dog"
-                  className="pointer-events-none object-cover block"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    transform: `scale(${(typeof window!=="undefined" && window.SPAWN_ICON_ZOOM) || UI_SPAWN_ICON_ZOOM}) translateY(${(typeof window!=="undefined" && window.SPAWN_ICON_SHIFT_Y) || UI_SPAWN_ICON_SHIFT_Y}px)`,
-                    transformOrigin: "center",
-                  }}
-                />
-              </span>
-              <b className="tracking-tight align-middle">
-                (LV {stateRef.current?.spawnLevel || 1}) — {formatShort(spawnCostNow)}
-              </b>
-            </button>
+<div className="flex flex-col items-center justify-center leading-tight">
+  {/* שורה ראשונה */}
+  <div className="flex items-center gap-1">
+    {/* האייקון קודם */}
+    <span
+      className="relative inline-grid place-items-center"
+      style={{ 
+        width: UI_SPAWN_ICON_BOX * 2.0,   // מגדיל את האייקון ב~40%
+        height: UI_SPAWN_ICON_BOX * 1.0 
+      }}
+    >
+      <img
+        src={IMG_SPAWN_ICON}
+        alt="dog"
+        className="pointer-events-none object-cover block"
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: `scale(${((typeof window!=="undefined" && window.SPAWN_ICON_ZOOM) || UI_SPAWN_ICON_ZOOM)}) translateY(${((typeof window!=="undefined" && window.SPAWN_ICON_SHIFT_Y) || UI_SPAWN_ICON_SHIFT_Y)}px)`,
+          transformOrigin: "center",
+        }}
+      />
+    </span>
 
-            {/* DPS */}
-            <button
-              onClick={upgradeDps}
-              disabled={!canBuyDps}
- className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
-  canBuyDps
-    ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
-    : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
-}`}
+    {/* ואז סימן הפלוס */}
+    <span className="font-extrabold">+</span>
 
+    <b className="tracking-tight">(LV {stateRef.current?.spawnLevel || 1})</b>
+  </div>
+
+{/* שורה שנייה – רק המחיר, ממוקם בקצה הימני */}
+<div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight self-end mr-1">
+  {formatShort(spawnCostNow)}
+</div>
+
+
+</div>
+
+</button>
+
+{/* DPS — שורה 1: 🪓 +10% ; שורה 2: מחיר בלבד */}
+<button
+  onClick={upgradeDps}
+  disabled={!canBuyDps}
+  className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
+    canBuyDps
+      ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
+      : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
+  }`}
 >
-              <span className="align-middle">🪓</span>
-              <span className="align-middle">+10% ({formatShort(dpsCostNow)})</span>
-            </button>
+  <div className="flex flex-col items-center justify-center leading-tight">
+    <div className="flex items-center gap-1">
+      <span>🪓</span>
+      <span>+10%</span>
+    </div>
+    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
+  {formatShort(dpsCostNow)}
+</div>
 
-            {/* GOLD */}
-            <button
-              onClick={upgradeGold}
-              disabled={!canBuyGold}
-className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
-  canBuyGold
-    ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
-    : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
-}`}
+  </div>
+</button>
 
+{/* GOLD — שורה 1: 🟡 +10% ; שורה 2: מחיר בלבד */}
+<button
+  onClick={upgradeGold}
+  disabled={!canBuyGold}
+  className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
+    canBuyGold
+      ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
+      : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
+  }`}
 >
-              <span className="align-middle">🟡</span>
-              <span className="align-middle">+10% ({formatShort(goldCostNow)})</span>
-            </button>
+  <div className="flex flex-col items-center justify-center leading-tight">
+    <div className="flex items-center gap-1">
+      <span>🟡</span>
+      <span>+10%</span>
+    </div>
+    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
+  {formatShort(goldCostNow)}
+
+</div>
+
+  </div>
+</button>
+
 
                 </div>
 
@@ -3118,25 +3200,25 @@ MLEO
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Balance</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {formatMleo(Number(mining?.balance || 0))} MLEO
+                  {formatMleo2(Number(mining?.balance || 0))} MLEO
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Mined Today</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {formatMleo(Number(mining?.minedToday || 0))} / {formatShort(DAILY_CAP)}
+                  {formatMleo2(Number(mining?.minedToday || 0))} / {formatShort(DAILY_CAP)}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Vault</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {formatMleo(Number(mining?.vault || 0))} MLEO
+                  {formatMleo2(Number(mining?.vault || 0))} MLEO
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-100">
                 <div className="text-slate-500 text-xs">Claimed (Total)</div>
                 <div className="font-extrabold text-slate-900 tabular-nums">
-                  {formatMleo(Number(mining?.claimedTotal || 0))} MLEO
+                  {formatMleo2(Number(mining?.claimedTotal || 0))} MLEO
                 </div>
               </div>
             </div>
@@ -3198,25 +3280,25 @@ MLEO
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Balance</div>
                   <div className="font-extrabold text-slate-900 tabular-nums">
-                    {formatMleo(bal)} MLEO
+                    {formatMleo2(bal)} MLEO
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Mined Today</div>
                   <div className="font-extrabold text-slate-900 tabular-nums">
-                    {formatMleo(mined)} / {formatShort(DAILY_CAP)}
+                    {formatMleo2(mined)} / {formatShort(DAILY_CAP)}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Vault</div>
                   <div className="font-extrabold text-slate-900 tabular-nums">
-                    {formatMleo(vault)} MLEO
+                    {formatMleo2(vault)} MLEO
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-100">
                   <div className="text-slate-500 text-xs">Claimed (Total)</div>
                   <div className="font-extrabold text-slate-900 tabular-nums">
-                    {formatMleo(claimed)} MLEO
+                    {formatMleo2(claimed)} MLEO
                   </div>
                 </div>
               </div>
