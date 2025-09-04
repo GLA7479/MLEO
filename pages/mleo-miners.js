@@ -548,6 +548,32 @@ export default function MleoMiners() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+// === [GAIN] state & helpers (ADD) ===
+const [showGainModal, setShowGainModal] = useState(false);
+const [gainWatchEnabled, setGainWatchEnabled] = useState(false);
+
+// Bind to your real logic (timer/conditions). If no field exists yet, falls back to false.
+const gainReady = !!(stateRef.current && stateRef.current.gainReady);
+
+// “ring” matching the other icons (same sizing/ping behavior)
+const gainRingClass = gainReady
+  ? "animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400/40"
+  : "absolute inline-flex h-full w-full rounded-full border border-white/20";
+
+function toggleGainWatch() {
+  setGainWatchEnabled(v => !v);
+  try { localStorage.setItem("mleo_gain_watch", (!gainWatchEnabled).toString()); } catch {}
+}
+
+useEffect(() => {
+  try {
+    const v = localStorage.getItem("mleo_gain_watch");
+    if (v === "true") setGainWatchEnabled(true);
+  } catch {}
+}, []);
+// === [GAIN] END state ===
+
+
   // טוען/מרענן סטטוס ה־Mining
   useEffect(() => {
     if (!mounted) return;
@@ -1673,9 +1699,12 @@ function chooseAutoDogLevel(s) {
   const existsLv2 = Object.values(s.miners || {}).some(m => m.level === target2);
   return existsLv2 ? target2 : sl;
 }
+
 function chooseGiftDogLevelForRegularGift(s) {
-  return chooseAutoDogLevel(s);
+  // Gift dog (REGULAR) = buy level by default; if no merge is possible at buy level → lowest existing level on board
+  return chooseGiftDogPlacementLevel(s);
 }
+
 
 function accrueBankDogsUpToNow(s) {
   if (!s) return;
@@ -1686,13 +1715,44 @@ function accrueBankDogsUpToNow(s) {
     s.autoDogNextAt = now + period;
   }
 
+  // cap bank by AVAILABLE FREE SLOTS (pause when full)
+  const freeSlots = Math.max(0, MAX_MINERS - countMiners(s));
+  const bankCapNow = Math.min(DOG_BANK_CAP, freeSlots);
+
   if (now >= s.autoDogNextAt) {
     const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
-    s.autoDogBank = Math.min(DOG_BANK_CAP, (s.autoDogBank || 0) + intervals);
+    const cur = (s.autoDogBank || 0);
+    s.autoDogBank = Math.min(bankCapNow, cur + intervals);
     s.autoDogNextAt += intervals * period;
     save?.();
   }
 }
+
+// --- helpers for gift-dog placement (buy-level vs lowest-existing) ---
+function lowestExistingLevelOnBoard(s) {
+  const levels = Object.values(s.miners || {})
+    .filter(Boolean)
+    .map(m => m.level)
+    .filter(v => typeof v === "number" && v >= 1);
+  if (!levels.length) return null;
+  levels.sort((a,b)=>a-b);
+  return levels[0]; // lowest existing level
+}
+
+// "can merge at buy level" = יש לפחות כלב אחד ברמת הקנייה על הלוח (אפשרות לזוג/מיזוג)
+function canMergeAtBuyLevel(s) {
+  const bl = Math.max(1, s.spawnLevel || 1);
+  return Object.values(s.miners || {}).some(m => m && m.level === bl);
+}
+
+// בחירת דרגה למתנה רגילה: ברירת־מחדל דרגת קנייה; אם אין שום אפשרות מיזוג — הדרגה הנמוכה ביותר שקיימת על הלוח
+function chooseGiftDogPlacementLevel(s) {
+  const buyLevel = Math.max(1, s.spawnLevel || 1);
+  if (canMergeAtBuyLevel(s)) return buyLevel;
+  const low = lowestExistingLevelOnBoard(s);
+  return low || buyLevel; // אם הלוח ריק—נשארים עם דרגת הקנייה
+}
+
 
 function tryDistributeBankDog(s) {
   if (!s) return;
@@ -1712,27 +1772,40 @@ function tryDistributeBankDog(s) {
 function handleOfflineAccrual(s, elapsedMs) {
   if (!s) return 0;
 
-   // Auto-dog: accrue by nextAt → bank (cap 6), then try to deploy
-  {
-    const period = DOG_INTERVAL_SEC * 1000;
-    const now = Date.now();
+  // Auto-dog: accrue by nextAt → bank (but PAUSE when no free slots), then try to deploy
+{
+  const period = DOG_INTERVAL_SEC * 1000;
+  const now = Date.now();
 
-    if (!s.autoDogNextAt || Number.isNaN(s.autoDogNextAt)) {
-      s.autoDogNextAt = now + period;
-    }
-    if (now >= s.autoDogNextAt) {
-      const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
-      s.autoDogBank = Math.min(DOG_BANK_CAP, (s.autoDogBank || 0) + intervals);
-      s.autoDogNextAt += intervals * period;
-    }
-
-    while ((s.autoDogBank || 0) > 0 && hasFreeSlot(s)) {
-      const lvl = chooseAutoDogLevel(s);
-      const ok = spawnMiner(s, lvl);
-      if (!ok) break;
-      s.autoDogBank -= 1;
-    }
+  if (!s.autoDogNextAt || Number.isNaN(s.autoDogNextAt)) {
+    s.autoDogNextAt = now + period;
   }
+
+  // capacity according to CURRENT free slots
+  const freeSlots0 = Math.max(0, MAX_MINERS - countMiners(s));
+  let bankCapNow = Math.min(DOG_BANK_CAP, freeSlots0);
+
+  if (now >= s.autoDogNextAt) {
+    const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
+    const cur = (s.autoDogBank || 0);
+    s.autoDogBank = Math.min(bankCapNow, cur + intervals);
+    s.autoDogNextAt += intervals * period;
+  }
+
+  // Try to spend bank immediately if slots exist
+  while ((s.autoDogBank || 0) > 0 && hasFreeSlot(s)) {
+    const lvl = chooseAutoDogLevel(s); // אוטו-דוג: שומר על הבחירה הרגילה שלך
+    const ok = spawnMiner(s, lvl);
+    if (!ok) break;
+    s.autoDogBank -= 1;
+
+    // Recompute capacity after placement
+    const freeNow = Math.max(0, MAX_MINERS - countMiners(s));
+    bankCapNow = Math.min(DOG_BANK_CAP, freeNow);
+    if (bankCapNow <= 0) break; // pause accrual when full
+  }
+}
+
 
 
   const CAP_MS = 12 * 60 * 60 * 1000;
@@ -2418,6 +2491,23 @@ return (
                 <div className="absolute inset-0 rounded-full" style={ringBg(dogProgress)} />
                 <div className="text-[22px] font-extrabold leading-none">🐶</div>
               </button>
+
+{/* === [GAIN] button (RING like 🎁/🐶, same size) === */}
+<button
+  onClick={() => setShowGainModal(true)}
+  className="relative w-8 h-8 rounded-full grid place-items-center hover:opacity-90 active:scale-95 transition"
+  title={`GAIN ${addRemainMs > 0 ? `in ${addRemainLabel}` : "ready"}`}
+  aria-label="GAIN info"
+>
+  {/* טבעת ספירה בדיוק כמו 🎁/🐶 */}
+  <div className="absolute inset-0 rounded-full" style={ringBg(addProgress)} />
+  {/* האייקון עצמו */}
+  <div className="text-[20px] font-extrabold leading-none">⚡</div>
+</button>
+{/* === END GAIN button === */}
+
+
+
             </div>
           </div>
 
@@ -2486,23 +2576,7 @@ className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
               <span className="align-middle">+10% ({formatShort(goldCostNow)})</span>
             </button>
 
-            {/* GAIN */}
-            <button
-              onClick={onAdd}
-              disabled={addDisabled}
-className={`${BTN_BASE} ${BTN_H} ${BTN_W} ${
-  addDisabled
-    ? `bg-indigo-400 ring-indigo-300 text-slate-900 ${BTN_DIS}`
-    : "bg-indigo-400 hover:bg-indigo-300 ring-indigo-300 text-slate-900"
-}`}
-
->
-              <span className="align-middle">GAIN</span>
-              {addRemainMs > 0 && <span className="opacity-80 align-middle">({addRemainLabel})</span>}
-            </button>
-
-
-          </div>
+                </div>
 
           {/* Mining status + CLAIM */}
           <div className="w-full flex justify-center mt-1">
@@ -2893,6 +2967,85 @@ MLEO
           </div>
         </div>
       )}
+
+{/* === [GAIN] Modal (ADD) === */}
+{showGainModal && (
+  <div className="fixed inset-0 z-[10060] bg-black/60 backdrop-blur-sm grid place-items-center p-4">
+    <div className="w-full max-w-md rounded-2xl bg-zinc-900 text-white border border-white/10 shadow-lg">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+        <h3 className="text-lg font-semibold">GAIN — How it works</h3>
+        <button
+          onClick={() => setShowGainModal(false)}
+          className="px-2 py-1 rounded hover:bg-white/10"
+          aria-label="Close"
+          title="Close"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="px-4 py-4 space-y-3 text-sm leading-6">
+        <p>
+          GAIN is a special reward. Follow the steps to enable it and receive the bonus.
+        </p>
+
+        {/* Dynamic status bar */}
+        <div className="rounded-lg bg-black/40 border border-white/10 p-3">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Status</span>
+            <span className={`px-2 py-0.5 rounded text-xs ${!addDisabled ? "bg-green-500 text-black" : "bg-zinc-700 text-white/80"}`}>
+  {!addDisabled ? "Available" : "Not available"}
+</span>
+
+          </div>
+          <p className="mt-2 text-white/80">
+            {!addDisabled
+  ? "Your GAIN is ready. Press WATCH to proceed and claim it."
+  : `GAIN will become available in ${addRemainLabel}.`}
+
+          </p>
+        </div>
+
+        {/* Instructions — replace copy with your exact flow */}
+        <ul className="list-disc list-inside space-y-1 text-white/80">
+          <li>Complete the required action to enable GAIN.</li>
+          <li>When ready, press WATCH to activate it and receive the reward.</li>
+          <li>If disabled, please wait until conditions are met.</li>
+        </ul>
+      </div>
+
+      <div className="px-4 pb-4 flex items-center justify-between gap-3">
+        <button
+          onClick={() => setShowGainModal(false)}
+          className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/10"
+        >
+          Close
+        </button>
+
+<button
+  onClick={() => {
+    if (addDisabled) return;   // עדיין בהמתנה
+    setShowGainModal(false);   // סגור את מודאל ההסבר
+    onAdd();                   // 👈 אותו אקשן שהיה על כפתור GAIN הישן
+  }}
+  disabled={addDisabled}
+  className={`px-4 py-2 rounded-lg font-semibold border ${
+    !addDisabled
+      ? "bg-emerald-500 text-black border-emerald-400"
+      : "bg-zinc-700 text-white/50 border-white/10 cursor-not-allowed"
+  }`}
+  title={!addDisabled ? "Watch and claim" : "Not available yet"}
+>
+  {!addDisabled ? "WATCH" : "WATCH (disabled)"}
+</button>
+
+
+      </div>
+    </div>
+  </div>
+)}
+{/* === [GAIN] END Modal === */}
+
 
          {/* Diamonds modal */}
       {showDiamondInfo && (() => {
