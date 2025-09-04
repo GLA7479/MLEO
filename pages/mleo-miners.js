@@ -844,6 +844,37 @@ useEffect(() => {
   };
 }, [showIntro]);
 
+useEffect(() => {
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+
+  // התאמת קאנבס מידית לפי ה-wrapper
+  fitCanvasToWrapper(canvas);
+
+  // רענון על שינוי גודל/אוריינטציה/visualViewport (iOS)
+  const vv = window.visualViewport;
+  let t;
+  const onResize = () => {
+    clearTimeout(t);
+    t = setTimeout(() => fitCanvasToWrapper(canvas), 60);
+  };
+
+  window.addEventListener("resize", onResize);
+  window.addEventListener("orientationchange", onResize);
+  vv && vv.addEventListener("resize", onResize);
+
+  // אם יש לך לולאת ציור/engine שמחשב מחדש מטריקות — שמור
+  // ההוספה כאן רק מבטיחה שהקאנבס עצמו תמיד תפור לגובה העטיפה.
+
+  return () => {
+    clearTimeout(t);
+    window.removeEventListener("resize", onResize);
+    window.removeEventListener("orientationchange", onResize);
+    vv && vv.removeEventListener("resize", onResize);
+  };
+}, []);
+
+
 // רנדר/סנכרון מתנות — 500ms heartbeat
 useEffect(() => {
   const id = setInterval(() => {
@@ -1097,6 +1128,30 @@ function pos(e){
   const r = canvasRef.current?.getBoundingClientRect();
   return { x: e.clientX - (r?.left||0), y: e.clientY - (r?.top||0) };
 }
+
+// Fit canvas to its wrapper with DPR (no lanes changes)
+function fitCanvasToWrapper(canvas) {
+  const wrap = canvas?.parentElement;
+  if (!canvas || !wrap) return;
+  const rect = wrap.getBoundingClientRect();
+
+  // DPI scaling for sharp rendering (cap to 2 for performance)
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Set internal buffer size
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+
+  // CSS size to match wrapper
+  canvas.style.width  = `${Math.round(rect.width)}px`;
+  canvas.style.height = `${Math.round(rect.height)}px`;
+
+  // Scale context so all existing drawing uses CSS pixels
+  const ctx = canvas.getContext("2d");
+  if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+
 function pointInRect(x,y,r){ return x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h; }
 function pillRect(lane,slot){
   const r = slotRect(lane,slot);
@@ -2187,18 +2242,23 @@ return (
         </div>
       )}
 
-      {/* ===== Canvas wrapper ===== */}
-      <div
-        id="miners-canvas-wrap"
-        className="relative w-full border border-slate-700 rounded-2xl overflow-hidden mt-1"
-        style={{
-          maxWidth: isDesktop ? "1024px" : "680px",
-          height: isDesktop ? undefined : "var(--app-100vh,100svh)",
-          maxHeight: "var(--app-100vh,100svh)",
-          aspectRatio: isDesktop ? "4 / 3" : undefined,
-        }}
-      >
-        <canvas id="miners-canvas" ref={canvasRef} className="w-full h-full block touch-none select-none" />
+{/* ===== Unified Canvas wrapper (no lanes changes) ===== */}
+<div
+  id="miners-canvas-wrap"
+  className="relative w-full rounded-2xl overflow-hidden mt-1 mx-auto border border-slate-700"
+  style={{
+    maxWidth: isDesktop ? "1024px" : "680px",
+    // גובה נטו שמתאים לשני האתרים (Header/ללא Header)
+    height: "calc(var(--app-100vh) - var(--header-h) - var(--safe-top) - var(--safe-bottom))",
+    // בדסקטופ שמור יחס קלאסי; במובייל מלא גובה
+    aspectRatio: isDesktop ? "4 / 3" : "auto",
+  }}
+>
+  <canvas
+    id="miners-canvas"
+    ref={canvasRef}
+    className="w-full h-full block touch-none select-none"
+  />
 
 {SHOW_FLOATING_RESET && (
   <div
