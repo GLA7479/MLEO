@@ -15,8 +15,14 @@ export default function Layout({ children, video }) {
   const videoRef = useRef(null);
   const router = useRouter();
 
-  // Settings modal state (מקומי ל-Layout)
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // זיהוי עמודים
+  const isGameHub = router.pathname === "/game";
+  const isSubGame = router.pathname.startsWith("/mleo-");
+  const headerShown = !isSubGame;
+  const footerShown = !isSubGame && !isGameHub;
+  const showButtons = isSubGame;
 
   useEffect(() => {
     if (videoRef.current) {
@@ -25,16 +31,20 @@ export default function Layout({ children, video }) {
     }
   }, [video]);
 
-  // הצגת הכפתורים רק בעמודי משחק משנה
-  const isGameHub = router.pathname === "/game";
-  const isSubGame = router.pathname.startsWith("/mleo-");
-  const showButtons = isSubGame;
+  // עדכון גובה header כמשתנה CSS
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--header-h", headerShown ? "65px" : "0px");
+    if (!getComputedStyle(root).getPropertyValue("--app-100vh")) {
+      root.style.setProperty("--app-100vh", "100svh");
+    }
+  }, [headerShown]);
 
-  // *** כאן שולטים בגובה שלושת הכפתורים ***
-  const TOP_OFFSET = 66;
+  // מיקום הכפתורים: עם Header – מתחתיו, בלי Header – ממש למעלה
+  const TOP_OFFSET = headerShown ? 66 : 16;
 
   return (
-    <div className="relative w-full min-h-screen text-white overflow-hidden">
+    <div className="relative w-full min-h-[var(--app-100vh,100svh)] text-white overflow-hidden">
       {video && (
         <video
           ref={videoRef}
@@ -49,7 +59,7 @@ export default function Layout({ children, video }) {
       )}
       {video && <div className="absolute inset-0 bg-black/50 -z-10" />}
 
-      <Header />
+      {headerShown && <Header />}
 
       {showButtons && (
         <>
@@ -69,7 +79,10 @@ export default function Layout({ children, video }) {
         </>
       )}
 
-      <main className="relative z-10 pt-[65px]">{children}</main>
+      {/* padding-top רק אם יש Header */}
+      <main className={`relative z-10 ${headerShown ? "pt-[65px]" : "pt-0"}`}>
+        {children}
+      </main>
 
       {!isGameHub && !isSubGame && (
         <a
@@ -82,9 +95,8 @@ export default function Layout({ children, video }) {
         </a>
       )}
 
-      <Footer />
+   {footerShown && <Footer />}
 
-      {/* Settings modal (נשאר שלך) */}
       {showButtons && (
         <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       )}

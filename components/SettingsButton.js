@@ -8,23 +8,24 @@ export default function SettingsButton({ topOffset = 76, rightOffsetPx = 16 }) {
 
   return (
     <>
-      {/* כפתור ⚙️ (SVG שחור) */}
       <button
         onClick={() => setOpen(true)}
         aria-label="Settings"
         title="Settings"
+        // === שיהיה בדיוק כמו FullscreenButton ===
         style={{
-          top: `calc(env(safe-area-inset-top, 0px) + ${topOffset}px)`,
-          right: `calc(env(safe-area-inset-right, 0px) + ${rightOffsetPx}px)`,
+          top: `${topOffset}px`,
+          right: `${rightOffsetPx}px`,
         }}
         className="fixed z-[10000] w-10 h-10 flex items-center justify-center
                    rounded-full bg-yellow-400 shadow hover:bg-yellow-300 active:scale-95"
       >
+        {/* אייקון שחור באותו גודל כמו FULL */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
           fill="black"
-          className="w-6 h-6"
+          className="w-7 h-7"
         >
           <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 00.12-.65l-1.93-3.34a.5.5 0 00-.61-.2l-2.4.96a7.03 7.03 0 00-1.62-.94l-.36-2.54a.5.5 0 00-.5-.42h-3.72a.5.5 0 00-.5.42l-.36 2.54a7.03 7.03 0 00-1.62.94l-2.4-.96a.5.5 0 00-.61.2L2.71 8.48a.5.5 0 00.12.65l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 00-.12.65l1.93 3.34c.14.24.43.34.7.24l2.4-.96c.48.39 1.03.7 1.62.94l.36 2.54c.05.25.25.42.5.42h3.72c.25 0 .45-.17.5-.42l.36-2.54c.59-.24 1.14-.55 1.62-.94l2.4.96c.27.1.56 0 .7-.24l1.93-3.34a.5.5 0 00-.12-.65l-2.03-1.58zM12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z"/>
         </svg>
