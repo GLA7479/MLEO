@@ -48,9 +48,9 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_83_reset5";
+const LS_KEY = "mleoMiners_v5_83_reset4";
 // First–play terms acceptance gate (global versioned)
-const TERMS_VERSION = "v1.4"; // ⬅️ bump to force re-accept if text changes
+const TERMS_VERSION = "v1.3"; // ⬅️ bump to force re-accept if text changes
 const TERMS_KEY = `mleoMiners_termsAccepted_${TERMS_VERSION}`;
 
 // Assets
@@ -281,7 +281,7 @@ function getImg(src) {
 }
 
 // ===== Mining Economy Layer (safe, local-only) =====
-const MINING_LS_KEY = "mleoMiningEconomy_v2.1";
+const MINING_LS_KEY = "mleoMiningEconomy_v2";
 
 // —— Token & schedule (editable) ——
 const PRESALE_START_MS = null;               
@@ -618,22 +618,8 @@ useEffect(() => {
     setMining(st);
     setGiftToastWithTTL(`Moved ${formatMleoShort(amt)} MLEO to Vault`);
 
-  }
 
-// === Unified Wallet Modal Opener ===
-function openWalletModalUnified() {
-  try { play?.(S_CLICK); } catch {}
-  if (firstTimeNeedsTerms) { 
-    setShowTerms(true); 
-    return; 
   }
-  if (isConnected) {
-    openAccountModal?.();   // סטטוס מחובר + אפשרות ניתוק
-  } else {
-    openConnectModal?.();   // חיבור ארנק
-  }
-}
-
 
   // כפתור CLAIM — דמו: תמיד Vault
   async function onClaimMined() {
@@ -1823,7 +1809,7 @@ function tryDistributeBankDog(s) {
   const ok = spawnMiner(s, lvl);
   if (ok) {
     s.autoDogBank = Math.max(0, (s.autoDogBank || 0) - 1);
-    setCenterPopup?.({ text: `🦊 Auto Dog (LV ${lvl})`, id: Math.random() });
+    setCenterPopup?.({ text: `🐶 Auto Dog (LV ${lvl})`, id: Math.random() });
     save?.();
   }
 }
@@ -2146,7 +2132,7 @@ function getHudModalText(k){
     case 'gold':
       return '🟡 GOLD xN increases the coins gained from each rock by 10% per upgrade.';
     case 'spawn':
-      return `🦊 LV shows the dog level that appears on purchase/bonus. 
+      return `🐶 LV shows the dog level that appears on purchase/bonus. 
 Increases automatically after 30 purchases.
 
 Purchases left to the next level: ${toNextLv}.`;
@@ -2155,7 +2141,7 @@ Purchases left to the next level: ${toNextLv}.`;
     case 'giftRing':
       return 'The ring around 🎁 shows progress to the next gift, based on the displayed timings.';
     case 'dogRing':
-      return 'The ring around 🦊 shows progress toward an auto-dog. When the bank is full (up to 6), it will deploy when a slot is free.';
+      return 'The ring around 🐶 shows progress toward an auto-dog. When the bank is full (up to 6), it will deploy when a slot is free.';
     default:
       return '';
   }
@@ -2488,7 +2474,7 @@ return (
               title={`Next Spawn Level in ${toNextLv} purchases`}
             >
               <span className="inline-flex items-baseline gap-1 leading-none">
-                <span>🦊 LV</span>
+                <span>🐶 LV</span>
                 <b className="leading-none">{stateRef.current?.spawnLevel || 1}</b>
                 <span className="text-[11px] leading-none opacity-80 relative -top-[1px]">
                   ({toNextLv})
@@ -2543,7 +2529,7 @@ return (
                 <div className="text-[22px] font-extrabold leading-none">🎁</div>
               </button>
 
-              {/* 🦊 ring */}
+              {/* 🐶 ring */}
               <button
                 onClick={()=>setHudModal('dogRing')}
                 className="relative w-8 h-8 rounded-full grid place-items-center hover:opacity-90 active:scale-95 transition"
@@ -2551,20 +2537,20 @@ return (
                 aria-label="Auto-dog info"
               >
                 <div className="absolute inset-0 rounded-full" style={ringBg(dogProgress)} />
-                <div className="text-[22px] font-extrabold leading-none">🦊</div>
+                <div className="text-[22px] font-extrabold leading-none">🐶</div>
               </button>
 
-{/* === [GAIN] button (RING like 🎁/🦊, same size) === */}
+{/* === [GAIN] button (RING like 🎁/🐶, same size) === */}
 <button
   onClick={() => setShowGainModal(true)}
   className="relative w-8 h-8 rounded-full grid place-items-center hover:opacity-90 active:scale-95 transition"
   title={`GAIN ${addRemainMs > 0 ? `in ${addRemainLabel}` : "ready"}`}
   aria-label="GAIN info"
 >
-  {/* טבעת ספירה בדיוק כמו 🎁/🦊 */}
+  {/* טבעת ספירה בדיוק כמו 🎁/🐶 */}
   <div className="absolute inset-0 rounded-full" style={ringBg(addProgress)} />
   {/* האייקון עצמו */}
-  <div className="text-[20px] font-extrabold leading-none">▶️</div>
+  <div className="text-[20px] font-extrabold leading-none">⚡</div>
 </button>
 {/* === END GAIN button === */}
 
@@ -2590,15 +2576,13 @@ return (
   {/* שורה ראשונה */}
   <div className="flex items-center gap-1">
     {/* האייקון קודם */}
-   <span
-  className="relative inline-grid place-items-center"
-  style={{
-    width: UI_SPAWN_ICON_BOX * 2.0,
-    height: UI_SPAWN_ICON_BOX * 1.0,
-    marginLeft: -8,            // <<< הזזה שמאלה ~8px
-  }}
->
-
+    <span
+      className="relative inline-grid place-items-center"
+      style={{ 
+        width: UI_SPAWN_ICON_BOX * 2.0,   // מגדיל את האייקון ב~40%
+        height: UI_SPAWN_ICON_BOX * 1.0 
+      }}
+    >
       <img
         src={IMG_SPAWN_ICON}
         alt="dog"
@@ -2634,7 +2618,7 @@ return (
   disabled={!canBuyDps}
   className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
     canBuyDps
-? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
+      ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
       : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
   }`}
 >
@@ -2656,18 +2640,13 @@ return (
   disabled={!canBuyGold}
   className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
     canBuyGold
-       ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
+      ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
       : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
   }`}
 >
   <div className="flex flex-col items-center justify-center leading-tight">
     <div className="flex items-center gap-1">
-      <img
-  src="/images/silver.png"
-  alt="Lio"
-  className="w-5 h-5 inline-block"
-/>
-
+      <span>🟡</span>
       <span>+10%</span>
     </div>
     <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
@@ -3051,7 +3030,7 @@ MLEO
         </div>
       )}
 
-      {/* HUD Info modal (Coins/DPS/GOLD/Spawn/Gifts/🎁/🦊) */}
+      {/* HUD Info modal (Coins/DPS/GOLD/Spawn/Gifts/🎁/🐶) */}
       {hudModal && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 max-w-sm w-full rounded-2xl p-6 shadow-2xl overflow-auto max-h-[85vh]">
