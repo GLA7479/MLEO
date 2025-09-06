@@ -2383,11 +2383,10 @@ return (
   className="relative w-full rounded-2xl overflow-hidden mt-1 mx-auto border border-slate-700"
   style={{
     maxWidth: isDesktop ? "1024px" : "680px",
-    // שמירה על גובה מלא-מסך גם ב-iOS (עם פולבאקים בטוחים)
-    height: "calc(var(--app-100vh, 100svh) - var(--header-h, 0px))",
-    minHeight: "min(100vh, var(--app-100vh, 100svh))",
-    // בדסקטופ יחס קלאסי; במובייל מחזירים 9/16 כמו בגרסה היציבה
-    aspectRatio: isDesktop ? "4 / 3" : "9 / 16",
+    // גובה נטו שמתאים לשני האתרים (Header/ללא Header)
+    height: "calc(var(--app-100vh) - var(--header-h) - var(--safe-top) - var(--safe-bottom))",
+    // בדסקטופ שמור יחס קלאסי; במובייל מלא גובה
+    aspectRatio: isDesktop ? "4 / 3" : "auto",
   }}
 >
   <canvas
