@@ -2668,7 +2668,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
         {/* Wallet status (clickable) — טוגל */}
 <div
   className="absolute z-[40]"
-  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 30px)" }}
+  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 48px)" }}
 >
   <button
     onClick={toggleWallet}
