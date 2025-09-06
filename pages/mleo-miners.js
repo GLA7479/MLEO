@@ -2252,8 +2252,8 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
   // ——— iOS detection ———
   const [isIOS, setIsIOS] = useState(false);
-  const HUD_TOP_IOS_PX = 0;
-  const HUD_TOP_ANDROID_PX = 5;
+  const HUD_TOP_IOS_PX = 10;
+  const HUD_TOP_ANDROID_PX = 15;
 
   // ——— Track fullscreen state (מתחבר ל-PART 2) ———
   // יש לנו כבר isFullscreen + מאזין ב-PART 2
@@ -2347,74 +2347,79 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
         </div>
 
         {/* ==== חלון תפריט (צד ימין) ==== */}
-        {menuOpen && (
-          <div
-            className="fixed inset-0 z-50 bg-black/40 flex items-start justify-end"
-            onClick={()=>setMenuOpen(false)}
+      {menuOpen && (
+  <div
+    className="fixed inset-0 z-[10000] bg-black/60 flex items-center justify-center p-3"
+    onClick={() => setMenuOpen(false)}
+  >
+    <div
+      className="
+        w-[86vw] max-w-[250px]   /* רוחב מקס' */
+        max-h-[70vh]             /* גובה מקס' */
+        bg-[#0b1220] text-white
+        shadow-2xl rounded-2xl
+        p-4 md:p-5               /* ריווח קטן יותר */
+        overflow-y-auto
+      "
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-2 md:mb-3">
+        <h2 className="text-xl font-extrabold">Settings</h2>
+        <button
+          onClick={() => setMenuOpen(false)}
+          className="h-9 w-9 rounded-lg bg-white/10 hover:bg-white/20 grid place-items-center"
+          title="Close"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Wallet */}
+      <div className="mb-3 space-y-2">
+        <h3 className="text-sm font-semibold opacity-80">Wallet</h3>
+        <button
+          onClick={() => {
+            try { playSfx(S_CLICK); } catch {}
+            if (firstTimeNeedsTerms) { setShowTerms(true); return; }
+            if (isConnected) openAccountModal?.(); else openConnectModal?.();
+          }}
+          className={`px-3 py-2 rounded-md text-sm font-semibold ${
+            isConnected
+              ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"
+              : "bg-rose-500/90 hover:bg-rose-500 text-white"
+          }`}
+        >
+          {isConnected ? "Wallet: Connected" : "Wallet: Disconnected"}
+        </button>
+      </div>
+
+      {/* Sound */}
+      <div className="mb-2 space-y-2">
+        <h3 className="text-sm font-semibold opacity-80">Sound</h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSfxMuted(v => !v)}
+            className={`px-3 py-2 rounded-lg text-sm ${sfxMuted ? "bg-white/10" : "bg-emerald-500/90"}`}
           >
-            <div
-              className="w-[min(92vw,360px)] h-full bg-[#0b1220] text-white shadow-2xl p-4 overflow-y-auto"
-              onClick={(e)=>e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-bold">Settings</h2>
-                <button
-                  onClick={()=>setMenuOpen(false)}
-                  className="h-9 w-9 rounded-lg bg-white/10 hover:bg-white/20 grid place-items-center"
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
+            {sfxMuted ? "SFX: Off" : "SFX: On"}
+          </button>
+          <button
+            onClick={() => setMusicMuted(v => !v)}
+            className={`px-3 py-2 rounded-lg text-sm ${musicMuted ? "bg-white/10" : "bg-emerald-500/90"}`}
+          >
+            {musicMuted ? "Music: Off" : "Music: On"}
+          </button>
+        </div>
+      </div>
 
-              {/* Wallet */}
-              <div className="mb-4 space-y-2">
-                <h3 className="text-sm font-semibold opacity-80">Wallet</h3>
-                <button
-                  onClick={() => {
-                    try { playSfx(S_CLICK); } catch {}
-                    if (firstTimeNeedsTerms) { setShowTerms(true); return; }
-                    if (isConnected) openAccountModal?.(); else openConnectModal?.();
-                  }}
-                  className={`px-3 py-2 rounded-md text-sm font-semibold ${
-                    isConnected ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"
-                                : "bg-rose-500/90 hover:bg-rose-500 text-white"
-                  }`}
-                  title={isConnected ? "מחובר — לחץ לניהול/ניתוק" : "לא מחובר — לחץ להתחבר"}
-                >
-                  {isConnected ? "Wallet: Connected" : "Wallet: Disconnected"}
-                </button>
-              </div>
+      <div className="mt-4 text-xs opacity-70">
+        <p>HUD Overlay v1.0</p>
+      </div>
+    </div>
+  </div>
+)}
 
-              {/* Sound */}
-              <div className="mb-4 space-y-2">
-                <h3 className="text-sm font-semibold opacity-80">Sound</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={()=>setSfxMuted(v=>!v)}
-                    className={`px-3 py-2 rounded-lg text-sm ${
-                      sfxMuted ? "bg-white/10" : "bg-emerald-500/90"
-                    }`}
-                  >
-                    {sfxMuted ? "SFX: Off" : "SFX: On"}
-                  </button>
-                  <button
-                    onClick={()=>setMusicMuted(v=>!v)}
-                    className={`px-3 py-2 rounded-lg text-sm ${
-                      musicMuted ? "bg-white/10" : "bg-emerald-500/90"
-                    }`}
-                  >
-                    {musicMuted ? "Music: Off" : "Music: On"}
-                  </button>
-                </div>
-              </div>
 
-              <div className="mt-6 text-xs opacity-70">
-                <p>HUD Overlay v1.0</p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* ===== Intro Overlay ===== */}
         {isMobileLandscape && (
