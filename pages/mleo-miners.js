@@ -2668,11 +2668,11 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
         {/* Wallet status (clickable) — טוגל */}
 <div
   className="absolute z-[40]"
-  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 48px)" }}
+  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 42px)" }}
 >
   <button
     onClick={toggleWallet}
-    className={`px-3 py-1 rounded-md text-xs font-semibold shadow ${
+    className={`px-2 py-1 rounded-md text-xs font-semibold shadow ${
       isConnected
         ? "bg-emerald-500 hover:bg-emerald-600 text-white" // מחובר = ירוק
         : "bg-rose-500 hover:bg-rose-600 text-white"      // לא מחובר = אדום
