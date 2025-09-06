@@ -252,6 +252,13 @@ function formatMleo(n) {
   return sign + t.toFixed(3);
 }
 
+// --- helper: shorten wallet address for UI ---
+function shortAddr(a) {
+  if (!a) return "";
+  return `${a.slice(0, 6)}...${a.slice(-4)}`;
+}
+
+
 // MLEO קצר — קיצור עם 2 ספרות (ל-HUD/טוסטים/פופאפים)
 function formatMleoShort(n) {
   return formatAbbrevInt(n);
@@ -478,7 +485,7 @@ const router = useRouter();
   const flagsRef = useRef({ isMobileLandscape: false, paused: true });
   const { openConnectModal } = useConnectModal();
   const { openAccountModal } = useAccountModal();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
 const { disconnect } = useDisconnect();
 
   const [ui, setUi] = useState({
@@ -514,6 +521,9 @@ const { disconnect } = useDisconnect();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [debugUI, setDebugUI] = useState(false); // ← קיים
+
+// Wallet address copy feedback
+  const [copiedAddr, setCopiedAddr] = useState(false);
 
   // === Mining HUD state (CLAIM) ===
   const [mining, setMining] = useState({
@@ -2389,46 +2399,77 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
       <div className="mb-3 space-y-2">
         <h3 className="text-sm font-semibold opacity-80">Wallet</h3>
         <div className="flex items-center gap-2">
+  <button
+    onClick={openWalletModalUnified}
+    className={`px-3 py-2 rounded-md text-sm font-semibold ${
+      isConnected
+        ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"  // Connected = ירוק
+        : "bg-rose-500/90 hover:bg-rose-500 text-white"        // Disconnected = אדום
+    }`}
+  >
+    {isConnected ? "Connected" : "Disconnected"}
+  </button>
+
+  {isConnected && (
+    <button
+      onClick={hardDisconnect}
+      className="px-3 py-2 rounded-md text-sm font-semibold bg-rose-500/90 hover:bg-rose-500 text-white"
+      title="Disconnect wallet"
+    >
+      Disconnect
+    </button>
+  )}
+</div>
+
+ {/* Connected address + copy */}
+        {isConnected && address && (
           <button
-            onClick={openWalletModalUnified}
-            className={`px-3 py-2 rounded-md text-sm font-semibold ${
-              isConnected
-                ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"
-                : "bg-rose-500/90 hover:bg-rose-500 text-white"
-            }`}
+            onClick={() => {
+              try {
+                navigator.clipboard.writeText(address).then(() => {
+                  setCopiedAddr(true);
+                  setTimeout(() => setCopiedAddr(false), 1500);
+                });
+              } catch {}
+            }}
+            className="mt-1 text-xs text-gray-300 hover:text-white transition underline underline-offset-2"
+            title="Click to copy full address"
+            aria-label="Copy wallet address"
           >
-            {isConnected ? "Wallet: Connected" : "Wallet: Disconnected"}
+            {shortAddr(address)}
+            {copiedAddr && <span className="ml-2 text-emerald-400 font-semibold">Copied!</span>}
           </button>
-          {isConnected && (
-            <button
-              onClick={hardDisconnect}
-              className="px-3 py-2 rounded-md text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
-              title="Disconnect wallet"
-            >
-              Disconnect
-            </button>
-          )}
-        </div>
-      </div>
+        )}
+       </div>
+      
 
       {/* Sound */}
-      <div className="mb-2 space-y-2">
-        <h3 className="text-sm font-semibold opacity-80">Sound</h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSfxMuted(v => !v)}
-            className={`px-3 py-2 rounded-lg text-sm ${sfxMuted ? "bg-white/10" : "bg-emerald-500/90"}`}
-          >
-            {sfxMuted ? "SFX: Off" : "SFX: On"}
-          </button>
-          <button
-            onClick={() => setMusicMuted(v => !v)}
-            className={`px-3 py-2 rounded-lg text-sm ${musicMuted ? "bg-white/10" : "bg-emerald-500/90"}`}
-          >
-            {musicMuted ? "Music: Off" : "Music: On"}
-          </button>
-        </div>
-      </div>
+      <div className="mb-4 space-y-2">
+  <h3 className="text-sm font-semibold opacity-80">Sound</h3>
+  <div className="flex items-center gap-2">
+    <button
+      onClick={() => setSfxMuted(v => !v)}
+      className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+        sfxMuted
+          ? "bg-rose-500/90 hover:bg-rose-500 text-white"      // OFF = אדום
+          : "bg-emerald-500/90 hover:bg-emerald-500 text-white"// ON = ירוק
+      }`}
+    >
+      SFX: {sfxMuted ? "Off" : "On"}
+    </button>
+    <button
+      onClick={() => setMusicMuted(v => !v)}
+      className={`px-3 py-2 rounded-lg text-sm font-semibold ${
+        musicMuted
+          ? "bg-rose-500/90 hover:bg-rose-500 text-white"      // OFF = אדום
+          : "bg-emerald-500/90 hover:bg-emerald-500 text-white"// ON = ירוק
+      }`}
+    >
+      Music: {musicMuted ? "Off" : "On"}
+    </button>
+  </div>
+</div>
+
 
       <div className="mt-4 text-xs opacity-70">
         <p>HUD Overlay v1.0</p>
@@ -2626,17 +2667,22 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
         {/* Wallet status (clickable) — טוגל */}
 <div
-   className="absolute top-2 z-[40]"
-   style={{ left: "calc(env(safe-area-inset-left, 0px) + 30px)" }} // ≈ 56px מימין לחץ־חזרה (h-10 w-10)
- >
+  className="absolute z-[40]"
+  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 30px)" }}
+>
   <button
     onClick={toggleWallet}
-    className={`${isConnected ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white/70"} px-2 py-0.5 rounded-md text-[11px] font-semibold hover:opacity-90 active:scale-95 transition`}
-    title={isConnected ? "Tap to disconnect" : "Tap to connect"}
+    className={`px-3 py-1 rounded-md text-xs font-semibold shadow ${
+      isConnected
+        ? "bg-emerald-500 hover:bg-emerald-600 text-white" // מחובר = ירוק
+        : "bg-rose-500 hover:bg-rose-600 text-white"      // לא מחובר = אדום
+    }`}
+    title={isConnected ? "Tap to disconnect wallet" : "Tap to connect wallet"}
   >
-    {isConnected ? "● Connected" : "○ Not connected"}
+    {isConnected ? "connected" : "Connect"}
   </button>
 </div>
+
 
 
           {/* keep glow keyframes for diamonds + global UI pulses */}
