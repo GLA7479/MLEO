@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
-import { useRouter } from "next/router";
+
 
 
 // --- iOS 100vh fix (sets --app-100vh = window.innerHeight) ---
@@ -469,7 +469,6 @@ function WalletReleaseBar() {
 
 export default function MleoMiners() {
   useIOSViewportFix();
-const router = useRouter();
   const wrapRef   = useRef(null);
   const canvasRef = useRef(null);
   const rafRef    = useRef(0);
@@ -485,7 +484,7 @@ const router = useRouter();
     spawnCost: 50,
     dpsMult: 1,
     goldMult: 1,
-    muted: false, // קיים — לא נוגעים במשחק
+    muted: false,
   });
 
   const [isDesktop,  setIsDesktop]  = useState(false);
@@ -512,48 +511,16 @@ const router = useRouter();
   const [showDiamondInfo, setShowDiamondInfo] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [debugUI, setDebugUI] = useState(false); // ← קיים
+  const [debugUI, setDebugUI] = useState(false); // ← NEW
 
   // === Mining HUD state (CLAIM) ===
   const [mining, setMining] = useState({
     balance: 0, minedToday: 0, lastDay: "", scoreToday: 0,
     vault: 0, claimedTotal: 0, history: []
   });
-  const [claiming, setClaiming] = useState(false);
+  const [claiming, setClaiming] = useState(false); // ← הוסף את זה
 
-  // ====== SFX / MUSIC (נוסף — לא מחליף את ui.muted הקיים של המשחק) ======
-  const [sfxMuted, setSfxMuted] = useState(() => {
-    try { return localStorage.getItem("mleo_sfx_muted") === "1"; } catch { return false; }
-  });
-  const [musicMuted, setMusicMuted] = useState(() => {
-    try { return localStorage.getItem("mleo_music_muted") === "1"; } catch { return true; }
-  });
-  const bgMusicRef = useRef(null); // נטען ב-PART 8 ב-<audio/>
-
-  useEffect(() => {
-    try { localStorage.setItem("mleo_sfx_muted", sfxMuted ? "1" : "0"); } catch {}
-  }, [sfxMuted]);
-
-  useEffect(() => {
-    try { localStorage.setItem("mleo_music_muted", musicMuted ? "1" : "0"); } catch {}
-    const a = bgMusicRef.current;
-    if (!a) return;
-    a.muted = musicMuted;
-    if (!musicMuted) {
-      a.loop = true;
-      a.play().catch(()=>{});
-    } else {
-      try { a.pause(); } catch {}
-    }
-  }, [musicMuted]);
-
-  // נגן אפקטים עבור HUD בלבד — מכבד רק SFX mute (לא נוגע ב-play של המשחק)
-  const playSfx = (src) => {
-    if (!src || sfxMuted) return;
-    try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {}
-  };
-
-  // === PATCH: auto-open "How it works" פעם לסשן ===
+  // === PATCH: auto-open "How it works" (Mining) once per session ===
   useEffect(() => {
     if (showIntro) return;
     try {
@@ -569,6 +536,9 @@ const router = useRouter();
   useEffect(() => {
     const accepted = isTermsAccepted();
     setFirstTimeNeedsTerms(!accepted);
+    if (!accepted) {
+      // Do not auto-open modal here; we show a banner and gate PLAY/CONNECT.
+    }
   }, []);
 
   // ===== Debug UI bootstrap =====
@@ -595,23 +565,31 @@ const router = useRouter();
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // === [GAIN] state & helpers (קיים אצלך — לא שיניתי) ===
-  const [showGainModal, setShowGainModal] = useState(false);
-  const [gainWatchEnabled, setGainWatchEnabled] = useState(false);
-  const gainReady = !!(stateRef.current && stateRef.current.gainReady);
-  const gainRingClass = gainReady
-    ? "animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400/40"
-    : "absolute inline-flex h-full w-full rounded-full border border-white/20";
-  function toggleGainWatch() {
-    setGainWatchEnabled(v => !v);
-    try { localStorage.setItem("mleo_gain_watch", (!gainWatchEnabled).toString()); } catch {}
-  }
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem("mleo_gain_watch");
-      if (v === "true") setGainWatchEnabled(true);
-    } catch {}
-  }, []);
+// === [GAIN] state & helpers (ADD) ===
+const [showGainModal, setShowGainModal] = useState(false);
+const [gainWatchEnabled, setGainWatchEnabled] = useState(false);
+
+// Bind to your real logic (timer/conditions). If no field exists yet, falls back to false.
+const gainReady = !!(stateRef.current && stateRef.current.gainReady);
+
+// “ring” matching the other icons (same sizing/ping behavior)
+const gainRingClass = gainReady
+  ? "animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400/40"
+  : "absolute inline-flex h-full w-full rounded-full border border-white/20";
+
+function toggleGainWatch() {
+  setGainWatchEnabled(v => !v);
+  try { localStorage.setItem("mleo_gain_watch", (!gainWatchEnabled).toString()); } catch {}
+}
+
+useEffect(() => {
+  try {
+    const v = localStorage.getItem("mleo_gain_watch");
+    if (v === "true") setGainWatchEnabled(true);
+  } catch {}
+}, []);
+// === [GAIN] END state ===
+
 
   // טוען/מרענן סטטוס ה־Mining
   useEffect(() => {
@@ -639,29 +617,37 @@ const router = useRouter();
     saveMiningState(st);
     setMining(st);
     setGiftToastWithTTL(`Moved ${formatMleoShort(amt)} MLEO to Vault`);
+
   }
 
-  // === Unified Wallet Modal Opener (מחובר/לא מחובר) + Terms gate ===
-  function openWalletModalUnified() {
-    try { playSfx(S_CLICK); } catch {}
-    if (firstTimeNeedsTerms) { 
-      setShowTerms(true); 
-      return; 
-    }
-    if (isConnected) {
-      openAccountModal?.();   // סטטוס מחובר + אפשרות ניתוק
-    } else {
-      openConnectModal?.();   // חיבור ארנק
-    }
+// === Unified Wallet Modal Opener ===
+function openWalletModalUnified() {
+  try { play?.(S_CLICK); } catch {}
+  if (firstTimeNeedsTerms) { 
+    setShowTerms(true); 
+    return; 
   }
+  if (isConnected) {
+    openAccountModal?.();   // סטטוס מחובר + אפשרות ניתוק
+  } else {
+    openConnectModal?.();   // חיבור ארנק
+  }
+}
+
 
   // כפתור CLAIM — דמו: תמיד Vault
   async function onClaimMined() {
+    // מצב דמו בלבד
     claimBalanceToVaultDemo();
     return;
+
+    /* ================== ENABLE AFTER LAUNCH (Mainnet/Testnet) ==================
+      ... (הקוד העתידי נשאר כפי שהוא ומכובה ע"י ה-return המוקדם) ...
+    ============================================================================
+    */
   }
 
-  // Debug live values (קיים אצלך — לא נוגע)
+  // Debug live values for the panel (controlled inputs)
   const [debugVals, setDebugVals] = useState({
     minerScale: stateRef.current?.minerScale ?? 1.60,
     minerWidth: stateRef.current?.minerWidth ?? 0.8,
@@ -697,7 +683,6 @@ const router = useRouter();
     };
   }, [isMobileLandscape, gamePaused, showIntro, showCollect]);
 
-  // נגן המשחק הקיים — נשאר כמו שהוא
   const play = (src) => {
     if (ui.muted || !src) return;
     try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {}
@@ -738,106 +723,54 @@ const router = useRouter();
   }
 
   function grantGift(){
-    const s = stateRef.current; if (!s) return;
-    const type = rollGiftType();
+  const s = stateRef.current; if (!s) return;
+  const type = rollGiftType(); // updated weights (no dog in regular gifts)
 
-    if (type === "coins20") {
-      const base = Math.max(10, expectedGiftCoinReward(s));
-      const gain = Math.round(base * 0.20);
-      s.gold += gain;
-      setUi(u => ({ ...u, gold: s.gold }));
-      setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
+  if (type === "coins20") {
+    const base = Math.max(10, expectedGiftCoinReward(s));
+    const gain = Math.round(base * 0.20);
+    s.gold += gain;
+    setUi(u => ({ ...u, gold: s.gold }));
+    // בלי הצגת אחוזים
+    setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
 
-    } else if (type === "coins40") {
-      const base = Math.max(10, expectedGiftCoinReward(s));
-      const gain = Math.round(base * 0.40);
-      s.gold += gain;
-      setUi(u => ({ ...u, gold: s.gold }));
-      setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
+  } else if (type === "coins40") {
+    const base = Math.max(10, expectedGiftCoinReward(s));
+    const gain = Math.round(base * 0.40);
+    s.gold += gain;
+    setUi(u => ({ ...u, gold: s.gold }));
+    // בלי הצגת אחוזים
+    setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
 
-    } else if (type === "dps") {
-      s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(2);
-      setCenterPopup({ text: `🎁 DPS +10% (×${(s.dpsMult||1).toFixed(2)})`, id: Math.random() });
+  } else if (type === "dps") {
+    s.dpsMult = +((s.dpsMult || 1) * 1.1).toFixed(2);
+    setCenterPopup({ text: `🎁 DPS +10% (×${(s.dpsMult||1).toFixed(2)})`, id: Math.random() });
 
-    } else if (type === "gold") {
-      s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(2);
-      setCenterPopup({ text: `🎁 GOLD +10% (×${(s.goldMult||1).toFixed(2)})`, id: Math.random() });
+  } else if (type === "gold") {
+    s.goldMult = +((s.goldMult || 1) * 1.1).toFixed(2);
+    setCenterPopup({ text: `🎁 GOLD +10% (×${(s.goldMult||1).toFixed(2)})`, id: Math.random() });
 
-    } else if (type === "diamond") {
-      s.diamonds = (s.diamonds || 0) + 1;
-      setCenterPopup({ text: `🎁 +1 💎 (Diamonds: ${s.diamonds})`, id: Math.random() });
-    }
+  } else if (type === "diamond") {
+    s.diamonds = (s.diamonds || 0) + 1;
+    setCenterPopup({ text: `🎁 +1 💎 (Diamonds: ${s.diamonds})`, id: Math.random() });
+  }
 
-    s.giftReady = false;
-    {
-      const now = Date.now();
-      const stepSec = currentGiftIntervalSec(s, now);
-      s.giftNextAt = now + stepSec * 1000;
-    }
+  s.giftReady = false;
+  {
+    const now = Date.now();
+    const stepSec = currentGiftIntervalSec(s, now);
+    s.giftNextAt = now + stepSec * 1000; // full interval after claim
+  }
 
+// reset idle timer & offline flag on claim
     s.giftFirstReadyAt = null;
     s.isIdleOffline = false;
 
-    setGiftReadyFlag(false);
-    try { play(S_GIFT); } catch {}
-    save?.();
-  }
+  setGiftReadyFlag(false);
+  try { play(S_GIFT); } catch {}
+  save?.();
+}
 
-  // ====== מסך מלא + Back (נוסף) ======
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  useEffect(() => {
-    const onFS = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", onFS);
-    onFS();
-    return () => document.removeEventListener("fullscreenchange", onFS);
-  }, []);
-
-  function toggleFullscreen() {
-    try { playSfx(S_CLICK); } catch {}
-    const el = wrapRef.current || document.documentElement;
-    if (!document.fullscreenElement) {
-      el.requestFullscreen?.().then(()=>setIsFullscreen(true)).catch(()=>{});
-    } else {
-      document.exitFullscreen?.().then(()=>setIsFullscreen(false)).catch(()=>{});
-    }
-  }
-
-// Back "קשיח" – יוצא מפול־סק्रीन, ואז מנסה לחזור; אם אין היסטוריה → נופל ל־"/"
-   function backSafe() {
-     try { playSfx(S_CLICK); } catch {}
-     const p = document.fullscreenElement
-       ? document.exitFullscreen?.()
-       : Promise.resolve();
-     Promise.resolve(p).finally(() => {
-       setTimeout(() => {
-         if (window.history.length > 1) window.history.back();
-         else window.location.href = "/";
-       }, 0);
-     });
-   }
-
- // Back יציאה מפול-סקין + חזרה, עם fallback ל-root
-   function backSafe() {
-     try { playSfx(S_CLICK); } catch {}
-     const p = document.fullscreenElement
-       ? document.exitFullscreen?.()
-       : Promise.resolve();
-     Promise.resolve(p).finally(() => {
-       // תן לרגע לדפדפן להשתחרר מפול-סקין לפני ניווט
-       setTimeout(() => {
-         if (window.history.length > 1) {
-           try { router.back(); } catch { window.history.back(); }
-         } else {
-           try { router.push("/"); } catch { window.location.href = "/"; }
-         }
-       }, 0);
-     });
-   }
-   // שמירה על תאימות אם יש קריאות ישנות ל-onBack()
-   function onBack(){ backSafe(); }
-
-  // דגל לתפריט (☰) — JSX ב-PART 8
-  const [menuOpen, setMenuOpen] = useState(false);
 
 // === END PART 2 ===
 
@@ -2251,263 +2184,139 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 // === START PART 8 ===
 
   // ——— iOS detection ———
-  const [isIOS, setIsIOS] = useState(false);
-  const HUD_TOP_IOS_PX = 0;
-  const HUD_TOP_ANDROID_PX = 5;
+const [isIOS, setIsIOS] = useState(false);
+const HUD_TOP_IOS_PX = 0;
+const HUD_TOP_ANDROID_PX = 5;
 
-  // ——— Track fullscreen state (מתחבר ל-PART 2) ———
-  // יש לנו כבר isFullscreen + מאזין ב-PART 2
+// ——— Track fullscreen state ———
+const [isFullscreen, setIsFullscreen] = useState(false);
 
-  useEffect(() => {
-    try {
-      const ua = navigator.userAgent || "";
-      const isiOS =
-        /iP(hone|ad|od)/.test(ua) ||
-        ((/Macintosh/.test(ua) || /Mac OS X/.test(ua)) && "ontouchend" in document);
-      setIsIOS(isiOS);
-    } catch {}
-  }, []);
+useEffect(() => {
+  try {
+    const ua = navigator.userAgent || "";
+    const isiOS =
+      /iP(hone|ad|od)/.test(ua) ||
+      ((/Macintosh/.test(ua) || /Mac OS X/.test(ua)) && "ontouchend" in document);
+    setIsIOS(isiOS);
+  } catch {}
 
-  const hudTop = `calc(env(safe-area-inset-top, 0px) + ${(isIOS ? HUD_TOP_IOS_PX : HUD_TOP_ANDROID_PX)}px)`;
+  const onFS = () => setIsFullscreen(!!document.fullscreenElement);
+  document.addEventListener("fullscreenchange", onFS);
+  onFS();
+  return () => document.removeEventListener("fullscreenchange", onFS);
+}, []);
 
-  // ==== אל תסגור את הקומפוננטה ב-PART 8! המשך PART 9/10 יושב באותו return ====
-  return (
-    <Layout>
-      <div
-        ref={wrapRef}
-        className="
-          relative flex flex-col items-center justify-start
-          bg-gray-900 text-white
-          w-full min-h-[var(--app-100vh,100svh)]
-          overflow-hidden select-none
-          pt-[calc(env(safe-area-inset-top,0px)+8px)]
-          pb-[calc(env(safe-area-inset-bottom,0px)+16px)]
-        "
-        style={{
-          paddingTop: isFullscreen ? 0 : undefined,
-          paddingBottom: isFullscreen ? 0 : undefined,
-        }}
-      >
-        {/* הקאנבס שלך (קיים אצלך גם ב-PART 9 – אם כפול, השאר רק אחד) */}
-        <div className="w-full h-full block" aria-hidden />
+const hudTop = `calc(env(safe-area-inset-top, 0px) + ${(isIOS ? HUD_TOP_IOS_PX : HUD_TOP_ANDROID_PX)}px)`;
+return (
 
-
-        {/* מוזיקת רקע (אופציונלי) – לא מפריעה אם אין קובץ */}
-        <audio ref={bgMusicRef} src="/sounds/bg-music.mp3" muted className="hidden" />
-
-        {/* Top bar (Back / Full / Menu) – תמיד מעל הקנבס */}
-         <div
-           className="pointer-events-none absolute inset-x-0"
-           style={{ top: hudTop, zIndex: 4000 }}
-           data-layer="topbar"
-         >
-          <div className="mx-auto max-w-[1024px] relative">
-            {/* שמאל: Back */}
-            <div className="absolute left-2 top-0 flex gap-2 pointer-events-auto">
-              <button
-               onClick={backSafe}
-                aria-label="Back"
-                className="h-10 w-10 rounded-xl bg-black/40 hover:bg-black/60 text-white grid place-items-center shadow"
-                title="Back"
-              >
-                ←
-              </button>
-            </div>
-
-            {/* ימין: Fullscreen + Menu */}
-            <div className="absolute right-2 top-0 flex gap-2 pointer-events-auto">
-              <button
-                onClick={() => {
-                  try { playSfx(S_CLICK); } catch {}
-                  const el = wrapRef.current || document.documentElement;
-                  if (!document.fullscreenElement) {
-                    el.requestFullscreen?.().catch(()=>{});
-                  } else {
-                    document.exitFullscreen?.().catch(()=>{});
-                  }
-                }}
-                aria-label="Fullscreen"
-                className="h-10 px-3 rounded-xl bg-black/40 hover:bg-black/60 text-white flex items-center gap-2 shadow"
-                title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-              >
-                <span className="text-base">⤢</span>
-                <span className="text-xs opacity-80">{isFullscreen ? "Exit" : "Full"}</span>
-              </button>
-
-              <button
-                onClick={() => { try { playSfx(S_CLICK); } catch {}; setMenuOpen(true); }}
-                aria-label="Menu"
-                className="h-10 w-10 rounded-xl bg-black/40 hover:bg-black/60 text-white grid place-items-center shadow"
-                title="Menu"
-              >
-                ≡
-              </button>
-            </div>
+  <Layout>
+    <div
+      ref={wrapRef}
+      className="
+        relative flex flex-col items-center justify-start
+        bg-gray-900 text-white
+        w-full min-h-[var(--app-100vh,100svh)]
+        overflow-hidden select-none
+        pt-[calc(env(safe-area-inset-top,0px)+8px)]
+        pb-[calc(env(safe-area-inset-bottom,0px)+16px)]
+      "
+      style={{
+        paddingTop: isFullscreen ? 0 : undefined,
+        paddingBottom: isFullscreen ? 0 : undefined,
+      }}
+    >
+      {/* Landscape overlay on mobile */}
+      {isMobileLandscape && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white text-center p-6">
+          <div>
+            <h2 className="text-2xl font-extrabold mb-3">Please rotate your device to portrait.</h2>
+            <p className="opacity-80">Landscape is not supported.</p>
           </div>
         </div>
+      )}
 
-        {/* ==== חלון תפריט (צד ימין) ==== */}
-        {menuOpen && (
-          <div
-            className="fixed inset-0 z-50 bg-black/40 flex items-start justify-end"
-            onClick={()=>setMenuOpen(false)}
-          >
-            <div
-              className="w-[min(92vw,360px)] h-full bg-[#0b1220] text-white shadow-2xl p-4 overflow-y-auto"
-              onClick={(e)=>e.stopPropagation()}
+      {/* Intro Overlay */}
+      {showIntro && (
+        <div className="absolute inset-0 flex flex-col items-center justify-start pt-10 bg-black/80 z-[50] text-center p-6">
+          <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
+
+          <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
+
+          {firstTimeNeedsTerms && (
+            <div className="mb-4 w-full max-w-md">
+              <div className="px-3 py-2 rounded-lg bg-yellow-300/20 text-yellow-200 border border-yellow-300/40 text-xs sm:text-sm">
+                You must read and accept the <b>Terms &amp; Conditions</b> before playing for the first time.
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 flex-wrap justify-center">
+            <button
+              onClick={async () => {
+                try { play?.(S_CLICK); } catch {}
+                if (firstTimeNeedsTerms) { setShowTerms(true); return; }
+                const s = stateRef.current;
+                if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+
+                setShowIntro(false);
+                setGamePaused(false);
+                try { await enterFullscreenAndLockMobile(); } catch {}
+
+                setTimeout(() => {
+                  if (isConnected) {
+                    openAccountModal?.();
+                  } else {
+                    openConnectModal?.();
+                  }
+                }, 0);
+              }}
+              className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
             >
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-bold">Settings</h2>
-                <button
-                  onClick={()=>setMenuOpen(false)}
-                  className="h-9 w-9 rounded-lg bg-white/10 hover:bg-white/20 grid place-items-center"
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
+              CONNECT WALLET
+            </button>
 
-              {/* Wallet */}
-              <div className="mb-4 space-y-2">
-                <h3 className="text-sm font-semibold opacity-80">Wallet</h3>
-                <button
-                  onClick={() => {
-                    try { playSfx(S_CLICK); } catch {}
-                    if (firstTimeNeedsTerms) { setShowTerms(true); return; }
-                    if (isConnected) openAccountModal?.(); else openConnectModal?.();
-                  }}
-                  className={`px-3 py-2 rounded-md text-sm font-semibold ${
-                    isConnected ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"
-                                : "bg-rose-500/90 hover:bg-rose-500 text-white"
-                  }`}
-                  title={isConnected ? "מחובר — לחץ לניהול/ניתוק" : "לא מחובר — לחץ להתחבר"}
-                >
-                  {isConnected ? "Wallet: Connected" : "Wallet: Disconnected"}
-                </button>
-              </div>
+            <button
+              onClick={async () => {
+                try { play?.(S_CLICK); } catch {}
+                if (firstTimeNeedsTerms) { setShowTerms(true); return; }
+                const s = stateRef.current;
+                if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+                setShowIntro(false);
+                setGamePaused(false);
+                try { await enterFullscreenAndLockMobile(); } catch {}
+              }}
+              className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
+            >
+              PLAY
+            </button>
 
-              {/* Sound */}
-              <div className="mb-4 space-y-2">
-                <h3 className="text-sm font-semibold opacity-80">Sound</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={()=>setSfxMuted(v=>!v)}
-                    className={`px-3 py-2 rounded-lg text-sm ${
-                      sfxMuted ? "bg-white/10" : "bg-emerald-500/90"
-                    }`}
-                  >
-                    {sfxMuted ? "SFX: Off" : "SFX: On"}
-                  </button>
-                  <button
-                    onClick={()=>setMusicMuted(v=>!v)}
-                    className={`px-3 py-2 rounded-lg text-sm ${
-                      musicMuted ? "bg-white/10" : "bg-emerald-500/90"
-                    }`}
-                  >
-                    {musicMuted ? "Music: Off" : "Music: On"}
-                  </button>
-                </div>
-              </div>
+            <button
+              onClick={() => setShowHowTo(true)}
+              className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
+            >
+              HOW TO PLAY
+            </button>
 
-              <div className="mt-6 text-xs opacity-70">
-                <p>HUD Overlay v1.0</p>
-              </div>
-            </div>
+            <button
+              onClick={() => setShowMiningInfo(true)}
+              className="px-5 py-3 font-bold rounded-lg text-base shadow bg-cyan-400 hover:bg-cyan-300 text-black"
+            >
+              MINING
+            </button>
+
+            <button
+              onClick={() => setShowTerms(true)}
+              className="px-5 py-3 font-bold rounded-lg text-base shadow bg-teal-400 hover:bg-teal-300 text-black"
+            >
+              TERMS
+            </button>
           </div>
-        )}
 
-        {/* ===== Intro Overlay ===== */}
-        {isMobileLandscape && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black text-white text-center p-6">
-            <div>
-              <h2 className="text-2xl font-extrabold mb-3">Please rotate your device to portrait.</h2>
-              <p className="opacity-80">Landscape is not supported.</p>
-            </div>
-          </div>
-        )}
+        </div>
+      )}
 
-        {showIntro && (
-          <div className="absolute inset-0 flex flex-col items-center justify-start pt-10 bg-black/80 z-[50] text-center p-6">
-            <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
-
-            <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
-
-            {firstTimeNeedsTerms && (
-              <div className="mb-4 w-full max-w-md">
-                <div className="px-3 py-2 rounded-lg bg-yellow-300/20 text-yellow-200 border border-yellow-300/40 text-xs sm:text-sm">
-                  You must read and accept the <b>Terms &amp; Conditions</b> before playing for the first time.
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-3 flex-wrap justify-center">
-              <button
-                onClick={async () => {
-                  try { play?.(S_CLICK); } catch {}
-                  if (firstTimeNeedsTerms) { setShowTerms(true); return; }
-                  const s = stateRef.current;
-                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-
-                  setShowIntro(false);
-                  setGamePaused(false);
-                  try { await enterFullscreenAndLockMobile(); } catch {}
-
-                  setTimeout(() => {
-                    if (isConnected) openAccountModal?.();
-                    else openConnectModal?.();
-                  }, 0);
-                }}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
-              >
-                CONNECT WALLET
-              </button>
-
-              <button
-                onClick={async () => {
-                  try { play?.(S_CLICK); } catch {}
-                  if (firstTimeNeedsTerms) { setShowTerms(true); return; }
-                  const s = stateRef.current;
-                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
-                  setShowIntro(false);
-                  setGamePaused(false);
-                  try { await enterFullscreenAndLockMobile(); } catch {}
-                }}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
-              >
-                PLAY
-              </button>
-
-              <button
-                onClick={() => setShowHowTo(true)}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
-              >
-                HOW TO PLAY
-              </button>
-
-              <button
-                onClick={() => setShowMiningInfo(true)}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-cyan-400 hover:bg-cyan-300 text-black"
-              >
-                MINING
-              </button>
-
-              <button
-                onClick={() => setShowTerms(true)}
-                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-teal-400 hover:bg-teal-300 text-black"
-              >
-                TERMS
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* --- אל תסגור כאן את </div> / </Layout> / );  ---
-             המשך PART 9/10 נכנס ישר אחרי זה בתוך אותו wrapper */}
-        
-{/* === END PART 8 (OPEN) === */}
-
-
+      {/* === END PART 8 === */}
 
 
 {/* === START PART 9 === */}
@@ -2571,8 +2380,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 {/* ===== Unified Canvas wrapper (no lanes changes) ===== */}
 <div
   id="miners-canvas-wrap"
-    className="relative z-[0] w-full rounded-2xl overflow-hidden mt-1 mx-auto border border-slate-700"
-
+  className="relative w-full rounded-2xl overflow-hidden mt-1 mx-auto border border-slate-700"
   style={{
     maxWidth: isDesktop ? "1024px" : "680px",
     // שמירה על גובה מלא-מסך גם ב-iOS (עם פולבאקים בטוחים)
@@ -2585,7 +2393,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
   <canvas
     id="miners-canvas"
     ref={canvasRef}
-    className="relative z-[0] w-full h-full block touch-none select-none"
+    className="w-full h-full block touch-none select-none"
   />
 
 {SHOW_FLOATING_RESET && (
@@ -2604,12 +2412,11 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 )}
 
 
-         {/* ==== TOP HUD ==== */}
-         {!showIntro && (
-         <div
-         className="absolute left-1/2 -translate-x-1/2 z-[3000] w-[calc(100%-16px)] max-w-[980px]"
-           style={{ top: hudTop }}
-         >
+        {/* ==== TOP HUD ==== */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 z-[30] w-[calc(100%-16px)] max-w-[980px]"
+          style={{ top: hudTop }}
+        >
           <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-center mb-2">
             MLEO — MINERS
           </h1>
@@ -2950,7 +2757,6 @@ Vault: <b className="text-cyan-300 tabular-nums">
           </div>
 
         </div>
-)}
 
         {/* === END PART 9 === */}
 
