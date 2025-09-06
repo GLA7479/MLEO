@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
-import { useAccount, useDisconnect } from "wagmi";
+import { useAccount } from "wagmi";
 import { useRouter } from "next/router";
 
 
@@ -479,7 +479,6 @@ const router = useRouter();
   const { openConnectModal } = useConnectModal();
   const { openAccountModal } = useAccountModal();
   const { isConnected } = useAccount();
-const { disconnect } = useDisconnect();
 
   const [ui, setUi] = useState({
     gold: 0,
@@ -645,38 +644,15 @@ const { disconnect } = useDisconnect();
   // === Unified Wallet Modal Opener (מחובר/לא מחובר) + Terms gate ===
   function openWalletModalUnified() {
     try { playSfx(S_CLICK); } catch {}
-    // שער תנאים
-    if (firstTimeNeedsTerms) {
-      setShowTerms(true);
-      return;
+    if (firstTimeNeedsTerms) { 
+      setShowTerms(true); 
+      return; 
     }
-    // סגירת שכבות שיכולות לכסות את RainbowKit
-    setMenuOpen(false);
-    setShowHowTo(false);
-    setShowMiningInfo(false);
-    setShowAdModal(false);
-    // פתיחת המודל הנכון
     if (isConnected) {
-      openAccountModal?.();   // סטטוס + ניתוק
+      openAccountModal?.();   // סטטוס מחובר + אפשרות ניתוק
     } else {
-      openConnectModal?.();   // חיבור
+      openConnectModal?.();   // חיבור ארנק
     }
-  }
-
-// טוגל פשוט לחיבור/ניתוק — בלי לפתוח מודלים
-  function toggleWallet() {
-    try { playSfx(S_CLICK); } catch {}
-    if (isConnected) {
-      try { disconnect(); } catch {}
-    } else {
-      openConnectModal?.();
-    }
-  }
-
-// ניתוק ישיר (גיבוי) — לא משנה UI במשחק
-  function hardDisconnect() {
-    try { disconnect(); } catch {}
-    setMenuOpen(false);
   }
 
   // כפתור CLAIM — דמו: תמיד Vault
@@ -826,6 +802,19 @@ const { disconnect } = useDisconnect();
     }
   }
 
+// Back "קשיח" – יוצא מפול־סק्रीन, ואז מנסה לחזור; אם אין היסטוריה → נופל ל־"/"
+   function backSafe() {
+     try { playSfx(S_CLICK); } catch {}
+     const p = document.fullscreenElement
+       ? document.exitFullscreen?.()
+       : Promise.resolve();
+     Promise.resolve(p).finally(() => {
+       setTimeout(() => {
+         if (window.history.length > 1) window.history.back();
+         else window.location.href = "/";
+       }, 0);
+     });
+   }
 
  // Back יציאה מפול-סקין + חזרה, עם fallback ל-root
    function backSafe() {
@@ -2299,12 +2288,12 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
           paddingBottom: isFullscreen ? 0 : undefined,
         }}
       >
-        
+        {/* הקאנבס שלך (קיים אצלך גם ב-PART 9 – אם כפול, השאר רק אחד) */}
+        <div className="w-full h-full block" aria-hidden />
+
 
         {/* מוזיקת רקע (אופציונלי) – לא מפריעה אם אין קובץ */}
         <audio ref={bgMusicRef} src="/sounds/bg-music.mp3" muted className="hidden" />
-
-
 
         {/* Top bar (Back / Full / Menu) – תמיד מעל הקנבס */}
          <div
@@ -2388,27 +2377,20 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
       {/* Wallet */}
       <div className="mb-3 space-y-2">
         <h3 className="text-sm font-semibold opacity-80">Wallet</h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={openWalletModalUnified}
-            className={`px-3 py-2 rounded-md text-sm font-semibold ${
-              isConnected
-                ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"
-                : "bg-rose-500/90 hover:bg-rose-500 text-white"
-            }`}
-          >
-            {isConnected ? "Wallet: Connected" : "Wallet: Disconnected"}
-          </button>
-          {isConnected && (
-            <button
-              onClick={hardDisconnect}
-              className="px-3 py-2 rounded-md text-sm font-semibold bg-white/10 hover:bg-white/20 text-white"
-              title="Disconnect wallet"
-            >
-              Disconnect
-            </button>
-          )}
-        </div>
+        <button
+          onClick={() => {
+            try { playSfx(S_CLICK); } catch {}
+            if (firstTimeNeedsTerms) { setShowTerms(true); return; }
+            if (isConnected) openAccountModal?.(); else openConnectModal?.();
+          }}
+          className={`px-3 py-2 rounded-md text-sm font-semibold ${
+            isConnected
+              ? "bg-emerald-500/90 hover:bg-emerald-500 text-white"
+              : "bg-rose-500/90 hover:bg-rose-500 text-white"
+          }`}
+        >
+          {isConnected ? "Wallet: Connected" : "Wallet: Disconnected"}
+        </button>
       </div>
 
       {/* Sound */}
@@ -2465,12 +2447,25 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
             )}
 
             <div className="flex gap-3 flex-wrap justify-center">
-              {/* במסך פתיחה: טוגל חיבור/ניתוק */}
               <button
-                onClick={toggleWallet}
+                onClick={async () => {
+                  try { play?.(S_CLICK); } catch {}
+                  if (firstTimeNeedsTerms) { setShowTerms(true); return; }
+                  const s = stateRef.current;
+                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+
+                  setShowIntro(false);
+                  setGamePaused(false);
+                  try { await enterFullscreenAndLockMobile(); } catch {}
+
+                  setTimeout(() => {
+                    if (isConnected) openAccountModal?.();
+                    else openConnectModal?.();
+                  }, 0);
+                }}
                 className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
               >
-                {isConnected ? "DISCONNECT" : "CONNECT WALLET"}
+                CONNECT WALLET
               </button>
 
               <button
@@ -2624,15 +2619,12 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
             MLEO — MINERS
           </h1>
 
-        {/* Wallet status (clickable) — טוגל */}
-<div
-   className="absolute top-2 z-[40]"
-   style={{ left: "calc(env(safe-area-inset-left, 0px) + 30px)" }} // ≈ 56px מימין לחץ־חזרה (h-10 w-10)
- >
+        {/* Wallet status (clickable) */}
+<div className="absolute top-2 left-2 z-[40]">
   <button
-    onClick={toggleWallet}
+    onClick={() => (isConnected ? openAccountModal?.() : openConnectModal?.())}
     className={`${isConnected ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-white/70"} px-2 py-0.5 rounded-md text-[11px] font-semibold hover:opacity-90 active:scale-95 transition`}
-    title={isConnected ? "Tap to disconnect" : "Tap to connect"}
+    title={isConnected ? "Wallet connected — tap for status" : "Wallet not connected — tap to connect"}
   >
     {isConnected ? "● Connected" : "○ Not connected"}
   </button>
