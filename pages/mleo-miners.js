@@ -977,18 +977,21 @@ useEffect(() => {
   setGiftReadyFlag(!!init.giftReady);
 
   try {
-    const now = Date.now();
-    if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
-      init.giftReady  = false;
-      const stepSec = currentGiftIntervalSec(init, now);
-      init.giftNextAt = now + stepSec * 1000;
-      save();
-    }
-    if ((init.giftNextAt || 0) <= now) {
-      init.giftReady = true;
-      if (!init.giftFirstReadyAt) init.giftFirstReadyAt = now; // idle timer if already ready on load
-      setGiftReadyFlag(true);
-    }
+// ← החלף את הקטע הכפול בגרסה התקינה:
+const now = Date.now();
+if (!init.giftNextAt || Number.isNaN(init.giftNextAt)) {
+  init.giftReady  = false;
+  const stepSec = currentGiftIntervalSec(init, now);
+  init.giftNextAt = now + stepSec * 1000;
+  save();
+}
+if ((init.giftNextAt || 0) <= now) {
+  init.giftReady = true;
+  // העיקר: זמן אמיתי של ה־READY, לא now
+  init.giftFirstReadyAt = init.giftFirstReadyAt || init.giftNextAt;
+  setGiftReadyFlag(true);
+}
+
   } catch {}
 
   try {
@@ -1121,7 +1124,7 @@ useEffect(() => {
 // רנדר/סנכרון מתנות — 500ms heartbeat
 useEffect(() => {
   const id = setInterval(() => {
-    const s = stateRef.current; 
+    const s = stateRef.current;
     if (!s) return;
     const now = Date.now();
 
@@ -1135,7 +1138,8 @@ useEffect(() => {
 
     if (!s.giftReady && s.giftNextAt <= now) {
       s.giftReady = true;
-      if (!s.giftFirstReadyAt) s.giftFirstReadyAt = now; // start idle timer here
+      // חשוב: לא מאבדים את זמן ה־ready האמיתי
+      s.giftFirstReadyAt = s.giftFirstReadyAt || s.giftNextAt;
       setGiftReadyFlag(true);
       save();
     }
@@ -1665,9 +1669,14 @@ function tick(dt){
   if (s.paused){ s.lastSeen = now; return; }
 
   // אם 🎁 מוכנה מעל 5 דק' ולא נלקחה — עוברים ל־idle-offline
-  if (s.giftReady && s.giftFirstReadyAt && (now - s.giftFirstReadyAt) >= IDLE_OFFLINE_MS) {
+if (s.giftReady && (s.giftFirstReadyAt || s.giftNextAt)) {
+  const readySince = s.giftFirstReadyAt || s.giftNextAt;   // ← עוגן הזמן
+  if ((now - readySince) >= IDLE_OFFLINE_MS && !s.isIdleOffline) {
     s.isIdleOffline = true;
+    save?.();
   }
+}
+
 
   // עדכון סלעים/מטבעות
   for (let l = 0; l < LANES; l++){
@@ -1769,7 +1778,6 @@ function save() {
       offlineSessionStartAt: s.offlineSessionStartAt || null,
       offlineConsumedMsInSession: s.offlineConsumedMsInSession || 0,
 
-
       minerScale: s.minerScale || 1.6,
       minerWidth: s.minerWidth || 0.8,
 
@@ -1780,27 +1788,26 @@ function save() {
 
       cycleStartAt: s.cycleStartAt,
       lastGiftIntervalSec: s.lastGiftIntervalSec,
-      giftNextAt: s.giftNextAt, giftReady: s.giftReady,
-giftFirstReadyAt: s.giftFirstReadyAt || null,
+      giftNextAt: s.giftNextAt,
+      giftReady: s.giftReady,
+      giftFirstReadyAt: s.giftFirstReadyAt || null,
       isIdleOffline: !!s.isIdleOffline,
 
       diamonds: s.diamonds || 0,
       nextDiamondPrize: s.nextDiamondPrize,
 
-     // auto-dog
-autoDogLastAt: s.autoDogLastAt,
-autoDogNextAt: s.autoDogNextAt,
-autoDogBank: s.autoDogBank,
-
+      autoDogLastAt: s.autoDogLastAt,
+      autoDogNextAt: s.autoDogNextAt,
+      autoDogBank: s.autoDogBank,
       autoDogPending: !!s.autoDogPending,
 
       costBase: s.costBase,
       adCooldownUntil: s.adCooldownUntil || 0,
-
       pendingDiamondDogLevel: s.pendingDiamondDogLevel || null,
     }));
   } catch {}
 }
+
 
 function load() { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 
@@ -2212,7 +2219,6 @@ function openDiamondChestIfReady() {
 }
 
 // HUD computed values + Gift heartbeat + EARN cooldown
-
 const DOG_INTERVAL_SEC = (typeof window !== "undefined" && window.DOG_INTERVAL_SEC) || 600;
 const DOG_BANK_CAP     = (typeof window !== "undefined" && window.DOG_BANK_CAP)     || 6;
 
@@ -3023,20 +3029,19 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
   onClick={upgradeDps}
   disabled={!canBuyDps}
   className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
-    canBuyDps
-? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
+        canBuyDps
+      ? "bg-sky-500 hover:bg-sky-400 ring-sky-300 text-slate-900"
       : `bg-sky-500 ring-sky-300 text-slate-900 ${BTN_DIS}`
   }`}
 >
   <div className="flex flex-col items-center justify-center leading-tight">
     <div className="flex items-center gap-1">
       <span>🪓</span>
-      <span>+10%</span>
+      <span className="font-extrabold">+10%</span>
     </div>
-    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
-  {formatShort1(dpsCostNow)}
-</div>
-
+    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight self-end mr-1">
+      {formatShort1(dpsCostNow)}
+    </div>
   </div>
 </button>
 
@@ -3046,28 +3051,20 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
   disabled={!canBuyGold}
   className={`${BTN_BASE} ${BTN_H_FIX} ${BTN_W_FIX} ${
     canBuyGold
-       ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
+      ? "bg-amber-400 hover:bg-amber-300 ring-amber-300 text-slate-900"
       : `bg-amber-400 ring-amber-300 text-slate-900 ${BTN_DIS}`
   }`}
 >
   <div className="flex flex-col items-center justify-center leading-tight">
     <div className="flex items-center gap-1">
-      <img
-  src="/images/silver.png"
-  alt="Lio"
-  className="w-5 h-5 inline-block"
-/>
-
-      <span>+10%</span>
+      <span>🟡</span>
+      <span className="font-extrabold">+10%</span>
     </div>
-    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
-  {formatShort1(goldCostNow)}
-
-</div>
-
+    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabוד leading-tight self-end mr-1">
+      {formatShort1(goldCostNow)}
+    </div>
   </div>
 </button>
-
 
                 </div>
 
