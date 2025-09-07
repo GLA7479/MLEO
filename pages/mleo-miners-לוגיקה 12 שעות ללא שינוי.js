@@ -274,71 +274,6 @@ function formatMleo2(n) {
   return sign + t.toFixed(2);
 }
 
-// === OFFLINE SESSION CLOCK (12h per session) ===
-const OFFLINE_SESSION_MAX_HOURS = 12;
-const OFFLINE_SESSION_MAX_MS = OFFLINE_SESSION_MAX_HOURS * 3600000;
-
-// Tiers (per session cumulated time)
-const OFFLINE_EFF_TIERS_SESSION = [
-  { upToHours: 2,  eff: 0.50 },
-  { upToHours: 6,  eff: 0.30 },
-  { upToHours: 12, eff: 0.10 },
-]; // >12h => 0
-
-function offlineSessionEffAt(consumedMs) {
-  const h = consumedMs / 3600000;
-  if (h < 2)  return 0.50;
-  if (h < 6)  return 0.30;
-  if (h < 12) return 0.10;
-  return 0;
-}
-function getOfflineSessionLeftMs(s) {
-  const used = Math.max(0, s.offlineConsumedMsInSession || 0);
-  return Math.max(0, OFFLINE_SESSION_MAX_MS - used);
-}
-function ensureOfflineSessionStart(s, now = Date.now()) {
-  if (!s.offlineSessionStartAt) s.offlineSessionStartAt = now;
-}
-function resetOfflineSession(s) {
-  s.offlineSessionStartAt = null;
-  s.offlineConsumedMsInSession = 0;
-}
-/** Consume elapsedMs from current session by tiered efficiency.
- * Returns { consumedMs, effectiveMs } and updates s.offlineConsumedMsInSession. */
-function takeFromOfflineSession(s, elapsedMs) {
-  if (!elapsedMs || elapsedMs <= 0) return { consumedMs: 0, effectiveMs: 0 };
-  const left = getOfflineSessionLeftMs(s);
-  if (left <= 0) return { consumedMs: 0, effectiveMs: 0 };
-
-  let toConsume = Math.min(left, elapsedMs);
-  let effectiveMs = 0, consumed = 0;
-  let usedSoFar   = s.offlineConsumedMsInSession || 0;
-
-  while (toConsume > 0) {
-    const eff = offlineSessionEffAt(usedSoFar);
-    if (eff <= 0) break;
-
-    let tierEndMs;
-    const h = usedSoFar / 3600000;
-    if (h < 2)       tierEndMs = 2  * 3600000;
-    else if (h < 6)  tierEndMs = 6  * 3600000;
-    else if (h < 12) tierEndMs = 12 * 3600000;
-    else break;
-
-    const roomInTier = Math.max(0, tierEndMs - usedSoFar);
-    const chunk = Math.min(toConsume, roomInTier);
-
-    effectiveMs += chunk * eff;
-    consumed    += chunk;
-    usedSoFar   += chunk;
-    toConsume   -= chunk;
-  }
-
-  s.offlineConsumedMsInSession = usedSoFar;
-  return { consumedMs: consumed, effectiveMs };
-}
-
-
 
 
 // ===== Simple image cache =====
@@ -876,8 +811,6 @@ const { disconnect } = useDisconnect();
 
     s.giftFirstReadyAt = null;
     s.isIdleOffline = false;
-    resetOfflineSession(s);
-
 
     setGiftReadyFlag(false);
     try { play(S_GIFT); } catch {}
@@ -983,19 +916,15 @@ useEffect(() => {
 
   try {
     const s = stateRef.current;
-     const now  = Date.now();
-  const last = s?.lastSeen || now;
-  const elapsedMs = Math.max(0, now - last);
-  if (elapsedMs > 1000) {
-    ensureOfflineSessionStart(s, last);
-    const gate = takeFromOfflineSession(s, elapsedMs);
-    const gained = gate.effectiveMs > 0 ? handleOfflineAccrual(s, gate.effectiveMs) : 0;
-    if (gained > 0) setShowCollect(true);
-    s.lastSeen = now;
-    resetOfflineSession(s); // חזרנו למשחק ⇒ איפוס הסשן
-    save();
-  }
-
+    const now  = Date.now();
+    const last = s?.lastSeen || now;
+    const elapsedMs = Math.max(0, now - last);
+    if (elapsedMs > 1000) {
+      const gained = handleOfflineAccrual(s, elapsedMs); // PART 6
+      if (gained > 0) setShowCollect(true);
+      s.lastSeen = now;
+      save();
+    }
   } catch {}
 
   setMounted(true);
@@ -1030,25 +959,19 @@ useEffect(() => {
 
   const onVisibility = () => {
     const s = stateRef.current; if (!s) return;
-    const now = Date.now();
     if (document.visibilityState === "hidden") {
-      s.lastSeen = now;
-      ensureOfflineSessionStart(s, now); // התחלת סשן
-      safeSave();
+      s.lastSeen = Date.now(); safeSave();
     } else {
+      const now = Date.now();
       const elapsedMs = Math.max(0, now - (s.lastSeen || now));
       if (elapsedMs > 1000) {
-        ensureOfflineSessionStart(s, s.lastSeen || now);
-        const gate = takeFromOfflineSession(s, elapsedMs);
-        const gained = gate.effectiveMs > 0 ? handleOfflineAccrual(s, gate.effectiveMs) : 0;
+        const gained = handleOfflineAccrual(s, elapsedMs); // PART 6
         if (gained > 0) setShowCollect(true);
         s.lastSeen = now;
-        resetOfflineSession(s); // חזרנו ⇒ איפוס הסשן
       }
       safeSave();
     }
   };
-
   const onHide = () => { const s = stateRef.current; if (s) { s.lastSeen = Date.now(); safeSave(); } };
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("pagehide", onHide);
@@ -1160,10 +1083,6 @@ function freshState(){
     diamonds:0, nextDiamondPrize: rollDiamondPrize(),
     giftFirstReadyAt: null,       // first time current gift became ready
     isIdleOffline: false,         // force "offline-like" efficiency when idle
-    offlineSessionStartAt: null,
-    offlineConsumedMsInSession: 0,
-
-
 
     autoDogLastAt: now,
 autoDogNextAt: now + DOG_INTERVAL_SEC * 1000,
@@ -1643,19 +1562,18 @@ function tick(dt){
   const now = Date.now();
   if (s.paused){ s.lastSeen = now; return; }
 
-  // אם 🎁 מוכנה מעל 5 דק' ולא נלקחה — עוברים ל־idle-offline
+// If a gift has been ready for over 5 minutes without being claimed, force idle-offline
   if (s.giftReady && s.giftFirstReadyAt && (now - s.giftFirstReadyAt) >= IDLE_OFFLINE_MS) {
     s.isIdleOffline = true;
   }
 
-  // עדכון סלעים/מטבעות
-  for (let l = 0; l < LANES; l++){
+  for (let l=0; l<LANES; l++){
     let dps = 0;
-    for (let k = 0; k < SLOTS_PER_LANE; k++){
+    for (let k=0; k<SLOTS_PER_LANE; k++){
       const cell = s.lanes[l].slots[k]; if (!cell) continue;
-      const m = s.miners[cell.id];      if (!m) continue;
+      const m = s.miners[cell.id]; if (!m) continue;
       const onlineEff = s.isIdleOffline ? OFFLINE_DPS_FACTOR : 1;
-      dps += minerDps(m.level, (s.dpsMult||1)) * onlineEff;
+      dps += minerDps(m.level, s.dpsMult||1) * onlineEff;
     }
     const rock = s.lanes[l].rock;
     rock.hp -= dps * dt;
@@ -1670,8 +1588,10 @@ function tick(dt){
 
       s.gold += coinsGain; setUi(u => ({ ...u, gold: s.gold }));
       addPlayerScorePoints(s, coinsGain);
-      const mleoTxt = formatMleoShort(mleoGainPreview || 0);
-      setCenterPopup({ text: `⛏️ +${formatShort(coinsGain)} coins • +${mleoTxt} MLEO`, id: Math.random() });
+
+const mleoTxt = formatMleoShort(mleoGainPreview || 0);
+setCenterPopup({ text: `⛏️ +${formatShort(coinsGain)} coins • +${mleoTxt} MLEO`, id: Math.random() });
+
 
       s.lanes[l].rockCount += 1;
       s.lanes[l].rock = newRock(l, s.lanes[l].rockCount);
@@ -1679,28 +1599,28 @@ function tick(dt){
     }
   }
 
-  // עדכון טיימר מתנות
-  if (!s.giftReady && (s.giftNextAt || 0) <= now) {
-    s.giftReady = true;
-    setGiftReadyFlag(true);
+  if (!s.giftReady) {
+    if ((s.giftNextAt || 0) <= Date.now()) {
+      s.giftReady = true;
+      setGiftReadyFlag(true);
+    }
   }
 
-  // הנחת כלב יהלום ממתין
   if (s.pendingDiamondDogLevel && countMiners(s) < MAX_MINERS) {
     const placed = spawnMiner(s, s.pendingDiamondDogLevel);
     if (placed) {
       const placedLvl = s.pendingDiamondDogLevel;
       s.pendingDiamondDogLevel = null;
       s.giftReady  = false;
-      s.giftNextAt = now + currentGiftIntervalSec(s) * 1000;
+      s.giftNextAt = Date.now() + currentGiftIntervalSec(s) * 1000;
       setGiftToastWithTTL(`💎 Dog (LV ${placedLvl}) placed`);
       save?.();
     }
   }
 
-  // אוטו־דוג + חיתוך יומי ל-MLEO
   accrueBankDogsUpToNow(s);
   tryDistributeBankDog(s);
+
   finalizeDailyRewardOncePerTick();
   s.lastSeen = now;
 }
@@ -1744,10 +1664,6 @@ function save() {
       lanes: s.lanes, miners: s.miners, nextId: s.nextId,
       gold: s.gold, spawnCost: s.spawnCost, dpsMult: s.dpsMult, goldMult: s.goldMult,
       onceSpawned: s.onceSpawned,
-
-      offlineSessionStartAt: s.offlineSessionStartAt || null,
-      offlineConsumedMsInSession: s.offlineConsumedMsInSession || 0,
-
 
       minerScale: s.minerScale || 1.6,
       minerWidth: s.minerWidth || 0.8,
@@ -2216,20 +2132,6 @@ const dogProgress = (() => {
 
 
 const diamondsReady = (stateRef.current?.diamonds || 0) >= 3;
-
-// --- ONLINE/OFFLINE HUD status (derived) ---
-const onlineMode = (() => {
-  const s = stateRef.current;
-  const paused = !!(flagsRef.current && flagsRef.current.paused);
-  const hidden = (typeof document !== "undefined") && document.visibilityState === "hidden";
-  if (!s) return "offline";
-  if (s.isIdleOffline) return "idle";          // gift ready >5m → reduced efficiency
-  if (paused || hidden) return "offline";      // intro/paused/hidden
-  return "online";
-})();
-const isOnline = onlineMode === "online";
-const onlineDotTitle = isOnline ? "Online" : (stateRef.current?.isIdleOffline ? "Idle (reduced)" : "Offline");
-
 
 function ringBg(progress){
   const p   = Math.max(0, Math.min(1, Number(progress) || 0));
@@ -2763,31 +2665,22 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
             MLEO — MINERS
           </h1>
 
-
         {/* Wallet status (clickable) — טוגל */}
 <div
   className="absolute z-[40]"
-  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 36px)" }}
+  style={{ top: "0rem", left: "calc(env(safe-area-inset-left, 0px) + 42px)" }}
 >
-<button
-  onClick={toggleWallet}
-  className={[
-    "inline-flex items-center gap-1",
-    "h-4 px-1 rounded font-normal text-[9px] leading-none",
-    "backdrop-blur-sm ring-1 shadow-sm",
-    isConnected
-      ? "bg-emerald-500/20 ring-emerald-300/40 text-emerald-200"
-      : "bg-rose-500/20 ring-rose-300/40 text-rose-200"
-  ].join(" ")}
->
-  {isConnected ? (
-    <span className="w-1 h-1 rounded-full bg-emerald-400" />
-  ) : (
-    <span className="w-1 h-1 rounded-full border border-rose-500" />
-  )}
-  <span>{isConnected ? "Connected" : "Not connected"}</span>
-</button>
-
+  <button
+    onClick={toggleWallet}
+    className={`px-2 py-1 rounded-md text-xs font-semibold shadow ${
+      isConnected
+        ? "bg-emerald-500 hover:bg-emerald-600 text-white" // מחובר = ירוק
+        : "bg-rose-500 hover:bg-rose-600 text-white"      // לא מחובר = אדום
+    }`}
+    title={isConnected ? "Tap to disconnect wallet" : "Tap to connect wallet"}
+  >
+    {isConnected ? "connected" : "Connect"}
+  </button>
 </div>
 
 
@@ -2818,19 +2711,12 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
           `}</style>
 
           <div className="flex gap-2 flex-wrap justify-center items-center text-sm">
-            {/* Coins + status dot + ad ring */}
+            {/* Coins + ad ring */}
             <button
               onClick={()=>setHudModal('coins')}
               className="px-2 py-1 rounded-lg flex items-center gap-2 hover:bg-white/10"
               aria-label="Coins info"
             >
-
-{/* ONLINE/OFFLINE dot — placed to the LEFT of the coin */}
-              <div
-                className="w-2.5 h-2.5 rounded-full ring-2 ring-black/40"
-                title={onlineDotTitle}
-                style={{ backgroundColor: isOnline ? "#22c55e" : (stateRef.current?.isIdleOffline ? "#f59e0b" : "#94a3b8") }}
-              />
               <div className="relative w-8 h-8 rounded-full grid place-items-center" title={addRemainMs > 0 ? `Next ad in ${addRemainLabel}` : "Ad bonus ready"}>
                 <div className="absolute inset-0 rounded-full" style={ringBg(addProgress)} />
                 <img src={IMG_COIN} alt="coin" className="w-7 h-7" />
