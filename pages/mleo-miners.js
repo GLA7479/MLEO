@@ -194,6 +194,27 @@ function rollDiamondPrize() {
 // בסיס קיצורים (אלפים עד טריליון)
 const SUFFIXES_BASE = ["", "K", "M", "B", "T"];
 
+
+// קיצור עם ספרה אחת אחרי הנקודה (חיתוך, לא עיגול) — לשימוש HUD/כפתורים בלבד
+function formatAbbrevInt1(n) {
+  const sign = (n || 0) < 0 ? "-" : "";
+  const abs  = Math.abs(Number(n) || 0);
+  const p = 10; // ספרה אחת
+  if (abs < 1000) {
+    const t = Math.trunc(abs * p) / p;
+    return sign + t.toFixed(1);
+  }
+  let tier = Math.floor(Math.log10(abs) / 3);
+  let div  = Math.pow(1000, tier);
+  let val  = abs / div;
+  let trimmed = Math.trunc(val * p) / p;
+  if (trimmed >= 1000) { tier += 1; trimmed = 1; }
+  return sign + trimmed.toFixed(1) + suffixFromTier(tier);
+}
+const formatShort1 = formatAbbrevInt1;     // מטבעות/עלויות ב-HUD
+function formatMleoShort1(n){ return formatAbbrevInt1(n); } // MLEO ב-HUD
+
+
 // ממפה דרגת אלפים לסיומת: 0→"" , 1→K, 2→M, 3→B, 4→T, 5→AA, 6→AB, ... עד אינסוף
 function suffixFromTier(tier) {
   if (tier < SUFFIXES_BASE.length) return SUFFIXES_BASE[tier];
@@ -1760,6 +1781,8 @@ function save() {
       cycleStartAt: s.cycleStartAt,
       lastGiftIntervalSec: s.lastGiftIntervalSec,
       giftNextAt: s.giftNextAt, giftReady: s.giftReady,
+giftFirstReadyAt: s.giftFirstReadyAt || null,
+      isIdleOffline: !!s.isIdleOffline,
 
       diamonds: s.diamonds || 0,
       nextDiamondPrize: s.nextDiamondPrize,
@@ -2835,17 +2858,17 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
                 <div className="absolute inset-0 rounded-full" style={ringBg(addProgress)} />
                 <img src={IMG_COIN} alt="coin" className="w-7 h-7" />
               </div>
-              <b>{formatShort(stateRef.current?.gold ?? 0)}</b>
+              <b>{formatShort1(stateRef.current?.gold ?? 0)}</b>
             </button>
 
             {/* DPS */}
             <button onClick={()=>setHudModal('dps')} className="px-2 py-1 rounded-lg hover:bg-white/10">
-              🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(2)}</b>
+              🪓 x<b>{(stateRef.current?.dpsMult || 1).toFixed(1)}</b>
             </button>
 
             {/* GOLD */}
             <button onClick={()=>setHudModal('gold')} className="px-2 py-1 rounded-lg hover:bg-white/10">
-              🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(2)}</b>
+              🟡 x<b>{(stateRef.current?.goldMult || 1).toFixed(1)}</b>
             </button>
 
             {/* Spawn LV (with inline counter) */}
@@ -2895,7 +2918,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
             {/* Phase label */}
             <button onClick={()=>setHudModal('gifts')} className="px-2 py-1 rounded-lg hover:bg-white/10">
-              {`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s gifts`}
+              {`⏳ ${(_getPhaseInfo(stateRef.current, Date.now()).intervalSec)}s `}
             </button>
 
             <div className="flex items-center gap-3 ml-2">
@@ -2987,7 +3010,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
 
 {/* שורה שנייה – רק המחיר, ממוקם בקצה הימני */}
 <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight self-end mr-1">
-  {formatShort(spawnCostNow)}
+  {formatShort1(spawnCostNow)}
 </div>
 
 
@@ -3011,7 +3034,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
       <span>+10%</span>
     </div>
     <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
-  {formatShort(dpsCostNow)}
+  {formatShort1(dpsCostNow)}
 </div>
 
   </div>
@@ -3038,7 +3061,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
       <span>+10%</span>
     </div>
     <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight">
-  {formatShort(goldCostNow)}
+  {formatShort1(goldCostNow)}
 
 </div>
 
@@ -3081,7 +3104,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
     }`}
     style={(mining?.balance || 0) > 0 ? { animation: "nudge 1.8s ease-in-out infinite" } : undefined}
   >
-    {formatMleoShort(mining?.balance || 0)} MLEO
+    {formatMleoShort1(mining?.balance || 0)} MLEO
 
   </span>
 </button>
@@ -3113,9 +3136,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
                 className="ml-2 text-gray-300 hover:text-white underline-offset-2 hover:underline"
                 title="Open Mining"
               >
-Vault: <b className="text-cyan-300 tabular-nums">
-  {formatMleoVault(mining?.vault || 0)}
-</b> MLEO
+Vault: <b className="text-cyan-300 tabular-nums">{formatMleoShort1(mining?.vault || 0)}</b> MLEO
 
 
               </button>
