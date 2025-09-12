@@ -113,8 +113,8 @@ const BTN_H_FIX = `h-[${UI_ACTION_BTN_H_PX}px]`;
 const BASE_DPS = 2;
 const LEVEL_DPS_MUL = 1.9;
 const ROCK_BASE_HP = 60;
-const ROCK_HP_MUL = 2.15;
-const GOLD_FACTOR = 0.12;
+const ROCK_HP_MUL = 1.4;
+const GOLD_FACTOR = 0.5;
 
 // ===== Global gift phases (same for everyone) =====
 const GIFT_PHASES = [
@@ -393,8 +393,6 @@ const CLAIM_SCHEDULE = [
   { monthFromTGE: 6, pct: 1.00 },
 ];
 
-// —— Conversion & daily limit (editable) ——
-const MLEO_FROM_COINS_PCT = 0; // legacy disabled – now we use per-break engine
 
 
 
@@ -454,7 +452,6 @@ function softcutFactor(minedToday, dailyCap){
 
 // === MLEO Accrual Engine (inline) ===
 // נטען טבלת multipliers לפי הקובץ שהעברת (mleo-multipliers.json)
-const MLEO_ENGINE_LS_KEY = "MLEO_ENGINE_V1";
 const MLEO_TABLE = {
   v1: 0.5,
   blocks: [
@@ -485,81 +482,45 @@ const MLEO_TABLE = {
   ],
 };
 
-// כמה שבירות יש בכל "שלב" של MLEO לפני שמתקדמים לשלב הבא
-const BREAKS_PER_STAGE = 10;
+// === STAGE-BASED MLEO (per-rock stage; no global break counter) ===
+// stage 1 → v1
+// stage 2 → v1 * r(1)
+// stage n → v1 * Π_{i=1}^{n-1} r(i)   (r(i) נקבע לפי הבלוק בטבלה)
+const MLEO_STAGE_CACHE = { 1: MLEO_TABLE.v1 || 0.5 };
 
-const r6 = (x) => Math.round((x + Number.EPSILON) * 1e6) / 1e6;
-function engineLoad(){
-  try { const raw = localStorage.getItem(MLEO_ENGINE_LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
-}
-function engineSave(st){
-  try { localStorage.setItem(MLEO_ENGINE_LS_KEY, JSON.stringify(st)); } catch {}
-}
-function engineDefault(){
-  return { breakCount: 0, currentStage: 1, currentPerBreakValue: MLEO_TABLE.v1 || 0.5 };
-}
-function engineInitOnce(){
-  const s = engineLoad();
-  if (!s) engineSave(engineDefault());
-}
-function engineHardReset(){
-  // Hard reset for per-break MLEO engine (breakCount/stage/perBreakValue)
-  try { localStorage.removeItem(MLEO_ENGINE_LS_KEY); } catch {}
-  // Re-seed with defaults so next award starts from baseline (v1=0.5)
-  engineSave(engineDefault());
-}
-function engineRForStage(stage){
+// מחליף את engineRForStage (המנוע הישן הוסר)
+function stageRFor(stage){
   const b = (MLEO_TABLE.blocks || []).find(b => stage >= b.start && stage <= b.end);
   return b ? (b.r || 1) : 1.001;
 }
-/** מעניק MLEO עבור שבירה אחת – ומקדם את ה־stage וה־perBreak לפעם הבאה. מחזיר את ה־MLEO הגולמי (לפני softcut/cap). */
-function engineAwardOnce(){
-  const s = engineLoad() || engineDefault();
-  const award = Number(s.currentPerBreakValue || (MLEO_TABLE.v1 || 0.5));
 
-  // מגדילים מונה שבירות כולל
-  s.breakCount = (s.breakCount || 0) + 1;
-
-  // מתקדמים שלב *רק אחרי* שסיימנו שלב מלא (ברירת מחדל: 10 שבירות)
-  const stageNow = s.currentStage || 1;
-  if ((s.breakCount % BREAKS_PER_STAGE) === 0) {
-    // מכפלה עבור השלב שזה עתה הסתיים → ערך הבסיס לשלב הבא
-    const r = engineRForStage(stageNow);
-    s.currentPerBreakValue = r6(s.currentPerBreakValue * r);
-    s.currentStage = Math.min(1000, stageNow + 1);
-  }
-
-  engineSave(s);
-  return award;
+function mleoBaseForStage(stage) {
+  const s = Math.max(1, Math.floor(stage || 1));
+  if (MLEO_STAGE_CACHE[s] != null) return MLEO_STAGE_CACHE[s];
+  const prev = mleoBaseForStage(s - 1);
+  const r    = stageRFor(s - 1);         // הריישו של השלב הקודם
+  const val  = r6(prev * r);                   // חיתוך/עיגול קטן ליציבות
+  MLEO_STAGE_CACHE[s] = val;
+  return val;
 }
-// אתחול חד-פעמי כשהמסך נטען
-if (typeof window !== "undefined") { try { engineInitOnce(); } catch {} }
 
+function rockStageNow(rock) {
+  return ((rock?.idx ?? 0) + 1);               // idx מתחיל מ-0 ⇒ שלב = idx+1
+}
+
+
+const r6 = (x) => Math.round((x + Number.EPSILON) * 1e6) / 1e6;
 // === REPLACE: previewMleoFromCoins / addPlayerScorePoints / finalizeDailyRewardOncePerTick ===
 const PREC = 2;
 const round3 = (x) => Number((x || 0).toFixed(PREC));
 
-function previewMleoFromCoins(coins){
-  if (!coins || coins<=0) return 0;
-  const st = loadMiningState();
-  const base   = (coins * MLEO_FROM_COINS_PCT);
-  const factor = softcutFactor(st.minedToday||0, DAILY_CAP);
-  let eff = base * factor;
-  const room = Math.max(0, (DAILY_CAP - (st.minedToday||0)));
-  eff = Math.min(eff, room);
-  return round3(eff);
-}
-
-function addPlayerScorePoints(_s, amount, isEngineBase = false){
-  if(!amount || amount<=0) return 0;
+function addPlayerScorePoints(_s, baseMleo){
+  if(!baseMleo || baseMleo <= 0) return 0;
 
   const st = loadMiningState();
   const today = getTodayKey();
   if(st.lastDay!==today){ st.minedToday=0; st.scoreToday=0; st.lastDay=today; }
 
-  // אם מגיעים מהמנוע – amount הוא הבסיס הגולמי לשבירה אחת.
-  // אם לא, זה המודל הישן (Coins→MLEO) – מכובה כבר (MLEO_FROM_COINS_PCT=0).
-  const baseMleo = isEngineBase ? Number(amount) : (Number(amount) * MLEO_FROM_COINS_PCT);
 
   const factor = softcutFactor(st.minedToday||0, DAILY_CAP);
   let eff = baseMleo * factor;
@@ -959,14 +920,14 @@ const { disconnect } = useDisconnect();
 
     if (type === "coins20") {
       const base = Math.max(10, expectedGiftCoinReward(s));
-      const gain = Math.round(base * 0.20);
+      const gain = Math.round(base * 0.10);
       s.gold += gain;
       setUi(u => ({ ...u, gold: s.gold }));
       setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
 
     } else if (type === "coins40") {
       const base = Math.max(10, expectedGiftCoinReward(s));
-      const gain = Math.round(base * 0.40);
+      const gain = Math.round(base * 0.20);
       s.gold += gain;
       setUi(u => ({ ...u, gold: s.gold }));
       setCenterPopup({ text: `🎁 +${formatShort(gain)} coins`, id: Math.random() });
@@ -1054,16 +1015,6 @@ const { disconnect } = useDisconnect();
 useEffect(() => {
   theStateFix_maybeMigrateLocalStorage();
 
-// --- Engine sanity guard: reset inflated per-break state after reloads ---
-  try {
-    const e = engineLoad();
-    const bad =
-      !e ||
-      typeof e.currentPerBreakValue !== "number" ||
-      e.currentPerBreakValue > 10 ||        // conservative cap
-      (e.currentStage || 1) > 60;           // conservative cap
-    if (bad) engineHardReset();
-  } catch {}
 
   const loaded = loadSafe();
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
@@ -1811,10 +1762,11 @@ const balBefore = Number(before?.balance || 0);
 s.gold += coinsGain;
 setUi(u => ({ ...u, gold: s.gold }));
 
-// מעניקים MLEO על שבירה אחת לפי המנוע
-const baseForBreak = engineAwardOnce();
-const eff = addPlayerScorePoints(s, baseForBreak, /*isEngineBase*/ true);
-finalizeDailyRewardOncePerTick();
+// מעניקים MLEO לפי שלב הסלע עצמו (בלתי תלוי בסלעים אחרים)
+const stageNow = rockStageNow(rock);
+const baseForBreak = mleoBaseForStage(stageNow);
+const eff = addPlayerScorePoints(s, baseForBreak);finalizeDailyRewardOncePerTick();
+
 
 // מציגים ב־POP את מה שבאמת נכנס (eff), לא Preview
 const after = loadMiningState();
@@ -2152,48 +2104,45 @@ function tryDistributeBankDog(s) {
 }
 
 function handleOfflineAccrual(s, elapsedMs) {
-let totalBreaks = 0;
   if (!s) return 0;
 
-  // Auto-dog: accrue by nextAt → bank (but PAUSE when no free slots), then try to deploy
-{
-  const period = DOG_INTERVAL_SEC * 1000;
-  const now = Date.now();
+  // --- Auto-dog accrual (נשאר כמו אצלך) ---
+  {
+    const period = DOG_INTERVAL_SEC * 1000;
+    const now = Date.now();
 
-  if (!s.autoDogNextAt || Number.isNaN(s.autoDogNextAt)) {
-    s.autoDogNextAt = now + period;
+    if (!s.autoDogNextAt || Number.isNaN(s.autoDogNextAt)) {
+      s.autoDogNextAt = now + period;
+    }
+
+    const freeSlots0 = Math.max(0, MAX_MINERS - countMiners(s));
+    let bankCapNow = Math.min(DOG_BANK_CAP, freeSlots0);
+
+    if (now >= s.autoDogNextAt) {
+      const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
+      const cur = (s.autoDogBank || 0);
+      s.autoDogBank = Math.min(bankCapNow, cur + intervals);
+      s.autoDogNextAt += intervals * period;
+    }
+
+    while ((s.autoDogBank || 0) > 0 && hasFreeSlot(s)) {
+      const lvl = chooseAutoDogLevel(s);
+      const ok = spawnMiner(s, lvl);
+      if (!ok) break;
+      s.autoDogBank -= 1;
+
+      const freeNow = Math.max(0, MAX_MINERS - countMiners(s));
+      bankCapNow = Math.min(DOG_BANK_CAP, freeNow);
+      if (bankCapNow <= 0) break;
+    }
   }
 
-  // capacity according to CURRENT free slots
-  const freeSlots0 = Math.max(0, MAX_MINERS - countMiners(s));
-  let bankCapNow = Math.min(DOG_BANK_CAP, freeSlots0);
-
-  if (now >= s.autoDogNextAt) {
-    const intervals = Math.floor((now - s.autoDogNextAt) / period) + 1;
-    const cur = (s.autoDogBank || 0);
-    s.autoDogBank = Math.min(bankCapNow, cur + intervals);
-    s.autoDogNextAt += intervals * period;
-  }
-
-  // Try to spend bank immediately if slots exist
-  while ((s.autoDogBank || 0) > 0 && hasFreeSlot(s)) {
-    const lvl = chooseAutoDogLevel(s); // אוטו-דוג: שומר על הבחירה הרגילה שלך
-    const ok = spawnMiner(s, lvl);
-    if (!ok) break;
-    s.autoDogBank -= 1;
-
-    // Recompute capacity after placement
-    const freeNow = Math.max(0, MAX_MINERS - countMiners(s));
-    bankCapNow = Math.min(DOG_BANK_CAP, freeNow);
-    if (bankCapNow <= 0) break; // pause accrual when full
-  }
-}
-
-
-
+  // --- סימולציית אופליין לשבירות ---
   const CAP_MS = 12 * 60 * 60 * 1000;
   const simMs = Math.min(elapsedMs, CAP_MS);
+
   let totalCoins = 0;
+  let offlineAddedMleo = 0;
 
   for (let lane = 0; lane < LANES; lane++) {
     let dps = laneDpsSum(s, lane) * OFFLINE_DPS_FACTOR;
@@ -2206,15 +2155,24 @@ let totalBreaks = 0;
 
     while (timeLeft > 0 && dps > 0) {
       const timeToBreak = hp / dps;
+
       if (timeToBreak > timeLeft) {
         hp -= dps * timeLeft;
         timeLeft = 0;
       } else {
+        // שבירה מתרחשת:
         totalCoins += Math.floor(maxHp * GOLD_FACTOR * (s.goldMult || 1));
+
+        // ערך MLEO לפי שלב הסלע בנתיב זה ברגע השבירה
+        const stageNow = (idx + 1);
+        const baseForBreak = mleoBaseForStage(stageNow);
+       const eff = addPlayerScorePoints(s, baseForBreak);
+        offlineAddedMleo += eff;
+        finalizeDailyRewardOncePerTick();
+
+        // מעבר לסלע הבא בנתיב
         timeLeft -= timeToBreak;
         idx += 1;
-totalBreaks += 1;
-
         const rk = newRock(lane, idx);
         hp = rk.hp; maxHp = rk.maxHp;
       }
@@ -2224,27 +2182,13 @@ totalBreaks += 1;
     s.lanes[lane].rockCount = idx;
   }
 
-  if (totalCoins > 0 || totalBreaks > 0) {
-  s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
-  try {
-    const before = loadMiningState();
-    const balBefore = Number(before?.balance || 0);
-
-    // מעניקים לפי כמות שבירות שבוצעו בסימולציה
-    for (let i = 0; i < totalBreaks; i++) {
-      const baseForBreak = engineAwardOnce();
-      addPlayerScorePoints(s, baseForBreak, /*isEngineBase*/ true);
-    }
-    finalizeDailyRewardOncePerTick();
-
-    const after = loadMiningState();
-    const balAfter = Number(after?.balance || 0);
-    const delta = Math.max(0, +(balAfter - balBefore).toFixed(2));
-
-    s.pendingOfflineMleo = +((s.pendingOfflineMleo || 0) + delta).toFixed(2);
-  } catch {}
-}
-
+  // מצטברים למסך ה-COLLECT (האיזון של ה-Mining עודכן תוך כדי)
+  if (totalCoins > 0) {
+    s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
+  }
+  if (offlineAddedMleo > 0) {
+    s.pendingOfflineMleo = +((s.pendingOfflineMleo || 0) + offlineAddedMleo).toFixed(2);
+  }
 
   return totalCoins;
 }
