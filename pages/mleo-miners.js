@@ -394,7 +394,8 @@ const CLAIM_SCHEDULE = [
 ];
 
 // —— Conversion & daily limit (editable) ——
-const MLEO_FROM_COINS_PCT = 0.01; // 1% from coins -> MLEO
+const MLEO_FROM_COINS_PCT = 0; // legacy disabled – now we use per-break engine
+
 
 
 const SOFTCUT = [
@@ -450,6 +451,90 @@ function softcutFactor(minedToday, dailyCap){
   return 0.10;
 }
 
+
+// === MLEO Accrual Engine (inline) ===
+// נטען טבלת multipliers לפי הקובץ שהעברת (mleo-multipliers.json)
+const MLEO_ENGINE_LS_KEY = "MLEO_ENGINE_V1";
+const MLEO_TABLE = {
+  v1: 0.5,
+  blocks: [
+    { start: 1,   end: 10,   r: 1.6  },
+    { start: 11,  end: 20,   r: 1.4  },
+    { start: 21,  end: 30,   r: 1.3  },
+    { start: 31,  end: 40,   r: 1.1  },
+    { start: 41,  end: 50,   r: 1.05 },
+    { start: 51,  end: 100,  r: 1.001 },
+    { start: 101, end: 150,  r: 1.001 },
+    { start: 151, end: 200,  r: 1.001 },
+    { start: 201, end: 250,  r: 1.001 },
+    { start: 251, end: 300,  r: 1.001 },
+    { start: 301, end: 350,  r: 1.001 },
+    { start: 351, end: 400,  r: 1.001 },
+    { start: 401, end: 450,  r: 1.001 },
+    { start: 451, end: 500,  r: 1.001 },
+    { start: 501, end: 550,  r: 1.001 },
+    { start: 551, end: 600,  r: 1.001 },
+    { start: 601, end: 650,  r: 1.001 },
+    { start: 651, end: 700,  r: 1.001 },
+    { start: 701, end: 750,  r: 1.001 },
+    { start: 751, end: 800,  r: 1.001 },
+    { start: 801, end: 850,  r: 1.001 },
+    { start: 851, end: 900,  r: 1.001 },
+    { start: 901, end: 950,  r: 1.001 },
+    { start: 951, end: 1000, r: 1.001 },
+  ],
+};
+
+// כמה שבירות יש בכל "שלב" של MLEO לפני שמתקדמים לשלב הבא
+const BREAKS_PER_STAGE = 10;
+
+const r6 = (x) => Math.round((x + Number.EPSILON) * 1e6) / 1e6;
+function engineLoad(){
+  try { const raw = localStorage.getItem(MLEO_ENGINE_LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function engineSave(st){
+  try { localStorage.setItem(MLEO_ENGINE_LS_KEY, JSON.stringify(st)); } catch {}
+}
+function engineDefault(){
+  return { breakCount: 0, currentStage: 1, currentPerBreakValue: MLEO_TABLE.v1 || 0.5 };
+}
+function engineInitOnce(){
+  const s = engineLoad();
+  if (!s) engineSave(engineDefault());
+}
+function engineHardReset(){
+  // Hard reset for per-break MLEO engine (breakCount/stage/perBreakValue)
+  try { localStorage.removeItem(MLEO_ENGINE_LS_KEY); } catch {}
+  // Re-seed with defaults so next award starts from baseline (v1=0.5)
+  engineSave(engineDefault());
+}
+function engineRForStage(stage){
+  const b = (MLEO_TABLE.blocks || []).find(b => stage >= b.start && stage <= b.end);
+  return b ? (b.r || 1) : 1.001;
+}
+/** מעניק MLEO עבור שבירה אחת – ומקדם את ה־stage וה־perBreak לפעם הבאה. מחזיר את ה־MLEO הגולמי (לפני softcut/cap). */
+function engineAwardOnce(){
+  const s = engineLoad() || engineDefault();
+  const award = Number(s.currentPerBreakValue || (MLEO_TABLE.v1 || 0.5));
+
+  // מגדילים מונה שבירות כולל
+  s.breakCount = (s.breakCount || 0) + 1;
+
+  // מתקדמים שלב *רק אחרי* שסיימנו שלב מלא (ברירת מחדל: 10 שבירות)
+  const stageNow = s.currentStage || 1;
+  if ((s.breakCount % BREAKS_PER_STAGE) === 0) {
+    // מכפלה עבור השלב שזה עתה הסתיים → ערך הבסיס לשלב הבא
+    const r = engineRForStage(stageNow);
+    s.currentPerBreakValue = r6(s.currentPerBreakValue * r);
+    s.currentStage = Math.min(1000, stageNow + 1);
+  }
+
+  engineSave(s);
+  return award;
+}
+// אתחול חד-פעמי כשהמסך נטען
+if (typeof window !== "undefined") { try { engineInitOnce(); } catch {} }
+
 // === REPLACE: previewMleoFromCoins / addPlayerScorePoints / finalizeDailyRewardOncePerTick ===
 const PREC = 2;
 const round3 = (x) => Number((x || 0).toFixed(PREC));
@@ -465,22 +550,33 @@ function previewMleoFromCoins(coins){
   return round3(eff);
 }
 
-function addPlayerScorePoints(_s, coinsFromRocks){
-  if(!coinsFromRocks || coinsFromRocks<=0) return;
+function addPlayerScorePoints(_s, amount, isEngineBase = false){
+  if(!amount || amount<=0) return 0;
+
   const st = loadMiningState();
   const today = getTodayKey();
   if(st.lastDay!==today){ st.minedToday=0; st.scoreToday=0; st.lastDay=today; }
 
+  // אם מגיעים מהמנוע – amount הוא הבסיס הגולמי לשבירה אחת.
+  // אם לא, זה המודל הישן (Coins→MLEO) – מכובה כבר (MLEO_FROM_COINS_PCT=0).
+  const baseMleo = isEngineBase ? Number(amount) : (Number(amount) * MLEO_FROM_COINS_PCT);
+
   const factor = softcutFactor(st.minedToday||0, DAILY_CAP);
-  const baseMleo = (coinsFromRocks * MLEO_FROM_COINS_PCT);
   let eff = baseMleo * factor;
+
+  // הגבלת DAILY_CAP
   const room = Math.max(0, DAILY_CAP - (st.minedToday||0));
   eff = Math.min(eff, room);
 
-  st.minedToday = round3((st.minedToday||0) + eff);
-  st.balance    = round3((st.balance||0)    + eff);
+  eff = Number(eff.toFixed(2));
+
+  st.minedToday = Number(((st.minedToday||0) + eff).toFixed(2));
+  st.balance    = Number(((st.balance||0)    + eff).toFixed(2));
   saveMiningState(st);
+
+  return eff; // מחזיר כמה באמת נכנס כדי להציג ב־POP
 }
+
 
 function finalizeDailyRewardOncePerTick(){
   const st = loadMiningState();
@@ -957,6 +1053,17 @@ const { disconnect } = useDisconnect();
 
 useEffect(() => {
   theStateFix_maybeMigrateLocalStorage();
+
+// --- Engine sanity guard: reset inflated per-break state after reloads ---
+  try {
+    const e = engineLoad();
+    const bad =
+      !e ||
+      typeof e.currentPerBreakValue !== "number" ||
+      e.currentPerBreakValue > 10 ||        // conservative cap
+      (e.currentStage || 1) > 60;           // conservative cap
+    if (bad) engineHardReset();
+  } catch {}
 
   const loaded = loadSafe();
   const init = loaded ? { ...freshState(), ...loaded } : freshState();
@@ -1696,12 +1803,26 @@ if (s.giftReady && (s.giftFirstReadyAt || s.giftNextAt)) {
         try { play?.(S_ROCK); } catch {}
       }
       const coinsGain = Math.floor(rock.maxHp * GOLD_FACTOR * (s.goldMult || 1));
-      const mleoGainPreview = previewMleoFromCoins(coinsGain);
+// נשמור מצב לפני – כדי לוודא POP לפי תוצאה אמיתית
+const before = loadMiningState();
+const balBefore = Number(before?.balance || 0);
 
-      s.gold += coinsGain; setUi(u => ({ ...u, gold: s.gold }));
-      addPlayerScorePoints(s, coinsGain);
-      const mleoTxt = formatMleoShort(mleoGainPreview || 0);
-      setCenterPopup({ text: `⛏️ +${formatShort(coinsGain)} coins • +${mleoTxt} MLEO`, id: Math.random() });
+// GOLD כרגיל
+s.gold += coinsGain;
+setUi(u => ({ ...u, gold: s.gold }));
+
+// מעניקים MLEO על שבירה אחת לפי המנוע
+const baseForBreak = engineAwardOnce();
+const eff = addPlayerScorePoints(s, baseForBreak, /*isEngineBase*/ true);
+finalizeDailyRewardOncePerTick();
+
+// מציגים ב־POP את מה שבאמת נכנס (eff), לא Preview
+const after = loadMiningState();
+const balAfter = Number(after?.balance || 0);
+const delta = Math.max(0, +(balAfter - balBefore).toFixed(2)); // גיבוי אם eff==null
+const mleoTxt = formatMleoShort(eff || delta || 0);
+setCenterPopup({ text: `⛏️ +${formatShort(coinsGain)} coins • +${mleoTxt} MLEO`, id: Math.random() });
+
 
       s.lanes[l].rockCount += 1;
       s.lanes[l].rock = newRock(l, s.lanes[l].rockCount);
@@ -2030,8 +2151,8 @@ function tryDistributeBankDog(s) {
   }
 }
 
-
 function handleOfflineAccrual(s, elapsedMs) {
+let totalBreaks = 0;
   if (!s) return 0;
 
   // Auto-dog: accrue by nextAt → bank (but PAUSE when no free slots), then try to deploy
@@ -2092,6 +2213,8 @@ function handleOfflineAccrual(s, elapsedMs) {
         totalCoins += Math.floor(maxHp * GOLD_FACTOR * (s.goldMult || 1));
         timeLeft -= timeToBreak;
         idx += 1;
+totalBreaks += 1;
+
         const rk = newRock(lane, idx);
         hp = rk.hp; maxHp = rk.maxHp;
       }
@@ -2101,22 +2224,27 @@ function handleOfflineAccrual(s, elapsedMs) {
     s.lanes[lane].rockCount = idx;
   }
 
-  if (totalCoins > 0) {
-    s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
-    try {
-      const before = loadMiningState();
-      const balBefore = Number(before?.balance || 0);
+  if (totalCoins > 0 || totalBreaks > 0) {
+  s.pendingOfflineGold = (s.pendingOfflineGold || 0) + totalCoins;
+  try {
+    const before = loadMiningState();
+    const balBefore = Number(before?.balance || 0);
 
-      addPlayerScorePoints(s, totalCoins);
-      finalizeDailyRewardOncePerTick();
+    // מעניקים לפי כמות שבירות שבוצעו בסימולציה
+    for (let i = 0; i < totalBreaks; i++) {
+      const baseForBreak = engineAwardOnce();
+      addPlayerScorePoints(s, baseForBreak, /*isEngineBase*/ true);
+    }
+    finalizeDailyRewardOncePerTick();
 
-      const after = loadMiningState();
-      const balAfter = Number(after?.balance || 0);
-      const delta = Math.max(0, +(balAfter - balBefore).toFixed(2));
+    const after = loadMiningState();
+    const balAfter = Number(after?.balance || 0);
+    const delta = Math.max(0, +(balAfter - balBefore).toFixed(2));
 
-      s.pendingOfflineMleo = +((s.pendingOfflineMleo || 0) + delta).toFixed(2);
-    } catch {}
-  }
+    s.pendingOfflineMleo = +((s.pendingOfflineMleo || 0) + delta).toFixed(2);
+  } catch {}
+}
+
 
   return totalCoins;
 }
@@ -2149,7 +2277,12 @@ async function resetGame() {
   try {
     localStorage.removeItem(LS_KEY);
     localStorage.removeItem(MINING_LS_KEY);
+// Also reset the per-break MLEO engine so new session starts from baseline
+    localStorage.removeItem(MLEO_ENGINE_LS_KEY);
   } catch {}
+
+// Ensure engine is re-seeded (v1=0.5, stage=1, breakCount=0)
+  try { engineHardReset(); } catch {}
 
   setMining({
     balance: 0, minedToday: 0, lastDay: getTodayKey(),
@@ -3060,7 +3193,7 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
       <span>🟡</span>
       <span className="font-extrabold">+10%</span>
     </div>
-    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabוד leading-tight self-end mr-1">
+    <div className="!text-[14px] md:!text-[16px] mt-0.5 tabular-nums font-extrabold leading-tight self-end mr-1">
       {formatShort1(goldCostNow)}
     </div>
   </div>
@@ -3231,7 +3364,7 @@ MLEO
       {showResetConfirm && (
         <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 max-w-md w-full rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-2xl font-extrabולד mb-2">Reset Progress?</h2>
+            <h2 className="text-2xl font-extrabold mb-2">Reset Progress?</h2>
             <p className="text-sm text-slate-700 mb-4">
               This will permanently delete your save and send you back to the start.
             </p>
