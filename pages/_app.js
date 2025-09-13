@@ -1,36 +1,22 @@
 // pages/_app.js
-import "../styles/globals.css"; // או "../globals.css" אם זה הנתיב אצלך
+import "../styles/globals.css";
 import "@rainbow-me/rainbowkit/styles.css";
 
-import { WagmiConfig } from "wagmi";
-import { bscTestnet } from "wagmi/chains";
-import { RainbowKitProvider, getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { wagmiConfig } from "../lib/wagmi";
 
-import { SettingsProvider } from "../components/SettingsContext";
-
-const wagmiConfig = getDefaultConfig({
-  appName: "MLEO Miners",
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
-  chains: [bscTestnet],
-  ssr: true,
-});
-
-function MyApp({ Component, pageProps }) {
+export default function MyApp({ Component, pageProps }) {
   const [queryClient] = useState(() => new QueryClient());
-
   return (
-    <WagmiConfig config={wagmiConfig}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider modalSize="compact">
-          <SettingsProvider>
-            <Component {...pageProps} />
-          </SettingsProvider>
+          <Component {...pageProps} />
         </RainbowKitProvider>
       </QueryClientProvider>
-    </WagmiConfig>
+    </WagmiProvider>
   );
 }
-
-export default MyApp;

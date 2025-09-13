@@ -1,9 +1,21 @@
+// pages/presale.js
 import { useState, useEffect } from "react";
 import Head from "next/head";
 import { motion } from "framer-motion";
 import Layout from "../components/Layout";
 
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { parseEther } from "viem";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+
+const PRESALE_ADDRESS = process.env.NEXT_PUBLIC_PRESALE_ADDRESS;
+const PRESALE_CHAIN_ID = Number(process.env.NEXT_PUBLIC_PRESALE_CHAIN_ID || 97); // BSC Testnet
+const PRESALE_ABI = [
+  { type: "function", name: "buy", stateMutability: "payable", inputs: [], outputs: [] }
+];
+
 export default function Presale() {
+  // ----- existing state/values (kept as-is) -----
   const [amount, setAmount] = useState("");
   const price = 0.0105;
   const nextPrice = 0.011;
@@ -20,11 +32,9 @@ export default function Presale() {
   useEffect(() => {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + 30);
-
     const interval = setInterval(() => {
       const now = new Date().getTime();
       const diff = targetDate.getTime() - now;
-
       if (diff <= 0) {
         clearInterval(interval);
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -37,11 +47,41 @@ export default function Presale() {
         });
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, []);
 
+  // ----- new web3 bits (BSC Testnet) -----
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const { writeContract, data: txHash, isPending } = useWriteContract();
+  const { isLoading: isMining, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  // keep the same tokens preview UX
   const tokensToReceive = amount ? (amount / price).toFixed(2) : 0;
+
+  async function onBuy() {
+    if (!PRESALE_ADDRESS) {
+      alert("Missing PRESALE address (env).");
+      return;
+    }
+    const value = parseEther(String(amount || "0"));
+    if (value <= 0n) {
+      alert("Enter amount in BNB (e.g., 0.01).");
+      return;
+    }
+    try {
+      writeContract({
+        address: PRESALE_ADDRESS,
+        abi: PRESALE_ABI,
+        functionName: "buy",
+        chainId: PRESALE_CHAIN_ID,
+        value,
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Buy failed");
+    }
+  }
 
   return (
     <Layout page="presale">
@@ -49,7 +89,7 @@ export default function Presale() {
         <title>LIOSH Presale</title>
       </Head>
 
-      {/* 🎥 וידאו ברקע */}
+      {/* 🎥 background video (kept) */}
       <video
         autoPlay
         muted
@@ -130,6 +170,8 @@ export default function Presale() {
             <span>BUY LIOSH</span>
             <span>${amount || 0}</span>
           </div>
+
+          {/* amount input (kept) */}
           <input
             type="number"
             value={amount}
@@ -137,15 +179,28 @@ export default function Presale() {
             placeholder="0"
             className="w-full p-2 bg-gray-800 rounded-md text-white mb-2 text-lg"
           />
+
           <p className="text-base mb-2">≈ {tokensToReceive} LIOSH</p>
 
-          <select className="w-full p-2 bg-gray-800 rounded-md text-white mb-4 text-lg">
+          {/* selector kept visually; no logic change needed for BSC test */}
+          <select className="w-full p-2 bg-gray-800 rounded-md text-white mb-4 text-lg" defaultValue="BNB">
             <option value="SOL">SOL</option>
             <option value="BNB">BNB</option>
             <option value="ETH">ETH</option>
           </select>
 
-          <button className="bg-gradient-to-r from-blue-400 to-cyan-400 w-full py-3 rounded-md font-bold text-lg hover:scale-105 transition">
+          {/* SAME button style/text; now wired to connect/buy */}
+          <button
+            className="bg-gradient-to-r from-blue-400 to-cyan-400 w-full py-3 rounded-md font-bold text-lg hover:scale-105 transition"
+            onClick={() => {
+              if (!isConnected) {
+                // open RainbowKit modal if wallet not connected
+                return openConnectModal?.();
+              }
+              onBuy();
+            }}
+            disabled={isPending || isMining}
+          >
             CONNECT WALLET
           </button>
         </motion.div>
