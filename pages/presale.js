@@ -14,32 +14,25 @@ import {
 import { parseEther } from "viem";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 
-// --- ENV ---
+/* ================= ENV ================= */
 const PRESALE_ADDRESS = process.env.NEXT_PUBLIC_PRESALE_ADDRESS;
 const PRESALE_CHAIN_ID = Number(process.env.NEXT_PUBLIC_PRESALE_CHAIN_ID || 97);
-
-// UI-only USD display
 const BNB_USD = Number(process.env.NEXT_PUBLIC_BNB_USD || 0);
 
-// Dynamic stages by sold-thresholds (funding goals per stage)
-const STAGE_MODE = (process.env.NEXT_PUBLIC_STAGE_MODE || "sold").toLowerCase(); // keep "sold"
+// Stages by funding goal (sold tokens thresholds)
+const STAGE_MODE = (process.env.NEXT_PUBLIC_STAGE_MODE || "sold").toLowerCase();
 const RAW_STAGE_PRICES =
   (process.env.NEXT_PUBLIC_STAGE_PRICES_WEI || "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
+    .split(",").map(s => s.trim()).filter(Boolean);
 const RAW_SOLD_THRESHOLDS =
   (process.env.NEXT_PUBLIC_STAGE_SOLD_THRESHOLDS || "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
+    .split(",").map(s => s.trim()).filter(Boolean);
 
-// Rolling round (visual countdown) – resets every ROUND_SECONDS from ANCHOR
-const ROUND_SECONDS = Number(process.env.NEXT_PUBLIC_ROUND_SECONDS || 3 * 24 * 60 * 60); // 3 days
-// Optional: anchor (unix seconds) to align the windows. Defaults to epoch (0) if not set.
+// Rolling round (visual only)
+const ROUND_SECONDS = Number(process.env.NEXT_PUBLIC_ROUND_SECONDS || 3 * 24 * 60 * 60);
 const ROUND_ANCHOR_TS = Number(process.env.NEXT_PUBLIC_ROUND_ANCHOR_TS || 0);
 
-// --- ABI (reads + buy + admin) ---
+/* =============== ABI (reads + writes) =============== */
 const PRESALE_ABI = [
   { type: "function", name: "buy", stateMutability: "payable", inputs: [], outputs: [] },
   { type: "function", name: "priceWeiPerToken", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
@@ -56,23 +49,58 @@ const PRESALE_ABI = [
 const E18 = 1_000_000_000_000_000_000n;
 const toBNB = (wei) => (wei ? Number(wei) / 1e18 : 0);
 
-export default function Presale() {
-  const [amount, setAmount] = useState("");      // user input (BNB)
-  const [tick, setTick] = useState(0);           // 1s tick for countdowns
+/* ======= Small UI helpers (compact) ======= */
+const Chip = ({ children, className = "" }) => (
+  <span className={`px-2.5 py-1 rounded-full border text-[11px] leading-none ${className}`}>
+    {children}
+  </span>
+);
 
-  // tick
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white/10 backdrop-blur-xl border border-white/15 rounded-2xl ${className}`}>
+    {children}
+  </div>
+);
+
+const SectionTitle = ({ children }) => (
+  <h2 className="text-[11px] uppercase tracking-[0.18em] text-white/70">{children}</h2>
+);
+
+function StageStepper({ count, active }) {
+  return (
+    <div className="flex items-center justify-center gap-1.5">
+      {Array.from({ length: count }).map((_, i) => {
+        const isActive = i === active;
+        return (
+          <div
+            key={i}
+            className={`h-1.5 w-1.5 rounded-full transition-all
+            ${i < active ? "bg-cyan-300/90 shadow-[0_0_8px_rgba(34,211,238,0.7)]" : "bg-white/30"}
+            ${isActive ? "scale-125 ring-1 ring-cyan-300/70" : ""}`}
+            title={`Stage ${i + 1}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+export default function Presale() {
+  const [amount, setAmount] = useState("");
+  const [tick, setTick] = useState(0);
+
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // wallet / chain
+  // Wallet / chain
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const chainId = useChainId();
   const { switchChainAsync } = useSwitchChain();
 
-  // reads
+  // Reads
   const common = { address: PRESALE_ADDRESS, abi: PRESALE_ABI, chainId: PRESALE_CHAIN_ID, query: { enabled: !!PRESALE_ADDRESS } };
   const { data: priceWei }   = useReadContract({ ...common, functionName: "priceWeiPerToken" });
   const { data: minWei }     = useReadContract({ ...common, functionName: "minWei" });
@@ -82,26 +110,21 @@ export default function Presale() {
   const { data: isPaused }   = useReadContract({ ...common, functionName: "paused" });
   const { data: owner }      = useReadContract({ ...common, functionName: "owner" });
 
-  // writes
+  // Writes
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isMining, isSuccess, isError } = useWaitForTransactionReceipt({ hash: txHash });
 
-  // --- stages (prices & thresholds) ---
+  // Stages / thresholds
   const STAGE_PRICES_WEI = useMemo(() => {
     if (RAW_STAGE_PRICES.length) return RAW_STAGE_PRICES.map(v => BigInt(v));
-    // fallback (should be set via ENV for your 10-stage plan)
-    return [3750000000n, 4200000000n, 4704000000n, 5268480000n, 5900697600n, 6608781312n, 7401835069n, 8290055278n, 9284861911n, 10399045340n];
+    return [3750000000n,4200000000n,4704000000n,5268480000n,5900697600n,6608781312n,7401835069n,8290055278n,9284861911n,10399045340n];
   }, []);
   const STAGE_COUNT = STAGE_PRICES_WEI.length;
 
   const SOLD_THRESHOLDS_E18 = useMemo(() => {
     if (RAW_SOLD_THRESHOLDS.length) {
-      return RAW_SOLD_THRESHOLDS.map(x => {
-        const clean = x.replace(/_/g, "");
-        return BigInt(Math.trunc(Number(clean))) * E18; // tokens (no decimals) -> *1e18
-      });
+      return RAW_SOLD_THRESHOLDS.map(x => BigInt(x.replace(/_/g, "")) * E18);
     }
-    // Fallback: evenly spaced by cap
     if (!cap || STAGE_COUNT < 2) return [];
     const step = cap / BigInt(STAGE_COUNT);
     const arr = [];
@@ -118,17 +141,17 @@ export default function Presale() {
     }
     if (idx > STAGE_COUNT - 1) idx = STAGE_COUNT - 1;
     return idx;
-  }, [sold, SOLD_THRESHOLDS_E18, STAGE_COUNT, STAGE_MODE]);
+  }, [sold, SOLD_THRESHOLDS_E18, STAGE_COUNT]);
 
-  const activeStage = stageBySold; // we operate in "sold" mode
+  const activeStage = stageBySold;
   const targetPriceWei = STAGE_PRICES_WEI[activeStage] || 0n;
   const priceSynced = priceWei ? (targetPriceWei === priceWei) : true;
 
   const nextStage = Math.min(STAGE_COUNT - 1, activeStage + 1);
   const nextStagePriceWei = STAGE_PRICES_WEI[nextStage] || targetPriceWei;
 
-  // --- rolling 3-day round (visual) ---
-  const nowSec = Math.floor(Date.now() / 1000) + tick * 0; // tick triggers rerender
+  // Rolling round (visual only)
+  const nowSec = Math.floor(Date.now() / 1000) + tick * 0;
   const base = isFinite(ROUND_ANCHOR_TS) ? ROUND_ANCHOR_TS : 0;
   const roundsSinceBase = Math.floor((nowSec - base) / ROUND_SECONDS);
   const roundStart = base + roundsSinceBase * ROUND_SECONDS;
@@ -140,13 +163,14 @@ export default function Presale() {
     minutes: Math.floor((roundLeftSec % 3600) / 60),
     seconds: roundLeftSec % 60,
   };
-  const roundPct = Math.max(0, Math.min(100, Math.round(((ROUND_SECONDS - roundLeftSec) / ROUND_SECONDS) * 100)));
-
-  // last-stage closure rule (UI-level)
+  const roundPct = Math.max(
+    0,
+    Math.min(100, Math.round(((ROUND_SECONDS - roundLeftSec) / ROUND_SECONDS) * 100))
+  );
   const isLastStage = activeStage >= STAGE_COUNT - 1;
   const saleShouldBeClosed = isLastStage && roundLeftSec === 0;
 
-  // --- numbers for UI ---
+  // Derived numbers
   const minBNB = toBNB(minWei);
   const capTokens  = cap  ? Number(cap)  / 1e18 : 0;
   const soldTokens = sold ? Number(sold) / 1e18 : 0;
@@ -167,11 +191,10 @@ export default function Presale() {
     return ((amt * 1e18) / Number(priceWei)).toFixed(2);
   }, [amount, priceWei]);
 
-  // --- actions ---
+  /* =============== Actions =============== */
   async function ensureRightChain() {
     if (chainId !== PRESALE_CHAIN_ID) await switchChainAsync({ chainId: PRESALE_CHAIN_ID });
   }
-
   async function onBuy() {
     if (!PRESALE_ADDRESS) return alert("Missing PRESALE address (env).");
     if (isPaused) return alert("Presale is paused.");
@@ -186,208 +209,245 @@ export default function Presale() {
       writeContract({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "buy", chainId: PRESALE_CHAIN_ID, value });
     } catch (e) { console.error(e); alert("Buy failed"); }
   }
-
+  const { writeContract: writeAdmin } = useWriteContract();
   const isOwner = !!(owner && address && owner.toLowerCase() === address.toLowerCase());
 
   async function onAdminSyncPrice() {
     try {
       await ensureRightChain();
-      writeContract({
-        address: PRESALE_ADDRESS,
-        abi: PRESALE_ABI,
-        functionName: "setPrice",
-        args: [targetPriceWei],
-        chainId: PRESALE_CHAIN_ID,
-      });
+      writeAdmin({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "setPrice", args: [targetPriceWei], chainId: PRESALE_CHAIN_ID });
     } catch (e) { console.error(e); alert("setPrice failed"); }
   }
   async function onAdminPause(pause) {
     try {
       await ensureRightChain();
-      writeContract({
-        address: PRESALE_ADDRESS,
-        abi: PRESALE_ABI,
-        functionName: "setPaused",
-        args: [pause],
-        chainId: PRESALE_CHAIN_ID,
-      });
+      writeAdmin({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "setPaused", args: [pause], chainId: PRESALE_CHAIN_ID });
     } catch (e) { console.error(e); alert("setPaused failed"); }
   }
 
+  /* =================== UI =================== */
   return (
     <Layout page="presale">
       <Head><title>BUY MLEO — Presale</title></Head>
 
-      {/* background video */}
-      <video autoPlay muted loop playsInline preload="auto"
-        className="absolute inset-0 w-full h-full object-cover z-0">
+      {/* Background video */}
+      <video autoPlay muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover z-0">
         <source src="/videos/presale-bg.mp4" type="video/mp4" />
       </video>
+      {/* Stronger dark overlay for readability */}
+      <div className="absolute inset-0 z-0 bg-black/70 backdrop-blur-[1.5px]" />
 
       <motion.main
-        className="relative min-h-screen flex flex-col items-center text-white p-4 pt-8 sm:pt-12"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1 }}
+        className="relative min-h-screen px-3 pb-20 text-[15px] sm:text-[16px]"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8 }}
       >
-        <div className="absolute inset-0 bg-black/55 z-10" />
+        {/* Centered container with max width */}
+        <div className="relative z-10 w-full max-w-[980px] mx-auto">
 
-        <motion.h1
-          className="relative z-20 text-5xl font-extrabold mb-2 bg-gradient-to-r from-sky-400 via-cyan-300 to-fuchsia-400 bg-clip-text text-transparent drop-shadow-[0_2px_20px_rgba(59,130,246,0.45)]"
-          initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6 }}>
-          BUY MLEO
-        </motion.h1>
-
-        {/* stage + mode + unsynced */}
-        <div className="relative z-20 flex flex-wrap items-center justify-center gap-2 mb-3">
-          <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">
-            Stage <b>{activeStage + 1}</b> / {STAGE_COUNT}
-          </span>
-          <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">
-            Mode: <b>By Funding Goal (Sold)</b>
-          </span>
-          {!priceSynced && (
-            <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-sm">
-              Price unsynced (target stage different)
-            </span>
-          )}
-        </div>
-
-        {/* rolling round countdown */}
-        <div className="relative z-20 w-full max-w-xl mb-3">
-          <div className="flex items-center justify-between text-sm opacity-90 mb-1">
-            <span>Round resets every {Math.round(ROUND_SECONDS/86400)} days</span>
-            <span>Ends: {new Date(roundEnd * 1000).toLocaleString()}</span>
-          </div>
-          <div className="bg-white/15 h-3 rounded-full w-full overflow-hidden ring-1 ring-white/20">
-            <div
-              className="h-3 bg-gradient-to-r from-fuchsia-400 via-sky-400 to-cyan-300 shadow-[0_0_25px_rgba(34,211,238,0.6)] transition-all"
-              style={{ width: `${roundPct}%` }}
-            />
-          </div>
-          <p className="mt-2 text-center text-xl font-semibold">
-            Round ends in: {roundLeft.days}d {roundLeft.hours}h {roundLeft.minutes}m {roundLeft.seconds}s
-          </p>
-        </div>
-
-        {/* Raised + progress */}
-        <p className="relative z-20 text-xl font-semibold mb-2">
-          Raised: {raisedBNB.toLocaleString()} tBNB{BNB_USD ? ` (~$${Math.round(raisedBNB * BNB_USD).toLocaleString()})` : ""}
-        </p>
-        <div className="relative z-20 bg-white/15 h-3 rounded-full mb-2 w-full max-w-xl overflow-hidden ring-1 ring-white/20">
-          <div className="h-3 bg-gradient-to-r from-emerald-400 via-sky-400 to-cyan-300 transition-all"
-            style={{ width: `${progressPct}%` }} />
-        </div>
-        <p className="relative z-20 text-base mb-6 opacity-90">
-          {soldTokens.toLocaleString()} / {capTokens.toLocaleString()} tokens sold
-        </p>
-
-        {/* price chips */}
-        <div className="relative z-20 flex flex-wrap items-center justify-center gap-2 mb-6">
-          <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">
-            1 BNB ≈ <b>{tokensPer1BNBStr}</b> MLEO
-          </span>
-          <span className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-sm">
-            1 MLEO ≈ <b>{priceBNBPerTokenStr}</b> BNB
-          </span>
-          {!!priceUsdPerTokenStr && (
-            <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-sm">
-              ≈ ${priceUsdPerTokenStr} USD
-            </span>
-          )}
-          {nextStagePriceWei && nextStage > activeStage && (
-            <span className="px-3 py-1 rounded-full bg-pink-500/15 border border-pink-400/30 text-sm">
-              Next price → {fmtTiny(toBNB(nextStagePriceWei))}
-            </span>
-          )}
-        </div>
-
-        {/* buy card */}
-        <motion.div className="relative z-20 w-full max-w-xl mb-6"
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <div className="bg-white/10 backdrop-blur-xl p-5 rounded-2xl border border-white/20 ring-1 ring-cyan-300/20 shadow-[0_0_40px_rgba(56,189,248,0.35)]">
-            <div className="flex justify-between mb-2 text-lg">
-              <span>BUY (tBNB)</span><span>{amount || 0}</span>
-            </div>
-            <input
-              type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-              placeholder="0" min="0" step="0.0001"
-              className="w-full p-3 bg-black/40 rounded-md text-white mb-2 text-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-300/50"
-            />
-            <div className="flex items-center justify-between mb-3 text-sm">
-              <button className="px-3 py-1 rounded bg-black/40 border border-white/15 hover:bg-black/50"
-                onClick={() => setAmount(minBNB ? String(minBNB) : "0.0001")}
-                disabled={!minBNB} title="Set minimum">
-                Min {minBNB ? `${minBNB} BNB` : ""}
-              </button>
-              <span>≈ {tokensToReceive} MLEO</span>
-            </div>
-            <button
-              className="bg-gradient-to-r from-sky-400 to-cyan-300 w-full py-3 rounded-md font-bold text-lg hover:scale-[1.02] transition disabled:opacity-60"
-              onClick={() => (!isConnected ? openConnectModal?.() : onBuy())}
-              disabled={isPending || isMining || isPaused || saleShouldBeClosed}
+          {/* Header */}
+          <div className="pt-8 sm:pt-10 flex flex-col items-center text-center text-white">
+            <motion.h1
+              className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight
+                         bg-gradient-to-r from-sky-400 via-cyan-300 to-fuchsia-400 bg-clip-text text-transparent
+                         drop-shadow-[0_4px_20px_rgba(59,130,246,0.28)]"
+              initial={{ y: -12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6 }}
             >
-              {!isConnected ? "CONNECT WALLET"
-                : isPaused ? "PRESALE PAUSED"
-                : saleShouldBeClosed ? "SALE ENDED"
-                : isPending ? "CONFIRM IN WALLET…"
-                : isMining ? "PENDING…"
-                : "BUY NOW"}
-            </button>
-            {isSuccess && <p className="mt-3 text-green-400 text-sm">Success! Your purchase is confirmed.</p>}
-            {isError && <p className="mt-3 text-red-400 text-sm">Transaction failed.</p>}
-          </div>
-        </motion.div>
+              BUY MLEO
+            </motion.h1>
 
-        {/* owner tools */}
-        {isOwner && (
-          <div className="relative z-20 w-full max-w-xl mb-10">
-            <div className="bg-black/40 border border-white/15 rounded-xl p-4 text-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <p>Target stage price: <b>{fmtTiny(toBNB(targetPriceWei))} BNB</b></p>
+            {/* Stage + Mode + Stepper */}
+            <div className="mt-2 flex flex-col items-center gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <Chip className="bg-white/10 border-white/25">Stage <b>{activeStage + 1}</b> / {STAGE_COUNT}</Chip>
+                <Chip className="bg-white/10 border-white/25">Mode: <b>By Funding Goal (Sold)</b></Chip>
                 {!priceSynced && (
-                  <button
-                    onClick={onAdminSyncPrice}
-                    className="px-3 py-2 rounded-md bg-amber-400/20 border border-amber-400/40 hover:bg-amber-400/30"
-                    disabled={isPending || isMining}
-                  >
-                    Apply setPrice()
-                  </button>
+                  <Chip className="bg-amber-500/15 border-amber-400/40 text-amber-100">Price unsynced</Chip>
                 )}
               </div>
-              <div className="flex items-center justify-between">
-                <p>Contract paused: <b>{isPaused ? "Yes" : "No"}</b></p>
-                <div className="flex gap-2">
-                  {!isPaused && saleShouldBeClosed && (
-                    <button
-                      onClick={() => onAdminPause(true)}
-                      className="px-3 py-2 rounded-md bg-rose-400/20 border border-rose-400/40 hover:bg-rose-400/30"
-                      disabled={isPending || isMining}
-                    >
-                      Close sale (Pause)
-                    </button>
-                  )}
-                  {isPaused && (
-                    <button
-                      onClick={() => onAdminPause(false)}
-                      className="px-3 py-2 rounded-md bg-emerald-400/20 border border-emerald-400/40 hover:bg-emerald-400/30"
-                      disabled={isPending || isMining}
-                    >
-                      Unpause
-                    </button>
-                  )}
-                </div>
+              <StageStepper count={STAGE_COUNT} active={activeStage} />
+            </div>
+
+            {/* Round bar */}
+            <div className="mt-5 w-full">
+              <div className="flex items-center justify-between text-xs text-white/80 mb-1">
+                <span>Round resets every {Math.round(ROUND_SECONDS/86400)} days</span>
+                <span>Ends: {new Date((roundEnd) * 1000).toLocaleString()}</span>
               </div>
-              <p className="opacity-80">
-                The round timer resets every {Math.round(ROUND_SECONDS/86400)} days regardless of stage.
-                Price only advances once the funding goal (sold threshold) for the stage is hit.
-                On the last stage, when the timer ends, buying is disabled and you can pause the contract.
+              <div className="h-1.5 bg-white/15 rounded-full overflow-hidden ring-1 ring-white/20">
+                <div className="h-full w-full origin-left"
+                     style={{ width: `${roundPct}%`, boxShadow: "0 0 14px rgba(56,189,248,.35)" }}
+                     className="bg-gradient-to-r from-fuchsia-400 via-sky-400 to-cyan-300 transition-all" />
+              </div>
+              <p className="mt-1.5 text-base font-semibold">
+                Round ends in: {roundLeft.days}d {roundLeft.hours}h {roundLeft.minutes}m {roundLeft.seconds}s
               </p>
             </div>
-          </div>
-        )}
 
-        <p className="relative z-20 text-pink-300 font-bold text-lg">PRESALE IS LIVE</p>
+            {/* KPI row (compact) */}
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
+              <Card className="p-3">
+                <SectionTitle>Raised</SectionTitle>
+                <div className="mt-0.5 text-lg font-bold">{raisedBNB.toLocaleString()} tBNB</div>
+                {BNB_USD ? <div className="text-white/70 text-xs">≈ ${Math.round(raisedBNB * BNB_USD).toLocaleString()}</div> : null}
+              </Card>
+              <Card className="p-3">
+                <SectionTitle>Sold</SectionTitle>
+                <div className="mt-0.5 text-lg font-bold">{soldTokens.toLocaleString()}</div>
+                <div className="text-white/70 text-xs">{progressPct.toFixed(1)}%</div>
+              </Card>
+              <Card className="p-3">
+                <SectionTitle>Price</SectionTitle>
+                <div className="mt-0.5 text-lg font-bold">{priceBNBPerTokenStr} BNB</div>
+                {!!priceUsdPerTokenStr && <div className="text-white/70 text-xs">≈ ${priceUsdPerTokenStr}</div>}
+              </Card>
+              <Card className="p-3">
+                <SectionTitle>Next price</SectionTitle>
+                <div className="mt-0.5 text-lg font-bold">
+                  {nextStage > activeStage ? fmtTiny(toBNB(nextStagePriceWei)) : "—"} BNB
+                </div>
+                <div className="text-white/70 text-xs">1 BNB ≈ {tokensPer1BNBStr} MLEO</div>
+              </Card>
+            </div>
+
+            {/* Global progress (thinner) */}
+            <div className="mt-5 w-full">
+              <div className="h-1.5 bg-white/15 rounded-full overflow-hidden ring-1 ring-white/20">
+                <div className="h-full transition-all bg-gradient-to-r from-emerald-400 via-sky-400 to-cyan-300" style={{ width: `${progressPct}%` }} />
+              </div>
+              <p className="mt-1.5 text-sm opacity-90">
+                {soldTokens.toLocaleString()} / {capTokens.toLocaleString()} tokens sold
+              </p>
+            </div>
+
+            {/* Price chips */}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+              <Chip className="bg-white/10 border-white/20">1 BNB ≈ <b>{tokensPer1BNBStr}</b> MLEO</Chip>
+              <Chip className="bg-white/10 border-white/20">1 MLEO ≈ <b>{priceBNBPerTokenStr}</b> BNB</Chip>
+              {!!priceUsdPerTokenStr && (
+                <Chip className="bg-emerald-500/15 border-emerald-400/30">≈ ${priceUsdPerTokenStr} USD</Chip>
+              )}
+            </div>
+          </div>
+
+          {/* Buy Card (narrower + smaller controls) */}
+          <div className="mt-6 w-full max-w-[720px] mx-auto">
+            <Card className="p-4 ring-1 ring-cyan-300/20 shadow-[0_0_26px_rgba(56,189,248,0.22)]">
+              <div className="flex items-center justify-between mb-1.5 text-base">
+                <span>BUY (tBNB)</span><span>{amount || 0}</span>
+              </div>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                min="0"
+                step="0.0001"
+                className="w-full p-2.5 bg-black/40 rounded-lg text-white border border-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-300/40 text-base"
+              />
+
+              {/* Quick amounts */}
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs">
+                {["0.01","0.05","0.1","0.25"].map(v => (
+                  <button key={v}
+                          onClick={() => setAmount(v)}
+                          className="px-2.5 py-1 rounded-md border border-white/15 bg-white/10 hover:bg-white/15">
+                    {v} BNB
+                  </button>
+                ))}
+                <button
+                  onClick={() => setAmount(minBNB ? String(minBNB) : "0.0001")}
+                  className="ml-auto px-2.5 py-1 rounded-md border border-white/15 bg-black/40 hover:bg-black/50"
+                  disabled={!minBNB}
+                  title="Set minimum"
+                >
+                  Min {minBNB ? `${minBNB} BNB` : ""}
+                </button>
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between text-sm">
+                <span className="opacity-80">You receive</span>
+                <span className="font-semibold">≈ {tokensToReceive} MLEO</span>
+              </div>
+
+              <button
+                className="mt-3.5 w-full py-2.5 rounded-lg font-bold text-base
+                           bg-gradient-to-r from-sky-400 to-cyan-300 hover:scale-[1.015] transition
+                           disabled:opacity-60"
+                onClick={() => (!isConnected ? openConnectModal?.() : onBuy())}
+                disabled={isPending || isMining || isPaused || saleShouldBeClosed}
+              >
+                {!isConnected ? "CONNECT WALLET"
+                  : isPaused ? "PRESALE PAUSED"
+                  : saleShouldBeClosed ? "SALE ENDED"
+                  : isPending ? "CONFIRM IN WALLET…"
+                  : isMining ? "PENDING…"
+                  : "BUY NOW"}
+              </button>
+
+              {isSuccess && <p className="mt-2 text-green-400 text-xs">Success! Your purchase is confirmed.</p>}
+              {isError && <p className="mt-2 text-red-400 text-xs">Transaction failed.</p>}
+            </Card>
+          </div>
+
+          {/* Owner tools (compact) */}
+          {isOwner && (
+            <div className="mt-6 w-full max-w-[720px] mx-auto">
+              <Card className="p-3">
+                <details>
+                  <summary className="cursor-pointer list-none select-none flex items-center justify-between">
+                    <div className="text-xs">Owner tools</div>
+                    <span className="text-[11px] opacity-70">toggle</span>
+                  </summary>
+                  <div className="mt-2 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        Target stage price: <b>{fmtTiny(toBNB(targetPriceWei))} BNB</b>
+                        {!priceSynced && <span className="ml-1.5 text-amber-300">[unsynced]</span>}
+                      </div>
+                      {!priceSynced && (
+                        <button
+                          onClick={onAdminSyncPrice}
+                          className="px-2.5 py-1.5 rounded-md bg-amber-400/20 border border-amber-400/40 hover:bg-amber-400/30"
+                          disabled={isPending || isMining}
+                        >
+                          Apply setPrice()
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>Contract paused: <b>{isPaused ? "Yes" : "No"}</b></div>
+                      <div className="flex gap-1.5">
+                        {!isPaused && saleShouldBeClosed && (
+                          <button
+                            onClick={() => onAdminPause(true)}
+                            className="px-2.5 py-1.5 rounded-md bg-rose-400/20 border border-rose-400/40 hover:bg-rose-400/30"
+                            disabled={isPending || isMining}
+                          >
+                            Close sale (Pause)
+                          </button>
+                        )}
+                        {isPaused && (
+                          <button
+                            onClick={() => onAdminPause(false)}
+                            className="px-2.5 py-1.5 rounded-md bg-emerald-400/20 border border-emerald-400/40 hover:bg-emerald-400/30"
+                            disabled={isPending || isMining}
+                          >
+                            Unpause
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="opacity-80">
+                      Round timer resets every {Math.round(ROUND_SECONDS/86400)} days regardless of stage.
+                      Price advances only when the funding goal (sold threshold) for the stage is hit.
+                      On the last stage, when the timer ends, buying is disabled and you can pause the contract.
+                    </p>
+                  </div>
+                </details>
+              </Card>
+            </div>
+          )}
+        </div>
       </motion.main>
     </Layout>
   );
