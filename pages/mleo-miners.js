@@ -105,9 +105,8 @@ const UI_ACTION_BTN_W_PX = 220; // רוחב אחיד לכל שלושת הכפת�
 const UI_ACTION_BTN_H_PX = 64;  // גובה מעט גבוה כדי להכיל 2 שורות טקסט
 
 // מחלקות Tailwind (ערכים שרירותיים) מתוך הקבועים למעלה
-const BTN_W_FIX = "w-[220px]";
-const BTN_H_FIX = "h-[64px]";
-
+const BTN_W_FIX = `w-[${UI_ACTION_BTN_W_PX}px]`;
+const BTN_H_FIX = `h-[${UI_ACTION_BTN_H_PX}px]`;
 
 
 // Balance
@@ -380,12 +379,9 @@ const MINING_LS_KEY = "mleoMiningEconomy_v2.1";
 // —— Token & schedule (editable) ——
 const PRESALE_START_MS = null;               
 const PRESALE_DURATION_DAYS = 0;             
+const TGE_MS = null;                          
 
-// TGE: 2026-01-01 00:00:00Z
-const TGE_MS = Date.UTC(2026, 0, 1, 0, 0, 0);
-
-const TOKEN_LIVE = true;
-
+const TOKEN_LIVE = false; // דמו: כבוי. הפוך ל-true רק כשהחוזה וה-ABI מחוברים
 
 // Claim unlock schedule (מצטבר): חודש 1=10%, 2=30%, 3=50%, 4=70%, 5=90%, 6+=100%
 const CLAIM_SCHEDULE = [
@@ -413,11 +409,7 @@ const IDLE_OFFLINE_MS = 5 * 60 * 1000; // 5 minutes without claiming gift => idl
 const TOTAL_SUPPLY = 100_000_000_000; // 100B
 const DAYS = 1825;                     // 5y
 const DAILY_EMISSION = Math.floor(TOTAL_SUPPLY / DAYS);
-
-// תקרת משתמש ריאלית (ללא שינוי UI/התנהגות חזותית)
-const DAILY_CAP_PER_USER = 100_000; // כוונן לפי מדיניות
-const DAILY_CAP = Math.min(Math.floor(DAILY_EMISSION * 0.02), DAILY_CAP_PER_USER);
-
+const DAILY_CAP = Math.floor(DAILY_EMISSION * 0.02);
 
 
 // ——— State I/O ———
@@ -522,7 +514,7 @@ const r6 = (x) => Math.round((x + Number.EPSILON) * 1e6) / 1e6;
 const PREC = 2;
 const round3 = (x) => Number((x || 0).toFixed(PREC));
 
-function addPlayerScorePoints(_s, baseMleo, opts = {}){
+function addPlayerScorePoints(_s, baseMleo){
   if(!baseMleo || baseMleo <= 0) return 0;
 
   const st = loadMiningState();
@@ -541,8 +533,9 @@ function addPlayerScorePoints(_s, baseMleo, opts = {}){
 
   st.minedToday = Number(((st.minedToday||0) + eff).toFixed(2));
   st.balance    = Number(((st.balance||0)    + eff).toFixed(2));
-  if (!opts.batch) saveMiningState(st);
-  return eff;
+  saveMiningState(st);
+
+  return eff; // מחזיר כמה באמת נכנס כדי להציג ב־POP
 }
 
 
@@ -881,13 +874,11 @@ const { disconnect } = useDisconnect();
     };
   }, [isMobileLandscape, gamePaused, showIntro, showCollect]);
 
- const play = (src) => {
-  if (!src) return;
-  // מכבד גם את SFX mute מהתפריט וגם את ui.muted של המשחק
-  if (ui.muted || sfxMuted) return;
-  try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {}
-};
-
+  // נגן המשחק הקיים — נשאר כמו שהוא
+  const play = (src) => {
+    if (ui.muted || !src) return;
+    try { const a = new Audio(src); a.volume = 0.35; a.play().catch(()=>{}); } catch {}
+  };
 
   useEffect(() => {
     if (!centerPopup) return;
@@ -2044,6 +2035,11 @@ function chooseAutoDogLevel(s) {
   return existsLv2 ? target2 : sl;
 }
 
+function chooseGiftDogLevelForRegularGift(s) {
+  // Gift dog (REGULAR) = buy level by default; if no merge is possible at buy level → lowest existing level on board
+  return chooseGiftDogPlacementLevel(s);
+}
+
 
 function accrueBankDogsUpToNow(s) {
   if (!s) return;
@@ -2067,6 +2063,30 @@ function accrueBankDogsUpToNow(s) {
   }
 }
 
+// --- helpers for gift-dog placement (buy-level vs lowest-existing) ---
+function lowestExistingLevelOnBoard(s) {
+  const levels = Object.values(s.miners || {})
+    .filter(Boolean)
+    .map(m => m.level)
+    .filter(v => typeof v === "number" && v >= 1);
+  if (!levels.length) return null;
+  levels.sort((a,b)=>a-b);
+  return levels[0]; // lowest existing level
+}
+
+// "can merge at buy level" = יש לפחות כלב אחד ברמת הקנייה על הלוח (אפשרות לזוג/מיזוג)
+function canMergeAtBuyLevel(s) {
+  const bl = Math.max(1, s.spawnLevel || 1);
+  return Object.values(s.miners || {}).some(m => m && m.level === bl);
+}
+
+// בחירת דרגה למתנה רגילה: ברירת־מחדל דרגת קנייה; אם אין שום אפשרות מיזוג — הדרגה הנמוכה ביותר שקיימת על הלוח
+function chooseGiftDogPlacementLevel(s) {
+  const buyLevel = Math.max(1, s.spawnLevel || 1);
+  if (canMergeAtBuyLevel(s)) return buyLevel;
+  const low = lowestExistingLevelOnBoard(s);
+  return low || buyLevel; // אם הלוח ריק—נשארים עם דרגת הקנייה
+}
 
 
 function tryDistributeBankDog(s) {
@@ -2146,10 +2166,9 @@ function handleOfflineAccrual(s, elapsedMs) {
         // ערך MLEO לפי שלב הסלע בנתיב זה ברגע השבירה
         const stageNow = (idx + 1);
         const baseForBreak = mleoBaseForStage(stageNow);
-       const eff = addPlayerScorePoints(s, baseForBreak, { batch: true });
-offlineAddedMleo += eff;
-finalizeDailyRewardOncePerTick();
-
+       const eff = addPlayerScorePoints(s, baseForBreak);
+        offlineAddedMleo += eff;
+        finalizeDailyRewardOncePerTick();
 
         // מעבר לסלע הבא בנתיב
         timeLeft -= timeToBreak;
@@ -2170,12 +2189,6 @@ finalizeDailyRewardOncePerTick();
   if (offlineAddedMleo > 0) {
     s.pendingOfflineMleo = +((s.pendingOfflineMleo || 0) + offlineAddedMleo).toFixed(2);
   }
-
-try {
-  const stx = loadMiningState();
-  saveMiningState(stx);
-} catch {}
-
 
   return totalCoins;
 }
@@ -2208,9 +2221,12 @@ async function resetGame() {
   try {
     localStorage.removeItem(LS_KEY);
     localStorage.removeItem(MINING_LS_KEY);
+// Also reset the per-break MLEO engine so new session starts from baseline
+    localStorage.removeItem(MLEO_ENGINE_LS_KEY);
   } catch {}
 
-// engine reset calls removed (not used)
+// Ensure engine is re-seeded (v1=0.5, stage=1, breakCount=0)
+  try { engineHardReset(); } catch {}
 
   setMining({
     balance: 0, minedToday: 0, lastDay: getTodayKey(),
@@ -2371,8 +2387,30 @@ const [showCoinsModal, setShowCoinsModal] = useState(false);
 
 function claimCoinsToMining() {
   try { play?.(S_CLICK); } catch {}
-  // Disabled by request: no Coins→MLEO conversion flow
-  setGiftToastWithTTL("Coins → MLEO conversion is disabled.");
+
+  const s = stateRef.current; 
+  if (!s) return;
+
+  const coins = Number(s.gold || 0);
+  if (!coins) { setGiftToastWithTTL("No coins to claim"); return; }
+
+  const eff = previewMleoFromCoins(coins);
+  if (!eff) { setGiftToastWithTTL("Daily cap reached or nothing to add"); return; }
+
+  const mst = loadMiningState();
+  const today = getTodayKey();
+  if (mst.lastDay !== today) { mst.minedToday = 0; mst.scoreToday = 0; mst.lastDay = today; }
+
+  const room = Math.max(0, DAILY_CAP - (mst.minedToday || 0));
+  const add  = Math.min(eff, room);
+
+  mst.minedToday += add;
+  mst.balance    += add;
+
+  saveMiningState(mst);
+  setMining(mst);
+
+  setGiftToastWithTTL(`Claimed ${formatMleoShort(add)} MLEO from coins`);
 
 }
 
@@ -2424,8 +2462,8 @@ const canBuyDps=!!sNow&&sNow.gold>=dpsCostNow;
 const canBuyGold=!!sNow&&sNow.gold>=goldCostNow;
 const boughtCount = sNow?.totalPurchased || 0;
 const toNextLv    = 30 - (boughtCount % 30);
-const BTN_H = "h-[48px]";             // כבר קיים אצלך – ודא שזה טמפלייט סטרינג
-const BTN_W = "min-w-[150px]";     // חדש: רוחב מינימלי
+const BTN_H = `h-[${UI_BTN_H_PX}px]`;             // כבר קיים אצלך – ודא שזה טמפלייט סטרינג
+const BTN_W = `min-w-[${UI_BTN_MIN_W_PX}px]`;     // חדש: רוחב מינימלי
 const RING_SZ = "w-[60px] h-[60px]";
 const BTN_BASE =
   "appearance-none inline-flex items-center justify-center gap-1 px-3 !py-0 rounded-xl font-extrabold text-[16px] md:text-[18px] leading-none whitespace-nowrap transition ring-2";
