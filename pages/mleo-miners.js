@@ -510,9 +510,9 @@ function rockStageNow(rock) {
 
 
 const r6 = (x) => Math.round((x + Number.EPSILON) * 1e6) / 1e6;
-// === REPLACE: previewMleoFromCoins / addPlayerScorePoints / finalizeDailyRewardOncePerTick ===
-const PREC = 2;
-const round3 = (x) => Number((x || 0).toFixed(PREC));
+// === helpers (precision utils for mining math) ===
+const PREC_2 = 2;
+const round2 = (x) => Number((x || 0).toFixed(PREC_2));
 
 function addPlayerScorePoints(_s, baseMleo){
   if(!baseMleo || baseMleo <= 0) return 0;
@@ -544,9 +544,9 @@ function finalizeDailyRewardOncePerTick(){
   const today = getTodayKey();
   if(st.lastDay!==today) return;
   if((st.minedToday||0) > DAILY_CAP) {
-    const diff = round3((st.minedToday||0) - DAILY_CAP);
-    st.minedToday = round3(DAILY_CAP);
-    st.balance    = round3(Math.max(0, (st.balance||0) - diff));
+    const diff = round2((st.minedToday||0) - DAILY_CAP);
+    st.minedToday = round2(DAILY_CAP);
+    st.balance    = round2(Math.max(0, (st.balance||0) - diff));
     saveMiningState(st);
   }
 }
@@ -2221,12 +2221,10 @@ async function resetGame() {
   try {
     localStorage.removeItem(LS_KEY);
     localStorage.removeItem(MINING_LS_KEY);
-// Also reset the per-break MLEO engine so new session starts from baseline
-    localStorage.removeItem(MLEO_ENGINE_LS_KEY);
+
   } catch {}
 
-// Ensure engine is re-seeded (v1=0.5, stage=1, breakCount=0)
-  try { engineHardReset(); } catch {}
+// (No legacy MLEO engine to reset in the new per-rock-stage model)
 
   setMining({
     balance: 0, minedToday: 0, lastDay: getTodayKey(),
@@ -2384,6 +2382,10 @@ function onAdd(){
 
 // Coins modal (details + claim-to-mining)
 const [showCoinsModal, setShowCoinsModal] = useState(false);
+
+// Legacy shim: in the new engine MLEO accrues only on rock breaks.
+// Keep a no-op to avoid ReferenceError if older UI paths still call it.
+function previewMleoFromCoins() { return 0; }
 
 function claimCoinsToMining() {
   try { play?.(S_CLICK); } catch {}
