@@ -22,11 +22,11 @@ const BNB_USD = Number(process.env.NEXT_PUBLIC_BNB_USD || 0);
 
 // UI variants: 'dark' | 'light' | 'hero'
 const UI_VARIANT_ENV = (process.env.NEXT_PUBLIC_PRESALE_VARIANT || "dark").toLowerCase();
-// assets (for 'hero' variant)
+// assets
 const COIN_IMG = process.env.NEXT_PUBLIC_COIN_IMG || "/images/mleo-coin.png";
 const HERO_BG_IMG = process.env.NEXT_PUBLIC_HERO_BG_IMG || "/images/hero-bg.jpg";
 
-// Stage config
+/* ================= Presale config ================= */
 const STAGE_MODE = (process.env.NEXT_PUBLIC_STAGE_MODE || "sold").toLowerCase();
 const RAW_STAGE_PRICES =
   (process.env.NEXT_PUBLIC_STAGE_PRICES_WEI || "")
@@ -83,11 +83,10 @@ const StageDots = ({ count, active, color = "bg-cyan-400", mute = "bg-neutral-70
 /* ================= Component ================= */
 export default function Presale() {
   const router = useRouter();
-  const uiVariant =
-    (router.query.variant?.toString().toLowerCase() || UI_VARIANT_ENV);
-
+  const uiVariant = (router.query.variant?.toString().toLowerCase() || UI_VARIANT_ENV);
   const isLight = uiVariant === "light";
   const isHero = uiVariant === "hero";
+  const showHeroBg = isHero || (!!HERO_BG_IMG && HERO_BG_IMG !== "none");
 
   // palette classes
   const cls = {
@@ -223,6 +222,10 @@ export default function Presale() {
   const priceUsdPerTokenStr = BNB_USD && priceBNBPerToken ? fmtTiny(priceBNBPerToken * BNB_USD, 9) : "";
   const raisedBNB = toBNB(raisedWei);
 
+  // Tokens per 1 USD (אם יש שער)
+  const tokensPer1USD = priceWei && BNB_USD ? (1e18 / Number(priceWei)) / BNB_USD : 0;
+  const tokensPer1USDStr = tokensPer1USD ? fmtNum(Math.floor(tokensPer1USD)) : "—";
+
   const tokensToReceive = useMemo(() => {
     const amt = Number(amount || 0);
     if (!amt || !priceWei) return 0;
@@ -283,12 +286,12 @@ export default function Presale() {
           backgroundSize: "40px 40px",
         }}
       />
-      {isHero && (
+      {showHeroBg && (
         <div
           className="fixed inset-x-0 top-0 h-[320px] sm:h-[360px] -z-10 bg-cover bg-center"
           style={{ backgroundImage: `url(${HERO_BG_IMG})` }}
         >
-          <div className={`absolute inset-0 ${isLight ? "bg-white/70" : "bg-neutral-950/70"} backdrop-blur-[2px]`} />
+          <div className={`absolute inset-0 ${isLight ? "bg-white/60" : "bg-neutral-950/60"} backdrop-blur-[2px]`} />
           <div className="absolute inset-0 bg-[radial-gradient(800px_350px_at_20%_0%,rgba(34,211,238,0.18),transparent_70%),radial-gradient(600px_300px_at_80%_0%,rgba(168,85,247,0.15),transparent_70%)]" />
         </div>
       )}
@@ -305,7 +308,7 @@ export default function Presale() {
         </button>
       </div>
 
-      {/* Compact top spacing (remove big empty gap) */}
+      {/* Compact top spacing */}
       <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-10 text-[14px] ${cls.text}`}>
         {/* Header */}
         <div className="mb-4 md:mb-6 flex items-start gap-4">
@@ -326,12 +329,13 @@ export default function Presale() {
             </div>
           </div>
 
-          {isHero && (
+          {COIN_IMG && (
             <div className="hidden sm:block shrink-0">
               <img
                 src={COIN_IMG}
                 alt="MLEO coin"
                 className="w-[120px] h-[120px] object-contain drop-shadow-[0_8px_24px_rgba(0,0,0,0.25)]"
+                onError={(e) => (e.currentTarget.style.display = "none")}
               />
             </div>
           )}
@@ -362,8 +366,8 @@ export default function Presale() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Stat cls={cls} title="Raised" value={`${fmtNum(raisedBNB)} tBNB`} hint={BNB_USD ? `≈ $${fmtNum(Math.round(raisedBNB * BNB_USD))}` : ""} />
               <Stat cls={cls} title="Sold" value={fmtNum(soldTokens)} hint={`${(progressPct || 0).toFixed(1)}% of cap`} />
-              <Stat cls={cls} title="Current price" value={`${priceBNBPerTokenStr} BNB`} hint={priceUsdPerTokenStr ? `≈ $${priceUsdPerTokenStr}` : ""} />
-              <Stat cls={cls} title="Next price" value={`${nextStage > activeStage ? fmtTiny(toBNB(nextStagePriceWei)) : "—"} BNB`} hint={`1 BNB ≈ ${tokensPer1BNBStr} MLEO`} />
+              <Stat cls={cls} title="Current price" value={`${priceBNBPerTokenStr} BNB`} hint={BNB_USD ? `1 $ ≈ ${tokensPer1USDStr} MLEO` : ""} />
+              <Stat cls={cls} title="Next price" value={`${nextStage > activeStage ? fmtTiny(toBNB(nextStagePriceWei)) : "—"} BNB`} hint={BNB_USD ? `1 $ ≈ ${tokensPer1USDStr} MLEO` : `1 BNB ≈ ${tokensPer1BNBStr} MLEO`} />
             </div>
 
             {/* Global progress */}
@@ -408,7 +412,7 @@ export default function Presale() {
           <aside className="md:col-span-5 lg:col-span-4 hidden md:flex justify-end">
             <div className="w-full max-w-[360px]">
               <BuyPanel
-isLight={isLight}
+                isLight={isLight}
                 cls={cls}
                 amount={amount}
                 setAmount={setAmount}
@@ -453,7 +457,7 @@ isLight={isLight}
           <div className="mx-auto w-full max-w-[560px]">
             <div className={`mx-auto mb-3 h-1 w-10 rounded-full ${isLight ? "bg-neutral-300" : "bg-neutral-700"}`} />
             <BuyPanel
-isLight={isLight}
+              isLight={isLight}
               cls={cls}
               amount={amount}
               setAmount={setAmount}
