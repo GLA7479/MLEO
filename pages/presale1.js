@@ -290,7 +290,7 @@ export default function Presale() {
   {showHeroBg && (
   <div className="fixed inset-x-0 top-0 -z-10">
     {/* גובה אלסטי: לא פחות מ־320px, עד 55vh, לא יותר מ־520px */}
-    <div className="relative w-full" style={{ height: "clamp(360px, 100vh, 840px)" }}>
+    <div className="relative w-full" style={{ height: "clamp(300px, 100vh, 840px)" }}>
       <img
         src={HERO_BG_IMG}
         alt=""
@@ -324,12 +324,15 @@ export default function Presale() {
       </div>
 
       {/* Compact top spacing */}
- <main
-   className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7
-               pt-4 md:pt-5 pb-10 text-[14px] ${cls.text}
-               -mt-3 sm:-mt-4 lg:-mt-6`}>
+ <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-10 text-[14px] ${cls.text}`}>
+
         {/* Header */}
-        <div className="mb-3 md:mb-1 flex items-start gap-4 relative">
+        <div className="mb-4 md:mb-6 flex items-start gap-4 relative">
+          {/* scrim behind header for better legibility */}
+          <div className="absolute -inset-x-3 -top-2 bottom-0 pointer-events-none
+                          bg-gradient-to-b from-black/40 via-black/20 to-transparent
+                          sm:from-black/30 sm:via-black/15 rounded-2xl" />
+
           {/* coin for mobile (overlay) */}
           {COIN_IMG && (
             <img
@@ -342,13 +345,16 @@ export default function Presale() {
           )}
 
           <div className="flex-1 min-w-0">
-            <motion.h1
-              className="text-[26px] sm:text-[32px] font-extrabold tracking-tight"
+<motion.h1
+              className="text-[26px] sm:text-[32px] font-extrabold tracking-tight
+                         drop-shadow-[0_2px_6px_rgba(0,0,0,.55)]
+                         [text-shadow:0_2px_6px_rgba(0,0,0,.55)]"
               initial={{ y: -8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }}
             >
               MLEO Presale
             </motion.h1>
-            <p className={`mt-1 text-[13.5px] max-w-[720px] ${cls.muted}`}>
+           <p className={`mt-1 text-[13.5px] max-w-[720px] ${cls.muted}
+                           [text-shadow:0_1px_3px_rgba(0,0,0,.55)]`}>
               Minimal, gas-friendly checkout. Live stages, real-time progress, and transparent pricing.
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
