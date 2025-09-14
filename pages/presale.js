@@ -354,15 +354,15 @@ export default function Presale() {
             </p>
             {/* הגדלה של שלושת ה-Chips */}
             <div className="mt-2 flex flex-wrap gap-2.5">
-              <Chip className="px-4 sm:px-4 py-1.5 sm:py-2 text-[13px] sm:text-[14px] font-medium
+              <Chip className="px-4 sm:px-3 py-1.5 sm:py-2 text-[13px] sm:text-[14px] font-medium
                                border-cyan-500/50 text-cyan-400 bg-cyan-500/10">
                 Fair Stages
               </Chip>
-              <Chip className="px-4 sm:px-4 py-1.5 sm:py-2 text-[13px] sm:text-[14px] font-medium
+              <Chip className="px-4 sm:px-3 py-1.5 sm:py-2 text-[13px] sm:text-[14px] font-medium
                                border-emerald-500/50 text-emerald-400 bg-emerald-500/10">
                 FCFS • Anti-bot
               </Chip>
-              <Chip className="px-4 sm:px-4 py-1.5 sm:py-2 text-[13px] sm:text-[14px] font-medium
+              <Chip className="px-4 sm:px-3 py-1.5 sm:py-2 text-[13px] sm:text-[14px] font-medium
                                border-fuchsia-500/50 text-fuchsia-400 bg-fuchsia-500/10">
                 Instant Allocation
               </Chip>

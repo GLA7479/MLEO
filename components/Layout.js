@@ -16,6 +16,7 @@ export default function Layout({ children, video }) {
   // זיהוי עמודים
   const isGameHub = router.pathname === "/game";
   const isSubGame = router.pathname.startsWith("/mleo-");
+const isPresale = router.pathname === "/presale"; // לא להציג כפתור בעמוד הפריסייל
   const headerShown = !isSubGame;
   const footerShown = !isSubGame && !isGameHub;
  
@@ -62,7 +63,7 @@ export default function Layout({ children, video }) {
         {children}
       </main>
 
-      {!isGameHub && !isSubGame && (
+      {!isGameHub && !isSubGame && !isPresale && (
         <a
           href="/presale"
           className="fixed bottom-4 left-4 bg-yellow-500 hover:bg-yellow-600
