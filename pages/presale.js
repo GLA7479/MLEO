@@ -1,5 +1,5 @@
 // pages/presale.js
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import { motion } from "framer-motion";
 import Layout from "../components/Layout";
@@ -13,13 +13,20 @@ import {
 } from "wagmi";
 import { parseEther } from "viem";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { useRouter } from "next/router";
 
-/* ================= ENV ================= */
+/* ================= ENV / UI VARIANTS ================= */
 const PRESALE_ADDRESS = process.env.NEXT_PUBLIC_PRESALE_ADDRESS;
 const PRESALE_CHAIN_ID = Number(process.env.NEXT_PUBLIC_PRESALE_CHAIN_ID || 97);
 const BNB_USD = Number(process.env.NEXT_PUBLIC_BNB_USD || 0);
 
-// Stages by funding goal (sold tokens thresholds)
+// UI variants: 'dark' | 'light' | 'hero'
+const UI_VARIANT_ENV = (process.env.NEXT_PUBLIC_PRESALE_VARIANT || "dark").toLowerCase();
+// assets (for 'hero' variant)
+const COIN_IMG = process.env.NEXT_PUBLIC_COIN_IMG || "/images/mleo-coin.png";
+const HERO_BG_IMG = process.env.NEXT_PUBLIC_HERO_BG_IMG || "/images/hero-bg.jpg";
+
+// Stage config
 const STAGE_MODE = (process.env.NEXT_PUBLIC_STAGE_MODE || "sold").toLowerCase();
 const RAW_STAGE_PRICES =
   (process.env.NEXT_PUBLIC_STAGE_PRICES_WEI || "")
@@ -32,7 +39,7 @@ const RAW_SOLD_THRESHOLDS =
 const ROUND_SECONDS = Number(process.env.NEXT_PUBLIC_ROUND_SECONDS || 3 * 24 * 60 * 60);
 const ROUND_ANCHOR_TS = Number(process.env.NEXT_PUBLIC_ROUND_ANCHOR_TS || 0);
 
-/* =============== ABI (reads + writes) =============== */
+/* =============== ABI =============== */
 const PRESALE_ABI = [
   { type: "function", name: "buy", stateMutability: "payable", inputs: [], outputs: [] },
   { type: "function", name: "priceWeiPerToken", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
@@ -46,41 +53,66 @@ const PRESALE_ABI = [
   { type: "function", name: "setPaused", stateMutability: "nonpayable", inputs: [{ type: "bool" }], outputs: [] },
 ];
 
+/* ======= utils ======= */
 const E18 = 1_000_000_000_000_000_000n;
 const toBNB = (wei) => (wei ? Number(wei) / 1e18 : 0);
+const nf = new Intl.NumberFormat("en-US");
+const fmtNum = (n) => (Number.isFinite(n) ? nf.format(n) : "—");
+const shorten = (a) => (a ? `${a.slice(0,6)}…${a.slice(-4)}` : "—");
+const fmtTiny = (n, d = 12) => (n ? n.toFixed(d).replace(/0+$/,"").replace(/\.$/,"") : "—");
 
-/* ======= Tiny UI helpers (compact) ======= */
+/* ======= UI atoms ======= */
 const Chip = ({ children, className = "" }) => (
   <span className={`px-2 py-0.5 rounded-full border text-[10px] leading-none ${className}`}>{children}</span>
 );
-const Stat = ({ title, value, hint }) => (
-  <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
-    <div className="text-[10px] uppercase tracking-wider text-neutral-400">{title}</div>
-    <div className="mt-1 text-base font-semibold text-neutral-100">{value}</div>
-    {hint ? <div className="text-[11px] text-neutral-500 mt-0.5">{hint}</div> : null}
+const Stat = ({ title, value, hint, cls = {} }) => (
+  <div className={`rounded-xl border p-3 ${cls.card} ${cls.border}`}>
+    <div className={`text-[10px] uppercase tracking-wider ${cls.muted}`}>{title}</div>
+    <div className={`mt-1 text-base font-semibold ${cls.text}`}>{value}</div>
+    {hint ? <div className={`text-[11px] mt-0.5 ${cls.subtle}`}>{hint}</div> : null}
   </div>
 );
-function StageDots({ count, active }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {Array.from({ length: count }).map((_, i) => (
-        <i
-          key={i}
-          className={`h-1.5 w-1.5 rounded-full ${i <= active ? "bg-cyan-400" : "bg-neutral-700"}`}
-          title={`Stage ${i + 1}`}
-        />
-      ))}
-    </div>
-  );
-}
+const StageDots = ({ count, active, color = "bg-cyan-400", mute = "bg-neutral-700" }) => (
+  <div className="flex items-center gap-1.5">
+    {Array.from({ length: count }).map((_, i) => (
+      <i key={i} className={`h-1.5 w-1.5 rounded-full ${i <= active ? color : mute}`} />
+    ))}
+  </div>
+);
 
 /* ================= Component ================= */
 export default function Presale() {
+  const router = useRouter();
+  const uiVariant =
+    (router.query.variant?.toString().toLowerCase() || UI_VARIANT_ENV);
+
+  const isLight = uiVariant === "light";
+  const isHero = uiVariant === "hero";
+
+  // palette classes
+  const cls = {
+    pageBg: isLight ? "bg-white" : "bg-neutral-950",
+    gridTex: isLight ? "opacity-[0.04]" : "opacity-[0.08]",
+    text: isLight ? "text-neutral-900" : "text-neutral-100",
+    muted: isLight ? "text-neutral-600" : "text-neutral-400",
+    subtle: isLight ? "text-neutral-500" : "text-neutral-400",
+    border: isLight ? "border-neutral-200" : "border-neutral-800",
+    card: isLight ? "bg-white" : "bg-neutral-900/60",
+    panel: isLight ? "bg-white" : "bg-neutral-900/80",
+    input: isLight ? "bg-white" : "bg-neutral-950",
+    inputBorder: isLight ? "border-neutral-300" : "border-neutral-800",
+    code: isLight ? "bg-neutral-50 border-neutral-200" : "bg-neutral-950/70 border-neutral-800",
+    kpiBarBg: isLight ? "bg-neutral-200" : "bg-neutral-800",
+    shadow: isLight ? "shadow-[0_1px_0_rgba(0,0,0,0.03)]" : "shadow-[0_0_0_1px_rgba(0,0,0,0.45)]",
+  };
+
   const [amount, setAmount] = useState("");
   const [tick, setTick] = useState(0);
-  const buyCardRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
@@ -113,9 +145,7 @@ export default function Presale() {
   const STAGE_COUNT = STAGE_PRICES_WEI.length;
 
   const SOLD_THRESHOLDS_E18 = useMemo(() => {
-    if (RAW_SOLD_THRESHOLDS.length) {
-      return RAW_SOLD_THRESHOLDS.map((x) => BigInt(x.replace(/_/g, "")) * E18);
-    }
+    if (RAW_SOLD_THRESHOLDS.length) return RAW_SOLD_THRESHOLDS.map((x) => BigInt(x.replace(/_/g, "")) * E18);
     if (!cap || STAGE_COUNT < 2) return [];
     const step = cap / BigInt(STAGE_COUNT);
     const arr = [];
@@ -127,11 +157,8 @@ export default function Presale() {
     if (STAGE_MODE !== "sold") return 0;
     if (!sold || SOLD_THRESHOLDS_E18.length === 0) return 0;
     let idx = 0;
-    for (let i = 0; i < SOLD_THRESHOLDS_E18.length; i++) {
-      if (sold >= SOLD_THRESHOLDS_E18[i]) idx = i + 1;
-    }
-    if (idx > STAGE_COUNT - 1) idx = STAGE_COUNT - 1;
-    return idx;
+    for (let i = 0; i < SOLD_THRESHOLDS_E18.length; i++) if (sold >= SOLD_THRESHOLDS_E18[i]) idx = i + 1;
+    return Math.min(idx, STAGE_COUNT - 1);
   }, [sold, SOLD_THRESHOLDS_E18, STAGE_COUNT]);
 
   const activeStage = stageBySold;
@@ -141,7 +168,32 @@ export default function Presale() {
   const nextStage = Math.min(STAGE_COUNT - 1, activeStage + 1);
   const nextStagePriceWei = STAGE_PRICES_WEI[nextStage] || targetPriceWei;
 
-  // Rolling round (visual only)
+  // Next threshold (visual only)
+  const nextThresholdE18 = SOLD_THRESHOLDS_E18[activeStage] ?? null;
+  const toNextTokens = useMemo(() => {
+    if (!sold || nextThresholdE18 == null) return null;
+    const left = Number(nextThresholdE18 - sold) / 1e18;
+    return left > 0 ? left : 0;
+  }, [sold, nextThresholdE18]);
+
+  // percent inside current stage (visual only)
+  const stagePct = useMemo(() => {
+    if (!sold || nextThresholdE18 == null) return null;
+    const prev = SOLD_THRESHOLDS_E18[activeStage - 1] ?? 0n;
+    const have = Number(sold - prev) / 1e18;
+    const need = Number(nextThresholdE18 - prev) / 1e18;
+    if (need <= 0) return 0;
+    return Math.max(0, Math.min(100, (have / need) * 100));
+  }, [sold, nextThresholdE18, SOLD_THRESHOLDS_E18, activeStage]);
+
+  // Deterministic Date (hydration-safe)
+  const DATE_FMT = useMemo(() => new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false, timeZone: "UTC",
+  }), []);
+
+  // Round progress
   const nowSec = Math.floor(Date.now() / 1000) + tick * 0;
   const base = Number.isFinite(ROUND_ANCHOR_TS) ? ROUND_ANCHOR_TS : 0;
   const roundsSinceBase = Math.floor((nowSec - base) / ROUND_SECONDS);
@@ -158,37 +210,29 @@ export default function Presale() {
   const isLastStage = activeStage >= STAGE_COUNT - 1;
   const saleShouldBeClosed = isLastStage && roundLeftSec === 0;
 
-// choose any you prefer: 'he-IL' / 'en-GB' וכו'
-const DATE_FMT = useMemo(() => new Intl.DateTimeFormat('he-IL', {
-  day: '2-digit', month: '2-digit', year: 'numeric',
-  hour: '2-digit', minute: '2-digit', second: '2-digit',
-  hour12: false,
-  timeZone: 'Asia/Jerusalem', // או 'UTC' אם רוצה עקבי לחלוטין
-}), []);
-
-const formatTs = (sec) => DATE_FMT.format(new Date(sec * 1000));
-
-
   // Derived numbers
   const minBNB = toBNB(minWei);
-  const capTokens = cap ? Number(cap) / 1e18 : 0;
+  const capTokens  = cap  ? Number(cap)  / 1e18 : 0;
   const soldTokens = sold ? Number(sold) / 1e18 : 0;
   const progressPct = capTokens > 0 ? Math.min(100, (soldTokens / capTokens) * 100) : 0;
 
   const priceBNBPerToken = toBNB(priceWei);
-  const tokensPer1BNB = priceWei ? 1e18 / Number(priceWei) : 0;
-  const tokensPer1BNBStr = tokensPer1BNB ? Math.floor(tokensPer1BNB).toLocaleString() : "—";
-
-  const fmtTiny = (n, d = 12) => (n ? n.toFixed(d).replace(/0+$/,"").replace(/\.$/,"") : "—");
+  const tokensPer1BNB = priceWei ? (1e18 / Number(priceWei)) : 0;
+  const tokensPer1BNBStr = tokensPer1BNB ? fmtNum(Math.floor(tokensPer1BNB)) : "—";
   const priceBNBPerTokenStr = fmtTiny(priceBNBPerToken);
   const priceUsdPerTokenStr = BNB_USD && priceBNBPerToken ? fmtTiny(priceBNBPerToken * BNB_USD, 9) : "";
-
   const raisedBNB = toBNB(raisedWei);
+
   const tokensToReceive = useMemo(() => {
     const amt = Number(amount || 0);
     if (!amt || !priceWei) return 0;
-    return ((amt * 1e18) / Number(priceWei)).toFixed(2);
+    return Number(((amt * 1e18) / Number(priceWei)).toFixed(2));
   }, [amount, priceWei]);
+
+  const estUsdPay = useMemo(() => {
+    const amt = Number(amount || 0);
+    return BNB_USD ? amt * BNB_USD : 0;
+  }, [amount, BNB_USD]);
 
   /* =============== Actions =============== */
   async function ensureRightChain() {
@@ -229,240 +273,357 @@ const formatTs = (sec) => DATE_FMT.format(new Date(sec * 1000));
     <Layout page="presale">
       <Head><title>BUY MLEO — Presale</title></Head>
 
-      {/* Background (no video). Dark, clean, grid texture */}
-      <div className="fixed inset-0 -z-10 bg-neutral-950" />
+      {/* Background */}
+      <div className={`fixed inset-0 -z-10 ${cls.pageBg}`} />
       <div
-        className="fixed inset-0 -z-10 opacity-[0.05] pointer-events-none"
+        className={`fixed inset-0 -z-10 pointer-events-none ${isLight ? "mix-blend-multiply" : ""} ${cls.gridTex}`}
         style={{
           backgroundImage:
-            "linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)",
+            "linear-gradient(to right, #0001 1px, transparent 1px), linear-gradient(to bottom, #0001 1px, transparent 1px)",
           backgroundSize: "40px 40px",
         }}
       />
+      {isHero && (
+        <div
+          className="fixed inset-x-0 top-0 h-[320px] sm:h-[360px] -z-10 bg-cover bg-center"
+          style={{ backgroundImage: `url(${HERO_BG_IMG})` }}
+        >
+          <div className={`absolute inset-0 ${isLight ? "bg-white/70" : "bg-neutral-950/70"} backdrop-blur-[2px]`} />
+          <div className="absolute inset-0 bg-[radial-gradient(800px_350px_at_20%_0%,rgba(34,211,238,0.18),transparent_70%),radial-gradient(600px_300px_at_80%_0%,rgba(168,85,247,0.15),transparent_70%)]" />
+        </div>
+      )}
 
-      {/* Page */}
-      <main className="relative mx-auto w-full max-w-[1200px] px-3 sm:px-6 md:px-8 py-8 md:py-10 text-[14px] text-neutral-100">
+      {/* Mobile CTA */}
+      <div className="fixed bottom-3 left-0 right-0 z-[130] px-3 sm:hidden">
+        <button
+          onClick={() => (!isConnected ? openConnectModal?.() : setSheetOpen(true))}
+          className="w-full py-3 rounded-full font-extrabold tracking-wide shadow-xl
+                     bg-gradient-to-r from-cyan-400 to-sky-400 text-neutral-950 active:scale-[0.99]"
+          style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom))` }}
+        >
+          {!isConnected ? "CONNECT WALLET" : "JOIN PRESALE"}
+        </button>
+      </div>
+
+      {/* Compact top spacing (remove big empty gap) */}
+      <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-10 text-[14px] ${cls.text}`}>
         {/* Header */}
-        <div className="mb-5 md:mb-8">
-          <motion.h1
-            className="text-2xl md:text-3xl font-bold tracking-tight text-neutral-100"
-            initial={{ y: -8, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.4 }}
-          >
-            MLEO Presale
-          </motion.h1>
-          <p className="mt-1 text-sm text-neutral-400 max-w-[720px]">
-            Minimal, gas-friendly checkout. Live stages, real-time progress, and transparent pricing.
-          </p>
+        <div className="mb-4 md:mb-6 flex items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <motion.h1
+              className="text-[26px] sm:text-[32px] font-extrabold tracking-tight"
+              initial={{ y: -8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }}
+            >
+              MLEO Presale
+            </motion.h1>
+            <p className={`mt-1 text-[13.5px] max-w-[720px] ${cls.muted}`}>
+              Minimal, gas-friendly checkout. Live stages, real-time progress, and transparent pricing.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Chip className="border-cyan-500/40 text-cyan-600 bg-cyan-500/10">Fair Stages</Chip>
+              <Chip className="border-emerald-500/40 text-emerald-600 bg-emerald-500/10">FCFS • Anti-bot</Chip>
+              <Chip className="border-fuchsia-500/40 text-fuchsia-600 bg-fuchsia-500/10">Instant Allocation</Chip>
+            </div>
+          </div>
+
+          {isHero && (
+            <div className="hidden sm:block shrink-0">
+              <img
+                src={COIN_IMG}
+                alt="MLEO coin"
+                className="w-[120px] h-[120px] object-contain drop-shadow-[0_8px_24px_rgba(0,0,0,0.25)]"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Split layout: Info left, Buy right */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4">
-          {/* Left column */}
+        {/* Split */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-5">
+          {/* Left */}
           <section className="md:col-span-7 lg:col-span-8 space-y-3">
-            {/* Stage / timer strip */}
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Chip className="border-neutral-700 text-neutral-300">Stage <b className="ml-1">{activeStage + 1}</b> / {STAGE_COUNT}</Chip>
-                  <Chip className="border-neutral-700 text-neutral-300">Mode: <b className="ml-1">Sold</b></Chip>
-                  {!priceSynced && (
-                    <Chip className="border-amber-600/50 text-amber-300 bg-amber-500/10">price not applied</Chip>
-                  )}
-                </div>
-                <StageDots count={STAGE_COUNT} active={activeStage} />
-              </div>
+            <StageCard
+              cls={cls}
+              STAGE_COUNT={STAGE_COUNT}
+              activeStage={activeStage}
+              priceSynced={priceSynced}
+              roundPct={roundPct}
+              roundEnd={roundEnd}
+              roundLeft={roundLeft}
+              DATE_FMT={DATE_FMT}
+              mounted={mounted}
+              resetDays={Math.round(ROUND_SECONDS / 86400)}
+              isLight={isLight}
+              toNextTokens={toNextTokens}
+              nextStage={nextStage}
+              stagePct={stagePct}
+            />
 
-              {/* Round progress (thin) */}
-              <div className="mt-3">
-                <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-cyan-400"
-                    style={{ width: `${roundPct}%` }}
-                  />
-                </div>
-                <div className="mt-1.5 flex items-center justify-between text-[12px] text-neutral-400">
-                  <span>Resets every {Math.round(ROUND_SECONDS / 86400)} days</span>
-                  <span>
-                    Ends: {formatTs(roundEnd)} 
-                    &nbsp;{roundLeft.days}d {roundLeft.hours}h {roundLeft.minutes}m {roundLeft.seconds}s
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* KPI grid */}
+            {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Stat
-                title="Raised"
-                value={`${raisedBNB.toLocaleString()} tBNB`}
-                hint={BNB_USD ? `≈ $${Math.round(raisedBNB * BNB_USD).toLocaleString()}` : ""}
-              />
-              <Stat
-                title="Sold"
-                value={soldTokens.toLocaleString()}
-                hint={`${progressPct.toFixed(1)}% of cap`}
-              />
-              <Stat
-                title="Current price"
-                value={`${priceBNBPerTokenStr} BNB`}
-                hint={priceUsdPerTokenStr ? `≈ $${priceUsdPerTokenStr}` : ""}
-              />
-              <Stat
-                title="Next price"
-                value={`${nextStage > activeStage ? fmtTiny(toBNB(nextStagePriceWei)) : "—"} BNB`}
-                hint={`1 BNB ≈ ${tokensPer1BNBStr} MLEO`}
-              />
+              <Stat cls={cls} title="Raised" value={`${fmtNum(raisedBNB)} tBNB`} hint={BNB_USD ? `≈ $${fmtNum(Math.round(raisedBNB * BNB_USD))}` : ""} />
+              <Stat cls={cls} title="Sold" value={fmtNum(soldTokens)} hint={`${(progressPct || 0).toFixed(1)}% of cap`} />
+              <Stat cls={cls} title="Current price" value={`${priceBNBPerTokenStr} BNB`} hint={priceUsdPerTokenStr ? `≈ $${priceUsdPerTokenStr}` : ""} />
+              <Stat cls={cls} title="Next price" value={`${nextStage > activeStage ? fmtTiny(toBNB(nextStagePriceWei)) : "—"} BNB`} hint={`1 BNB ≈ ${tokensPer1BNBStr} MLEO`} />
             </div>
 
-            {/* Global progress bar */}
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-              <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400"
-                  style={{ width: `${progressPct}%` }}
-                />
+            {/* Global progress */}
+            <div className={`rounded-2xl border p-3 md:p-4 ${cls.card} ${cls.border}`}>
+              <div className={`h-2 ${cls.kpiBarBg} rounded-full overflow-hidden`}>
+                <div className="h-full bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400" style={{ width: `${progressPct}%` }} />
               </div>
-              <div className="mt-1.5 text-[12px] text-neutral-400">
-                {soldTokens.toLocaleString()} / {capTokens.toLocaleString()} tokens sold
+              <div className={`mt-2 text-[12px] ${cls.muted}`}>
+                {fmtNum(soldTokens)} / {fmtNum(capTokens)} tokens sold
               </div>
             </div>
 
-            {/* Owner tools */}
-            {isOwner && (
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
-                <details>
-                  <summary className="cursor-pointer list-none select-none text-[12px] text-neutral-300">
-                    Owner tools
-                  </summary>
-                  <div className="mt-2 space-y-2 text-[12px] text-neutral-300">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        Target stage price: <b>{fmtTiny(toBNB(targetPriceWei))} BNB</b>
-                        {!priceSynced && <span className="ml-1 text-amber-300">[unsynced]</span>}
-                      </div>
-                      {!priceSynced && (
-                        <button
-                          onClick={onAdminSyncPrice}
-                          className="px-2.5 py-1 rounded-md border border-amber-700 bg-amber-500/10 hover:bg-amber-500/15"
-                          disabled={isPending || isMining}
-                        >
-                          Apply setPrice()
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div>Paused: <b>{isPaused ? "Yes" : "No"}</b></div>
-                      <div className="flex gap-1.5">
-                        {!isPaused && saleShouldBeClosed && (
-                          <button
-                            onClick={() => onAdminPause(true)}
-                            className="px-2.5 py-1 rounded-md border border-rose-700 bg-rose-500/10 hover:bg-rose-500/15"
-                            disabled={isPending || isMining}
-                          >
-                            Pause
-                          </button>
-                        )}
-                        {isPaused && (
-                          <button
-                            onClick={() => onAdminPause(false)}
-                            className="px-2.5 py-1 rounded-md border border-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/15"
-                            disabled={isPending || isMining}
-                          >
-                            Unpause
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-neutral-400">
-                      Round resets every {Math.round(ROUND_SECONDS / 86400)} days. Price advances when sold threshold is hit.
-                      On last stage, after timer ends, disable buy and pause if needed.
-                    </p>
-                  </div>
-                </details>
-              </div>
-            )}
+            {/* How it works */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                ["Connect", "Open your wallet on BSC Testnet"],
+                ["Enter amount", "Pick a quick amount or type custom"],
+                ["Confirm", "Approve the tx, tokens are reserved"],
+              ].map(([t, s], i) => (
+                <div key={i} className={`rounded-xl border p-3 ${cls.card} ${cls.border}`}>
+                  <div className="text-[12px] font-semibold">{t}</div>
+                  <div className={`text-[11.5px] mt-0.5 ${cls.subtle}`}>{s}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Trust bar */}
+            <div className={`rounded-2xl border p-3 flex flex-wrap items-center gap-2 text-[12px] ${cls.card} ${cls.border}`}>
+              <span className={`${cls.muted}`}>Contract:</span>
+              <code className={`px-2 py-1 rounded-md border ${cls.code}`}>{shorten(PRESALE_ADDRESS || "")}</code>
+              <button
+                onClick={() => navigator.clipboard?.writeText(PRESALE_ADDRESS || "")}
+                className={`ml-1 px-2 py-1 rounded-md border ${cls.border} ${isLight ? "hover:bg-neutral-50" : "hover:bg-neutral-900"}`}
+              >
+                Copy
+              </button>
+              <span className={`ml-auto ${cls.subtle}`}>Network: BSC Testnet</span>
+            </div>
           </section>
 
-          {/* Right column — Sticky Buy */}
-          <aside className="md:col-span-5 lg:col-span-4">
-            <div ref={buyCardRef} className="md:sticky md:top-6">
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 md:p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.4)] z-[200] relative">
-                <div className="flex items-center justify-between text-[13px] text-neutral-300 mb-2">
-                  <span>BUY (tBNB)</span>
-                  <span className="text-neutral-500">{amount || 0}</span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0"
-                    min="0"
-                    step="0.0001"
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-[14px] text-neutral-100
-                               outline-none focus:ring-2 focus:ring-cyan-500/30"
-                  />
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {["0.01", "0.05", "0.1", "0.25"].map((v) => (
-                      <button
-                        key={v}
-                        onClick={() => setAmount(v)}
-                        className="px-2.5 py-1.5 text-[12px] rounded-md border border-neutral-800 bg-neutral-950 hover:bg-neutral-900"
-                      >
-                        {v} BNB
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setAmount(minBNB ? String(minBNB) : "0.0001")}
-                      className="ml-auto px-2.5 py-1.5 text-[12px] rounded-md border border-neutral-800 bg-neutral-950 hover:bg-neutral-900"
-                      disabled={!minBNB}
-                      title="Set minimum"
-                    >
-                      Min {minBNB ? `${minBNB} BNB` : ""}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-2.5 flex items-center justify-between text-[13px]">
-                  <span className="text-neutral-400">You receive</span>
-                  <span className="font-semibold text-neutral-100">≈ {tokensToReceive} MLEO</span>
-                </div>
-
-                <button
-                  className="mt-3 w-full rounded-lg py-2.5 text-[14px] font-semibold
-                             bg-cyan-500 hover:bg-cyan-400 text-neutral-950 transition
-                             disabled:opacity-60 disabled:cursor-not-allowed"
-                  onClick={() => (!isConnected ? openConnectModal?.() : onBuy())}
-                  disabled={isPending || isMining || isPaused || saleShouldBeClosed}
-                >
-                  {!isConnected ? "CONNECT WALLET"
-                    : isPaused ? "PRESALE PAUSED"
-                    : saleShouldBeClosed ? "SALE ENDED"
-                    : isPending ? "CONFIRM IN WALLET…"
-                    : isMining ? "PENDING…"
-                    : "BUY NOW"}
-                </button>
-
-                {isSuccess && <p className="mt-2 text-green-400 text-[12px]">Success! Your purchase is confirmed.</p>}
-                {isError && <p className="mt-2 text-rose-400 text-[12px]">Transaction failed.</p>}
-
-                {/* Small notes */}
-                <div className="mt-3 border-t border-neutral-800 pt-2 text-[11px] text-neutral-500">
-                  Network: BSC Testnet · Min: {minBNB || 0} BNB
-                </div>
-              </div>
+          {/* Right — Compact Buy */}
+          <aside className="md:col-span-5 lg:col-span-4 hidden md:flex justify-end">
+            <div className="w-full max-w-[360px]">
+              <BuyPanel
+isLight={isLight}
+                cls={cls}
+                amount={amount}
+                setAmount={setAmount}
+                minBNB={minBNB}
+                tokensToReceive={tokensToReceive}
+                estUsdPay={estUsdPay}
+                isConnected={isConnected}
+                onBuy={onBuy}
+                openConnectModal={openConnectModal}
+                disabled={isPending || isMining || isPaused || saleShouldBeClosed}
+                isPending={isPending}
+                isMining={isMining}
+                isPaused={!!isPaused}
+                saleShouldBeClosed={saleShouldBeClosed}
+                isSuccess={isSuccess}
+                isError={isError}
+              />
             </div>
           </aside>
         </div>
 
         {/* Footer */}
-        <div className="mt-6 text-center text-[11px] text-neutral-500">
-          Make sure your wallet is on the correct network before purchasing.
+        <div className={`mt-5 text-center text-[11px] ${cls.subtle}`}>
+          Smart-contract on BSC Testnet • Make sure your wallet is on the correct network before purchasing.
         </div>
       </main>
+
+      {/* MOBILE Bottom Sheet */}
+      <div className={`fixed inset-0 z-[140] sm:hidden ${sheetOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!sheetOpen}>
+        <div
+          className={`absolute inset-0 bg-black/60 transition-opacity ${sheetOpen ? "opacity-100" : "opacity-0"}`}
+          onClick={() => setSheetOpen(false)}
+        />
+        <div
+          className={`absolute left-0 right-0 bottom-0 rounded-t-3xl border-t ${cls.border} ${cls.panel}
+                     ${cls.shadow} p-4 transition-transform`}
+          style={{
+            transform: `translateY(${sheetOpen ? "0%" : "110%"})`,
+            paddingBottom: `calc(1rem + env(safe-area-inset-bottom))`,
+          }}
+        >
+          <div className="mx-auto w-full max-w-[560px]">
+            <div className={`mx-auto mb-3 h-1 w-10 rounded-full ${isLight ? "bg-neutral-300" : "bg-neutral-700"}`} />
+            <BuyPanel
+isLight={isLight}
+              cls={cls}
+              amount={amount}
+              setAmount={setAmount}
+              minBNB={minBNB}
+              tokensToReceive={tokensToReceive}
+              estUsdPay={estUsdPay}
+              isConnected={isConnected}
+              onBuy={async () => { await onBuy(); }}
+              openConnectModal={openConnectModal}
+              disabled={isPending || isMining || isPaused || saleShouldBeClosed}
+              isPending={isPending}
+              isMining={isMining}
+              isPaused={!!isPaused}
+              saleShouldBeClosed={saleShouldBeClosed}
+              isSuccess={isSuccess}
+              isError={isError}
+            />
+          </div>
+        </div>
+      </div>
     </Layout>
+  );
+}
+
+/* ======= Pieces ======= */
+function StageCard({
+  cls, STAGE_COUNT, activeStage, priceSynced,
+  roundPct, roundEnd, roundLeft, DATE_FMT, mounted, resetDays,
+  isLight, toNextTokens, nextStage, stagePct,
+}) {
+  return (
+    <div className={`rounded-2xl border p-3 md:p-4 ${cls.card} ${cls.border}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Chip className={`${cls.border} ${cls.text}`}>Stage <b className="ml-1">{activeStage + 1}</b> / {STAGE_COUNT}</Chip>
+          <Chip className={`${cls.border} ${cls.text}`}>Mode: <b className="ml-1">Sold</b></Chip>
+          {!priceSynced && <Chip className="border-amber-600/50 text-amber-600 bg-amber-500/10">price not applied</Chip>}
+        </div>
+        <StageDots
+          count={STAGE_COUNT}
+          active={activeStage}
+          color="bg-cyan-400"
+          mute={isLight ? "bg-neutral-300" : "bg-neutral-700"}
+        />
+      </div>
+
+      <div className="mt-3">
+        <div className={`h-1.5 ${cls.kpiBarBg} rounded-full overflow-hidden`}>
+          <div
+            className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400"
+            style={{ width: mounted ? `${roundPct}%` : "0%" }}
+          />
+        </div>
+        <div className={`mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[12px] ${cls.muted}`}>
+          <span>Resets every {resetDays} days</span>
+          <span suppressHydrationWarning>
+            Ends: {DATE_FMT.format(new Date(roundEnd * 1000))} UTC • {mounted ? (
+              <>{roundLeft.days}d {roundLeft.hours}h {roundLeft.minutes}m {roundLeft.seconds}s</>
+            ) : "—"}
+          </span>
+        </div>
+      </div>
+
+      {toNextTokens != null && nextStage > activeStage && (
+        <div className={`mt-3 rounded-xl border p-2.5 ${cls.card} ${cls.border}`}>
+          <div className={`flex items-center justify-between text-[12px] ${cls.text}`}>
+            <span>Next price at stage {nextStage + 1}</span>
+            <span className={cls.muted}>Need ~{fmtNum(Math.max(0, Math.ceil(toNextTokens)))} MLEO</span>
+          </div>
+          <div className={`mt-1 h-1 ${cls.kpiBarBg} rounded-full overflow-hidden`}>
+            <div className="h-full bg-cyan-400" style={{ width: `${stagePct ?? 0}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuyPanel({
+  cls, isLight,
+  amount, setAmount, minBNB, tokensToReceive, estUsdPay,
+  isConnected, onBuy, openConnectModal, disabled,
+  isPending, isMining, isPaused, saleShouldBeClosed,
+  isSuccess, isError,
+}) {
+  return (
+    <div className={`rounded-2xl border p-4 ${cls.panel} ${cls.border} ${cls.shadow}`}>
+      <div className="flex items-center justify-between text-[12.5px] mb-2">
+        <span className={cls.muted}>BUY (tBNB)</span>
+        <span className={cls.subtle}>{amount || 0}</span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+            min="0"
+            step="0.0001"
+            className={`w-full rounded-xl border px-3 py-2.5 text-[14px] ${cls.text} ${cls.input} ${cls.inputBorder} outline-none focus:ring-2 focus:ring-cyan-500/30`}
+          />
+          <div className="hidden sm:flex flex-col gap-1">
+            {["0.01", "0.05", "0.1", "0.25"].map((v) => (
+              <button
+                key={v}
+                onClick={() => setAmount(v)}
+                className={`px-3 py-1.5 text-[12px] rounded-md border ${cls.border} ${cls.input} ${isLight ? "hover:bg-neutral-50" : "hover:bg-neutral-900"}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="sm:hidden grid grid-cols-4 gap-1">
+          {["0.01", "0.05", "0.1", "0.25"].map((v) => (
+            <button
+              key={v}
+              onClick={() => setAmount(v)}
+              className={`px-2.5 py-2 text-[12px] rounded-md border ${cls.border} ${cls.input} ${isLight ? "hover:bg-neutral-50" : "hover:bg-neutral-900"}`}
+            >
+              {v}
+            </button>
+          ))}
+          <button
+            onClick={() => setAmount(minBNB ? String(minBNB) : "0.0001")}
+            className={`col-span-4 mt-1 px-2.5 py-2 text-[12px] rounded-md border ${cls.border} ${cls.input}`}
+            disabled={!minBNB}
+            title="Set minimum"
+          >
+            Min {minBNB ? `${minBNB} BNB` : ""}
+          </button>
+        </div>
+
+        <div className="mt-1 grid grid-cols-2 gap-2 text-[12.5px]">
+          <div className={`rounded-lg border p-2 ${cls.code}`}>
+            <div className={cls.muted}>You receive</div>
+            <div className={`font-semibold ${cls.text}`}>≈ {fmtNum(tokensToReceive)} MLEO</div>
+          </div>
+          <div className={`rounded-lg border p-2 text-right ${cls.code}`}>
+            <div className={cls.muted}>Estimated</div>
+            <div className={`font-semibold ${cls.text}`}>≈ ${fmtNum(Math.round(estUsdPay))}</div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        className="mt-3 w-full rounded-xl py-2.5 text-[14px] font-bold
+                   bg-gradient-to-r from-cyan-400 to-sky-400 text-neutral-950 transition
+                   hover:brightness-105 active:scale-[0.995]
+                   disabled:opacity-60 disabled:cursor-not-allowed"
+        onClick={() => (!isConnected ? openConnectModal?.() : onBuy())}
+        disabled={disabled}
+      >
+        {!isConnected ? "CONNECT WALLET"
+          : isPaused ? "PRESALE PAUSED"
+          : saleShouldBeClosed ? "SALE ENDED"
+          : isPending ? "CONFIRM IN WALLET…"
+          : isMining ? "PENDING…"
+          : "BUY NOW"}
+      </button>
+
+      {isSuccess && <p className="mt-2 text-emerald-500 text-[12px]">Success! Your purchase is confirmed.</p>}
+      {isError && <p className="mt-2 text-rose-500 text-[12px]">Transaction failed.</p>}
+
+      <div className={`mt-3 border-t pt-2 text-[11px] ${cls.subtle}`} style={{ borderColor: isLight ? "#e5e7eb" : "#1f2937" }}>
+        Network: BSC Testnet · Min: {minBNB || 0} BNB
+      </div>
+    </div>
   );
 }
