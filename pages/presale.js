@@ -287,18 +287,29 @@ export default function Presale() {
         }}
       />
       {/* Hero image: contain on mobile (no crop), cover on >=sm */}
-      {showHeroBg && (
-        <div className="fixed inset-x-0 top-0 h-[280px] sm:h-[360px] -z-10">
-          <img
-            src={HERO_BG_IMG}
-            alt=""
-            className="absolute inset-0 w-full h-full object-contain sm:object-cover object-[50%_15%] select-none pointer-events-none"
-            onError={(e) => (e.currentTarget.style.display = "none")}
-          />
-          <div className={`absolute inset-0 ${isLight ? "bg-white/60" : "bg-neutral-950/60"} backdrop-blur-[2px]`} />
-          <div className="absolute inset-0 bg-[radial-gradient(800px_350px_at_20%_0%,rgba(34,211,238,0.18),transparent_70%),radial-gradient(600px_300px_at_80%_0%,rgba(168,85,247,0.15),transparent_70%)]" />
-        </div>
-      )}
+  {showHeroBg && (
+  <div className="fixed inset-x-0 top-0 -z-10">
+    {/* גובה אלסטי: לא פחות מ־320px, עד 55vh, לא יותר מ־520px */}
+    <div className="relative w-full" style={{ height: "clamp(320px, 55vh, 520px)" }}>
+      <img
+        src={HERO_BG_IMG}
+        alt=""
+        className="
+          absolute inset-0 w-full h-full
+          object-cover sm:object-cover
+          object-[50%_18%]     /* פוקוס קצת למעלה */
+          select-none pointer-events-none
+        "
+        onError={(e) => (e.currentTarget.style.display = "none")}
+      />
+      {/* overlay בהיר יותר כדי שהתמונה תבלוט */}
+      <div className={`absolute inset-0 ${isLight ? "bg-white/40" : "bg-neutral-950/38"}`} />
+      {/* דגרדיינט לקריאות טקסט בתחתית בלי להחשיך את כל התמונה */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
+    </div>
+  </div>
+)}
+
 
       {/* Mobile CTA */}
       <div className="fixed bottom-3 left-0 right-0 z-[130] px-3 sm:hidden">
