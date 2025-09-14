@@ -352,23 +352,30 @@ export default function Presale() {
             <p className={`mt-0.1 text-[15.5px] max-w-[720px] ${isLight ? "text-neutral-800" : "text-white"}`}>
               Minimal, gas-friendly checkout. Live stages, real-time progress, and transparent pricing.
             </p>
-            {/* שלושת ה-Chips — מותאם למובייל שישאר בשורה אחת */}
-<div className="mt-2 flex flex-nowrap sm:flex-wrap gap-1.5 overflow-x-auto">
-  <Chip className="whitespace-nowrap px-2.5 py-[5px] text-[11px] sm:px-3 sm:py-1.5 sm:text-[12px] font-medium
+            {/* שלושת ה-Chips — גדולים יותר, שומרים על שורה אחת במובייל */}
+<div className="mt-2 flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+  <Chip className="whitespace-nowrap leading-tight
+                   px-3 py-[6px] text-[12px]
+                   sm:px-4 sm:py-1.5 sm:text-[13px] font-medium
                    border-cyan-500/50 text-cyan-400 bg-cyan-500/10">
     Fair Stages
   </Chip>
 
-  <Chip className="whitespace-nowrap px-2.5 py-[5px] text-[11px] sm:px-3 sm:py-1.5 sm:text-[12px] font-medium
+  <Chip className="whitespace-nowrap leading-tight
+                   px-3 py-[6px] text-[12px]
+                   sm:px-4 sm:py-1.5 sm:text-[13px] font-medium
                    border-emerald-500/50 text-emerald-400 bg-emerald-500/10">
     FCFS • Anti-bot
   </Chip>
 
-  <Chip className="whitespace-nowrap px-2.5 py-[5px] text-[11px] sm:px-3 sm:py-1.5 sm:text-[12px] font-medium
+  <Chip className="whitespace-nowrap leading-tight
+                   px-3 py-[6px] text-[12px]
+                   sm:px-4 sm:py-1.5 sm:text-[13px] font-medium
                    border-fuchsia-500/50 text-fuchsia-400 bg-fuchsia-500/10">
     Instant Allocation
   </Chip>
 </div>
+
 
           </div>
 
