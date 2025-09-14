@@ -276,7 +276,7 @@ export default function Presale() {
     <Layout page="presale">
       <Head><title>BUY MLEO — Presale</title></Head>
 
-      {/* Background */}
+      {/* Background grid */}
       <div className={`fixed inset-0 -z-10 ${cls.pageBg}`} />
       <div
         className={`fixed inset-0 -z-10 pointer-events-none ${isLight ? "mix-blend-multiply" : ""} ${cls.gridTex}`}
@@ -286,11 +286,15 @@ export default function Presale() {
           backgroundSize: "40px 40px",
         }}
       />
+      {/* Hero image: contain on mobile (no crop), cover on >=sm */}
       {showHeroBg && (
-        <div
-          className="fixed inset-x-0 top-0 h-[320px] sm:h-[360px] -z-10 bg-cover bg-center"
-          style={{ backgroundImage: `url(${HERO_BG_IMG})` }}
-        >
+        <div className="fixed inset-x-0 top-0 h-[280px] sm:h-[360px] -z-10">
+          <img
+            src={HERO_BG_IMG}
+            alt=""
+            className="absolute inset-0 w-full h-full object-contain sm:object-cover object-[50%_15%] select-none pointer-events-none"
+            onError={(e) => (e.currentTarget.style.display = "none")}
+          />
           <div className={`absolute inset-0 ${isLight ? "bg-white/60" : "bg-neutral-950/60"} backdrop-blur-[2px]`} />
           <div className="absolute inset-0 bg-[radial-gradient(800px_350px_at_20%_0%,rgba(34,211,238,0.18),transparent_70%),radial-gradient(600px_300px_at_80%_0%,rgba(168,85,247,0.15),transparent_70%)]" />
         </div>
@@ -309,9 +313,20 @@ export default function Presale() {
       </div>
 
       {/* Compact top spacing */}
-      <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-10 text-[14px] ${cls.text}`}>
+ <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-10 text-[14px] ${cls.text}`}>
         {/* Header */}
-        <div className="mb-4 md:mb-6 flex items-start gap-4">
+        <div className="mb-4 md:mb-6 flex items-start gap-4 relative">
+          {/* coin for mobile (overlay) */}
+          {COIN_IMG && (
+            <img
+              src={COIN_IMG}
+              alt="MLEO coin"
+              className="sm:hidden block absolute right-2 -top-1 w-14 h-14 object-contain opacity-90 pointer-events-none"
+              onError={(e) => (e.currentTarget.style.display = "none")}
+              aria-hidden="true"
+            />
+          )}
+
           <div className="flex-1 min-w-0">
             <motion.h1
               className="text-[26px] sm:text-[32px] font-extrabold tracking-tight"
@@ -329,6 +344,7 @@ export default function Presale() {
             </div>
           </div>
 
+          {/* coin for desktop/tablet */}
           {COIN_IMG && (
             <div className="hidden sm:block shrink-0">
               <img
