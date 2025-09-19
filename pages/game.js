@@ -24,10 +24,11 @@ export default function Games() {
     { title: "Mleo Puzzle",  description: "Match 3 tiles and score points!",             link: "/mleo-puzzle",   icon: "🧩",   available: true },
     { title: "Mleo Memory",  description: "Flip the cards and find matching pairs!",     link: "/mleo-memory",   icon: "🧠",   available: true },
     { title: "Mleo Penalty", description: "Score goals in the ultimate penalty shoot!",  link: "/mleo-penalty",  icon: "⚽",   available: true },
+{ title: "Mleo Management", description: "Build, upgrade & automate your mine. Idle + online.", link: "/mleo-management", icon: "🏭", available: true },
 
 
     // Remaining Coming Soon cards stay as-is
-       { title: "Coming Soon", description: "A surprise Lio game is coming soon!", link: "#", icon:                       "⛏️", available: false },
+
     { title: "Coming Soon",  description: "More fun Lio games are coming soon!",         link: "#",              icon: "⭐",    available: false },
     { title: "Coming Soon",  description: "A surprise Lio game is coming soon!",         link: "#",              icon: "🎲",    available: false },
   ];
