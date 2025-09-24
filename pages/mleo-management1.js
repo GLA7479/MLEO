@@ -1,5 +1,3 @@
-//START PART 1
-
 // ===============================================
 // 📄 START OF FILE: pages/mleo-management.js
 // MLEO Mining Manager — Next.js page
@@ -21,11 +19,6 @@ import { parseUnits } from "viem";
 const isServer = typeof window === "undefined";
 const CONFIG_VER = "v1.0.9";
 const LS_KEY = `mleoMgmt_${CONFIG_VER}`;
-
-//END PART 1
-
-
-//START PART 2
 
 export const GAME_CONFIG = {
   title: "MLEO Mining Manager",
@@ -70,12 +63,14 @@ export const GAME_CONFIG = {
     { key: "r_ai", name: "AI Pathfinding", cost: { GOLD: 15000 }, mult: { MLEO: 1.15 }, requires: ["r_eff2"] },
   ],
 
-  // 🔁 שינוי כאן — מודל 100B/5y עם תקציב יומי קבוע
   emission: {
-    budgetTotal: 100_000_000_000,                      // 100B
-    startMs: Date.UTC(2025, 9, 1, 0, 0, 0),            // 1 Oct 2025
-    endMs:   Date.UTC(2030, 9, 1, 0, 0, 0),            // 1 Oct 2030
-    rollover: false,                                    // Use-it-or-lose-it
+    dailyCap: 100_000,
+    softcut: [
+      { upto: 0.8, factor: 1.0 },
+      { upto: 1.0, factor: 0.5 },
+      { upto: 1.2, factor: 0.25 },
+      { upto: 9.99, factor: 0.1 },
+    ],
   },
 
   token: {
@@ -112,11 +107,6 @@ export const GAME_CONFIG = {
   },
 };
 
-//END PART 2
-
-
-//START PART 3
-
 const CLAIM_ABI_MAP = {
   claim: [{ type: "function", name: "claim", stateMutability: "nonpayable", inputs: [{ name: "amount", type: "uint256" }], outputs: [] }],
   mint: [{ type: "function", name: "mint", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }],
@@ -141,27 +131,10 @@ const fmtAbbrev = (n) => {
   return (x / 1e12).toFixed(1) + "T";
 };
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
-
-//END PART 3
-
-
-//START PART 4
-
-// --- Daily budget helpers (100B / 5y) ---
-const dayKey = (ms = nowMs()) => new Date(ms).toISOString().slice(0, 10);
-const daysBetween = (aMs, bMs) => Math.max(1, Math.ceil((bMs - aMs) / (24 * 3600 * 1000)));
-function dailyBudget(gc, tMs = nowMs()) {
-  const em = gc.emission;
-  if (!em?.startMs || !em?.endMs || tMs < em.startMs || tMs >= em.endMs) return 0;
-  const totalDays = daysBetween(em.startMs, em.endMs);
-  return Math.round((em.budgetTotal / totalDays) * 100) / 100; // סכום יומי מחושב דינאמית
-}
-
-// (נשאר — גם אם כבר לא משתמשים בו בפועל)
 const softcutFactor = (used, cap, softcut) => {
   if (cap <= 0) return 1;
   const ratio = used / cap;
-  for (const s of softcut || []) if (ratio <= s.upto) return s.factor;
+  for (const s of softcut) if (ratio <= s.upto) return s.factor;
   return 0.1;
 };
 const monthsSince = (ms) => Math.floor((nowMs() - ms) / (30 * 24 * 3600 * 1000));
@@ -180,11 +153,6 @@ const pushActivity = (stateObj, msg) => {
   const arr = Array.isArray(stateObj.activity) ? stateObj.activity : [];
   stateObj.activity = [entry, ...arr].slice(0, 20);
 };
-
-//END PART 4
-
-
-//START PART 5
 
 function freshState() {
   const gc = GAME_CONFIG;
@@ -211,17 +179,12 @@ function freshState() {
     lastDeposit: 0,
     activity: [],
 
-    paused: false,          // 🧊 Pause production
-    autoBank: true,         // ✅ חדש: העברה אוטומטית ל-Vault כל 5 שניות
+    paused: false, // 🧊 Pause production
 
     lastTickAt: isServer ? 0 : nowMs(),
     idleSince: isServer ? 0 : nowMs(),
   };
 }
-
-//END PART 5
-
-//START PART 6
 
 function buildingCost(gc, bKey, lvl) {
   const b = gc.buildings.find(x => x.key === bKey);
@@ -255,11 +218,6 @@ function unlocked(b, s) {
   }
   return true;
 }
-
-//END PART 6
-
-
-//START PART 7
 
 function tickEngine(s, gc, dt) {
   const today = getTodayKey();
@@ -313,12 +271,6 @@ function tickEngine(s, gc, dt) {
   return { prod };
 }
 
-//END PART 7
-
-
-
-//START PART 8
-
 function computeLiveStats(s, gc) {
   let prod = { ...gc.productionBase }; let energyUse = 0;
   for (const b of gc.buildings) {
@@ -341,11 +293,6 @@ function computeLiveStats(s, gc) {
   }
   return { prodPerSec: prod, energyUsePerSec: energyUse, regenPerSec: regenBase, netEnergyPerSec: netEnergy, etaSec: eta, etaLabel };
 }
-
-//END PART 8
-
-
-//START PART 9
 
 export default function MleoManagement() {
   const gc = GAME_CONFIG;
@@ -385,12 +332,6 @@ export default function MleoManagement() {
 
   useEffect(() => { if (mounted) saveState(s); }, [s, mounted]);
 
-
-//END PART 9
-
-
-//START PART 10
-
   // ---------- Actions
   const tryBuyBuilding = (key) => setS(prev => {
     const n = { ...prev }; const b = gc.buildings.find(x => x.key === key); if (!b) return n;
@@ -402,11 +343,11 @@ export default function MleoManagement() {
     return n;
   });
 
-  // ✅ קניית גנרטור אנרגיה
+  // ✅ תיקון הכפתור: קנייה של גנרטור אנרגיה
   const tryBuyGenerator = (gKey) => setS(prev => {
     const n = { ...prev };
     const g = gc.energy.generators.find(x => x.key === gKey); if (!g) return n;
-    if (n.gens[gKey]) return n; // כל גנרטור פעם אחת
+    if (n.gens[gKey]) return n; // אפשר לקנות כל גנרטור פעם אחת
     if (g.requires?.some(dep => !n.gens[dep])) return n;
     if (!canAfford(n.res, g.cost)) return n;
     n.res = pay(n.res, g.cost);
@@ -435,46 +376,17 @@ export default function MleoManagement() {
     if (!canAfford(n.res, r.cost)) return n; n.res = pay(n.res, r.cost); n.research[key] = true; pushActivity(n, `Research: ${r.name}`); return n;
   });
 
-//END PART 10
-
-
-//START PART 11
-
   const moveBalanceToVault = () => setS(prev => {
-    const n = { ...prev };
-    // rollover יומי
-    const today = getTodayKey();
-    if (n.lastDay !== today) { n.lastDay = today; n.minedToday = 0; }
-
-    const budget = dailyBudget(gc, nowMs()); // תקציב ליום (נגזר מ-100B/5y)
-    const room   = Math.max(0, budget - n.minedToday);
-    const amt    = Math.max(0, Math.floor(n.balance));
-
-    if (!amt) { pushActivity(n, "Nothing to bank."); return n; }
-
-    const allowed = Math.min(amt, Math.floor(room));
-    if (allowed > 0) {
-      n.vault      += allowed;
-      n.minedToday += allowed;
-      n.balance    -= allowed;
-      pushActivity(n, `Banked ${fmtAbbrev(allowed)} MLEO (today ${fmt(n.minedToday,0)}/${fmt(budget,0)}).`);
-    } else {
-      pushActivity(n, "Today's budget is exhausted.");
-    }
-
-    // Use-it-or-lose-it: אם נגמר התקציב — שורפים את היתרה ה־unbanked
-    if (room <= 0 && n.balance >= 1) {
-      const burned = Math.floor(n.balance);
-      n.balance -= burned;
-      pushActivity(n, `Burned ${fmtAbbrev(burned)} unbanked (daily budget reached).`);
-    }
+    const n = { ...prev }; const em = gc.emission;
+    const amt = Math.max(0, Math.floor(n.balance)); if (!amt) return n;
+    const room = Math.max(0, em.dailyCap - n.minedToday);
+    if (room <= 0) { n.balance -= amt; pushActivity(n, `Daily cap used. Burned ${fmtAbbrev(amt)} unbanked.`); return n; }
+    const factor = softcutFactor(n.minedToday, em.dailyCap, em.softcut);
+    const allowed = Math.min(amt * factor, room);
+    n.vault += allowed; n.minedToday += allowed; n.balance -= amt;
+    pushActivity(n, `Banked ${fmtAbbrev(allowed)} MLEO to Vault (factor ${fmt(factor,2)})`);
     return n;
   });
-
-//END PART 11
-
-
-//START PART 12
 
   const { openConnectModal: openConnect } = useConnectModal();
 
@@ -492,12 +404,10 @@ export default function MleoManagement() {
       await publicClient.waitForTransactionReceipt({ hash });
       setS(prev => {
         const n = { ...prev }; n.depositsTotal = (n.depositsTotal || 0) + amtFloat; n.lastDeposit = amtFloat;
-        if (depCfg.mode === "vault") {
-          n.vault += amtFloat; pushActivity(n, `Deposit ${amtFloat} MLEO → Vault +${amtFloat}`);
-        } else {
+        if (depCfg.mode === "vault") { n.vault += amtFloat; pushActivity(n, `Deposit ${amtFloat} MLEO → Vault +${amtFloat}`); }
+        else {
           const gAdd = (depCfg.rates.GOLD || 0) * amtFloat; const oAdd = (depCfg.rates.ORE || 0) * amtFloat;
-          n.res.GOLD = (n.res.GOLD || 0) + gAdd; n.res.ORE = (n.res.ORE || 0) + oAdd;
-          pushActivity(n, `Deposit ${amtFloat} MLEO → +${fmtAbbrev(gAdd)} GOLD, +${fmtAbbrev(oAdd)} ORE`);
+          n.res.GOLD = (n.res.GOLD || 0) + gAdd; n.res.ORE = (n.res.ORE || 0) + oAdd; pushActivity(n, `Deposit ${amtFloat} MLEO → +${fmtAbbrev(gAdd)} GOLD, +${fmtAbbrev(oAdd)} ORE`);
         }
         return n;
       });
@@ -533,24 +443,6 @@ export default function MleoManagement() {
 
   const live = computeLiveStats(s, gc);
 
-  // ✅ Auto-Bank every 5s (כיבוי/הדלקה מה-UI)
-  useEffect(() => {
-    if (!mounted || !s.autoBank) return;
-    const id = setInterval(() => {
-      setS(prev => {
-        const n = { ...prev };
-        const today = getTodayKey();
-        if (n.lastDay !== today) { n.lastDay = today; n.minedToday = 0; }
-        const budget = dailyBudget(gc, nowMs());
-        const room = Math.max(0, budget - n.minedToday);
-        const can = Math.min(Math.floor(n.balance), Math.floor(room));
-        if (can > 0) { n.vault += can; n.minedToday += can; n.balance -= can; }
-        return n;
-      });
-    }, 5000);
-    return () => clearInterval(id);
-  }, [mounted, s.autoBank]);
-
   if (!mounted) {
     return (
       <Layout title={gc.title}>
@@ -561,36 +453,12 @@ export default function MleoManagement() {
     );
   }
 
-//END PART 12
-
-
-//START PART 13
-
   return (
     <Layout title={gc.title}>
       <div className="mx-auto max-w-5xl px-3 py-4 text-white">
         {/* Goal banner */}
         <div className="mb-3 rounded-2xl bg-emerald-600/10 border border-emerald-600/30 p-3 text-sm">
           <b>Goal:</b> Bank as much <b>MLEO</b> as possible in the <b>Vault</b>, then <b>Claim</b> to wallet after TGE. Convert deposits → build → upgrade → bank.
-        </div>
-
-        {/* Quick Start (עברית) */}
-        <div className="mb-3 rounded-2xl bg-white/5 border border-white/10 p-3 text-sm">
-          <div className="font-semibold mb-1">איך משחקים – 3 צעדים מהירים</div>
-          <ol className="list-decimal ml-5 space-y-1">
-            <li>שדרגו <b>Refinery Lv.1+</b> כדי להתחיל לצבור <b>MLEO (Unbanked)</b>.</li>
-            <li>לחצו <b>Move Balance → Vault</b> (או הפעילו <b>Auto-Bank</b>) כדי להוסיף ל־Vault עד גמר תקציב היום.</li>
-            <li>קנו <b>Cap Booster I</b> כדי להעלות <b>Energy</b> ולמנוע עצירות.</li>
-          </ol>
-          <div className="mt-2 text-xs text-white/70">
-            תקציב יומי: {fmt(dailyBudget(gc),2)} MLEO · מנוצל היום: {fmt(s.minedToday,2)} · נותר: {fmt(Math.max(0, dailyBudget(gc) - s.minedToday),2)}
-          </div>
-          <div className="mt-2">
-            <button onClick={() => { /* CTA מהיר לבנקינג */ const evt = new Event('click'); }} className="hidden" />
-            <button onClick={() => { /* מפעיל את אותה פונקציית הבנקינג */ (async()=>moveBalanceToVault())(); }} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm">
-              Bank now
-            </button>
-          </div>
         </div>
 
         {/* Header */}
@@ -614,11 +482,6 @@ export default function MleoManagement() {
             <button onClick={resetProgress} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm">Reset</button>
           </div>
         </div>
-
-//END PART 13
-
-
-//START PART 14
 
         {/* HUD */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -764,51 +627,23 @@ export default function MleoManagement() {
           </div>
         </div>
 
-//END PART 14
-
-
-//START PART 15
-
         {/* Banking & Claim + Energy Generators */}
         <div className="mt-4 grid sm:grid-cols-3 gap-3">
-          {/* 🔄 Banking (עודכן: Today/Used/Left + Auto-Bank + הסבר קצר) */}
           <div className="rounded-2xl bg-white/5 p-3">
             <h3 className="font-semibold mb-1">Banking</h3>
-            <p className="text-sm text-white/70">
-              Today budget: {fmt(dailyBudget(gc),2)} · Used: {fmt(s.minedToday,2)} · Left: {fmt(Math.max(0, dailyBudget(gc) - s.minedToday),2)}
-            </p>
-            <div className="mt-2 flex items-center gap-3">
-              <button onClick={moveBalanceToVault} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm">
-                Move Balance → Vault
-              </button>
-              <label className="text-xs flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={!!s.autoBank}
-                  onChange={() => setS(p => ({ ...p, autoBank: !p.autoBank }))}
-                />
-                Auto-Bank every 5s
-              </label>
-            </div>
-            <div className="text-xs text-white/60 mt-2">
-              הערה: <b>Deposit</b> במצב “resources” ממיר ל-GOLD/ORE כדי לבנות מהר יותר — הוא לא נכנס ישירות ל-Vault.
-              את ה-<b>Vault</b> ממלאים רק דרך בנקינג, ובמסגרת התקציב היומי.
-            </div>
+            <p className="text-sm text-white/70">Daily cap: {fmtAbbrev(gc.emission.dailyCap)} · Used today: {fmtAbbrev(s.minedToday)}</p>
+            <button onClick={moveBalanceToVault} className="mt-2 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm">Move Balance → Vault</button>
           </div>
-
-          {/* Claim */}
           <div className="rounded-2xl bg-white/5 p-3">
             <h3 className="font-semibold mb-1">Claim (after TGE)</h3>
             <div className="text-sm text-white/70">Unlocked: {(claimPct*100).toFixed(0)}%</div>
             <div className="text-xs text-white/50">Room now: {fmtAbbrev(claimRoom)}</div>
             <button onClick={onClaimToWallet} className="mt-2 px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-sm">Claim Vault → Wallet</button>
           </div>
-
-          {/* Energy Generators */}
           <div className="rounded-2xl bg-white/5 p-3">
             <h3 className="font-semibold mb-1">Energy Generators</h3>
             <div className="text-sm" suppressHydrationWarning>
-              {fmtAbbrev(s.res.ENERGY)}/{fmtAbbrev(s.cap.ENERGY)} <span className="text-white/60">(+{(GAME_CONFIG.energy.baseRegenPerSec + Object.values(s.gens).reduce((a,g)=>a+(g.regenPlus||0),0)).toFixed(1)}/s)</span>
+              {fmtAbbrev(s.res.ENERGY)}/{fmtAbbrev(s.cap.ENERGY)} <span className="text-white/60">(+{(gc.energy.baseRegenPerSec + Object.values(s.gens).reduce((a,g)=>a+(g.regenPlus||0),0)).toFixed(1)}/s)</span>
             </div>
             <div className="mt-2 space-y-2">
               {gc.energy.generators.map(g => {
@@ -849,9 +684,11 @@ export default function MleoManagement() {
             <ol className="list-decimal ml-5 space-y-2 text-sm text-white/90">
               <li><b>Goal:</b> Bank MLEO in your <b>Vault</b>, then claim to wallet after TGE.</li>
               <li><b>Deposit</b> MLEO. In “resources” mode it converts to GOLD & ORE (see rates). In “vault” mode it's 1:1 to Vault.</li>
-              <li><b>Build & Upgrade</b> to increase Ore/Gold/MLEO production (uses Energy per second).</li>
+              <li><b>Build & Upgrade</b> to increase Ore/Gold/ML EO production (uses Energy per second).</li>
               <li><b>Energy</b>: buy <b>Generators</b> to raise capacity and regen. Use <b>Pause Production</b> if Energy runs out.</li>
-              <li><b>Unbanked → Vault</b>: click “Move Balance → Vault” or enable Auto-Bank (daily budget use-it-or-lose-it).</li>
+              <li><b>Workers / Tools / Research</b>: improve output via global multipliers.</li>
+              <li><b>Unbanked → Vault</b>: click “Move Balance → Vault” (daily cap + soft cut).</li>
+              <li><b>Claim</b>: after TGE unlocks, claim available portion from Vault to your wallet.</li>
             </ol>
             <div className="mt-4 text-right">
               <button onClick={() => setHelpOpen(false)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm">Close</button>
@@ -865,5 +702,3 @@ export default function MleoManagement() {
 // ===============================================
 // 🔚 END OF FILE
 // ===============================================
-
-//END PART 15
