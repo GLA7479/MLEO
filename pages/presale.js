@@ -431,9 +431,7 @@ export default function Presale() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Stat cls={cls} title="Raised (USD)" value={`$${fmtNum(Math.round(raisedUSD))}`} hint={BNB_USD ? `≈ ${fmtNum(Math.round(raisedUSD / BNB_USD))} tBNB` : ""} />
               <Stat cls={cls} title="Sold" value={fmtNum(soldTokens)} hint={`${(progressPct || 0).toFixed(1)}% of cap`} />
-              {/* מחיר נוכחי — ערך ראשי ב-$, מתחת BNB */}
               <Stat cls={cls} title="Current price" value={`$${priceUsdPerTokenStr || "—"} / token`} hint={`${priceBNBPerTokenStr || "—"} BNB / token`} />
-              {/* מחיר הבא — ערך ראשי ב-$, מתחת BNB */}
               <Stat cls={cls} title="Next price" value={`${nextStage > activeStageFallback ? `$${nextPriceUsdPerTokenStr}` : "—"} / token`} hint={nextStage > activeStageFallback ? `${fmtTiny(nextPriceBNBPerToken)} BNB / token` : ""} />
             </div>
 
@@ -444,7 +442,7 @@ export default function Presale() {
             <TrustBar cls={cls} address={PRESALE_ADDRESS} />
           </section>
 
-          {/* Right — BUY + CLAIM */}
+          {/* Right — BUY + CLAIM (Desktop only) */}
           <aside className="md:col-span-5 lg:col-span-4 hidden md:flex justify-end">
             <div className="w-full max-w-[380px]">
               <BuyClaimPanel
@@ -477,6 +475,38 @@ export default function Presale() {
               />
             </div>
           </aside>
+        </div>
+
+        {/* BUY + CLAIM — Mobile only */}
+        <div className="md:hidden mt-4">
+          <BuyClaimPanel
+            cls={cls}
+            isPaused={!!isPaused}
+            isConnected={isConnected}
+            address={address}
+            disconnect={disconnect}
+            openConnectModal={openConnectModal}
+            amount={amount}
+            setAmount={setAmount}
+            tokensToReceive={tokensToReceive}
+            estUsdPay={estUsdPay}
+            priceBNBPerTokenStr={fmtTiny(priceBNBPerToken)}
+            priceUsdPerTokenStr={fmtTiny(priceUsdPerToken, 9)}
+            oneUsdToTokens={Math.floor(tokensPer1USD || 0)}
+            onBuy={onBuy}
+            isPending={isPending}
+            isMining={isMining}
+            isSuccess={isSuccess}
+            isError={isError}
+            purchased={purchased}
+            claimed={claimed}
+            claimable={claimable}
+            claimEnabled={!!claimEnabled}
+            onClaim={onClaim}
+            isClaiming={isClaiming || waitingClaim}
+            claimOk={claimOk}
+            mounted={mounted}
+          />
         </div>
 
         {/* Footer */}
