@@ -87,9 +87,21 @@ function Num({ mounted, value, placeholder = "0", className = "" }) {
 }
 
 /* ======= UI atoms ======= */
-const Chip = ({ children, className = "" }) => (
-  <span className={`px-2 py-0.5 rounded-full border text-[10px] leading-none ${className}`}>{children}</span>
+const chipSizes = {
+  sm: "text-[11px] px-2 py-0.5 rounded-full",
+  md: "text-[12.5px] px-3 py-1 rounded-full",
+  lg: "text-[14px] px-4 py-1.5 rounded-full",
+};
+
+const Chip = ({ children, className = "", size = "md", minWidth }) => (
+  <span
+    className={`inline-flex items-center justify-center border ${chipSizes[size]} ${className}`}
+    style={minWidth ? { minWidth } : undefined}
+  >
+    {children}
+  </span>
 );
+
 const Stat = ({ title, value, hint, cls = {} }) => (
   <div className={`rounded-xl border p-3 ${cls.card} ${cls.border}`}>
     <div className={`text-[10px] uppercase tracking-wider ${cls.muted}`}>{title}</div>
@@ -383,7 +395,7 @@ export default function Presale() {
       )}
 
       {/* Content */}
-      <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-10 text-[14px] ${cls.text} -mt-3 sm:-mt-4 lg:-mt-6`}>
+      <main className={`relative mx-auto w-full max-w-[1200px] px-3 sm:px-5 md:px-7 pt-4 md:pt-5 pb-24 md:pb-10 text-[14px] ${cls.text} -mt-3 sm:-mt-4 lg:-mt-6`}>
         {/* Header */}
         <div className="mb-3 md:mb-1 flex items-start gap-4 relative">
           {COIN_IMG && (
@@ -442,7 +454,7 @@ export default function Presale() {
             <TrustBar cls={cls} address={PRESALE_ADDRESS} />
           </section>
 
-          {/* Right — BUY + CLAIM (Desktop only) */}
+          {/* Right — BUY + CLAIM (Desktop) */}
           <aside className="md:col-span-5 lg:col-span-4 hidden md:flex justify-end">
             <div className="w-full max-w-[380px]">
               <BuyClaimPanel
@@ -477,49 +489,89 @@ export default function Presale() {
           </aside>
         </div>
 
-        {/* BUY + CLAIM — Mobile only */}
-        <div className="md:hidden mt-4">
-          <BuyClaimPanel
-            cls={cls}
-            isPaused={!!isPaused}
-            isConnected={isConnected}
-            address={address}
-            disconnect={disconnect}
-            openConnectModal={openConnectModal}
-            amount={amount}
-            setAmount={setAmount}
-            tokensToReceive={tokensToReceive}
-            estUsdPay={estUsdPay}
-            priceBNBPerTokenStr={fmtTiny(priceBNBPerToken)}
-            priceUsdPerTokenStr={fmtTiny(priceUsdPerToken, 9)}
-            oneUsdToTokens={Math.floor(tokensPer1USD || 0)}
-            onBuy={onBuy}
-            isPending={isPending}
-            isMining={isMining}
-            isSuccess={isSuccess}
-            isError={isError}
-            purchased={purchased}
-            claimed={claimed}
-            claimable={claimable}
-            claimEnabled={!!claimEnabled}
-            onClaim={onClaim}
-            isClaiming={isClaiming || waitingClaim}
-            claimOk={claimOk}
-            mounted={mounted}
-          />
-        </div>
-
         {/* Footer */}
         <div className={`mt-5 text-center text-[11px] ${cls.subtle}`}>
           Smart-contract on BSC Testnet • Make sure your wallet is on the correct network before purchasing.
         </div>
       </main>
+
+      {/* ===== Mobile BUY trigger + Bottom Sheet ===== */}
+      <div className="md:hidden">
+        {/* Trigger Button (קבוע בתחתית המסך) */}
+        <div className="fixed inset-x-0 bottom-0 z-30 p-3">
+          <button
+            onClick={()=>setSheetOpen(true)}
+            className="w-full rounded-xl py-3 font-bold text-[15px] bg-gradient-to-r from-cyan-400 to-sky-400 text-neutral-950 shadow-lg active:scale-[0.995]"
+          >
+            BUY / CLAIM
+          </button>
+        </div>
+
+        {/* Backdrop */}
+        {sheetOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50"
+            onClick={()=>setSheetOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Sheet */}
+        <motion.div
+          initial={{ y: "100%" }}
+          animate={{ y: sheetOpen ? 0 : "100%" }}
+          transition={{ type: "spring", stiffness: 260, damping: 26 }}
+          className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-neutral-800 bg-neutral-900/95 backdrop-blur p-3"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="mx-auto w-full max-w-[480px]">
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-1 w-12 rounded-full bg-neutral-700 mx-auto" />
+              <button
+                onClick={()=>setSheetOpen(false)}
+                className="absolute right-3 top-3 px-2 py-1 rounded-md border border-neutral-700 text-[12px] hover:bg-neutral-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <BuyClaimPanel
+              cls={cls}
+              isPaused={!!isPaused}
+              isConnected={isConnected}
+              address={address}
+              disconnect={disconnect}
+              openConnectModal={openConnectModal}
+              amount={amount}
+              setAmount={setAmount}
+              tokensToReceive={tokensToReceive}
+              estUsdPay={estUsdPay}
+              priceBNBPerTokenStr={fmtTiny(priceBNBPerToken)}
+              priceUsdPerTokenStr={fmtTiny(priceUsdPerToken, 9)}
+              oneUsdToTokens={Math.floor(tokensPer1USD || 0)}
+              onBuy={onBuy}
+              isPending={isPending}
+              isMining={isMining}
+              isSuccess={isSuccess}
+              isError={isError}
+              purchased={purchased}
+              claimed={claimed}
+              claimable={claimable}
+              claimEnabled={!!claimEnabled}
+              onClaim={onClaim}
+              isClaiming={isClaiming || waitingClaim}
+              claimOk={claimOk}
+              mounted={mounted}
+            />
+          </div>
+        </motion.div>
+      </div>
     </Layout>
   );
 }
 
 //END PART 7
-
 
 
 
