@@ -123,25 +123,30 @@ function safeWrite(key, val) {
 // ============================================================================
 const initialCore = {
   // Balances
-  vault: 0,                // off-chain in-game balance
-  totalMined: 0,           // lifetime mined (for stats)
+  balance: 0,             // ארנק מקומי לשדרוגים
+  vault: 0,               // בריכת צבירה חיה (אונליין/אוף־ליין)
+  totalMined: 0,          // מצטבר לכל החיים (סטטיסטיקה)
+
   // Presence
-  mode: "online",          // "online" | "offline"
-  offlineStart: 0,         // timestamp ms when went offline
+  mode: "online",         // "online" | "offline"
+  offlineStart: 0,        // מתי עבר לאוף־ליין
   lastActiveAt: Date.now(),
+
   // Progression
-  upgrades: {},            // { drill: lvl, ... }
+  upgrades: {},
+
   // Timers
-  lastGiftAt: 0,           // timestamp when last claimed gift
-  lastDailyAt: 0,          // timestamp when last daily claimed
-  dailyStreak: 0,          // consecutive days
+  lastGiftAt: 0,
+  lastDailyAt: 0,
+  dailyStreak: 0,
+
   // Social
-  guild: { id: null, name: null, members: 0, bonus: 0 }, // demo
+  guild: { id: null, name: null, members: 0, bonus: 0 },
 };
 
 const initialSession = {
-  boost: 0,                // temporary online boost
-  clicksWindow: [],        // timestamps for anti-bot
+  boost: 0,         // temporary online boost
+  clicksWindow: [], // timestamps for anti-bot window (per second)
 };
 
 // ============================================================================
@@ -446,10 +451,10 @@ export default function MLEOTokenRushPage() {
   const { isLoading: isMining, isSuccess: isConfirmed } =
     useWaitForTransactionReceipt({ hash: txHash });
 
-  // אחרי אישור טרנזאקציה — מאפסים vault (תעדכן ללוגיקה שלך אם צריך)
+  // אחרי אישור טרנזאקציה — מאפסים BALANCE (כי משכנו לארנק)
   useEffect(() => {
-    if (isConfirmed && core.vault > 0) {
-      setCore(c => ({ ...c, vault: 0 }));
+    if (isConfirmed && core.balance > 0) {
+      setCore(c => ({ ...c, balance: 0 }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConfirmed]);
@@ -500,15 +505,19 @@ export default function MLEOTokenRushPage() {
     }));
   }
 
-  // ---------------- Upgrades ----------------
+  // ---------------- Upgrades (משלם מ-BALANCE) ----------------
   function buyUpgrade(id) {
     const u = CONFIG.UPGRADES.find(x => x.id === id);
     if (!u) return;
     const lvl = core.upgrades[id] || 0;
     if (lvl >= u.maxLvl) return;
     const cost = calcUpgradeCost(u.baseCost, lvl);
-    if (core.vault < cost) return;
-    setCore(c => ({ ...c, vault: c.vault - cost, upgrades: { ...c.upgrades, [id]: lvl + 1 } }));
+    if (core.balance < cost) return;                 // תשלום מ-BALANCE
+    setCore(c => ({
+      ...c,
+      balance: c.balance - cost,                     // מפחיתים מה-BALANCE
+      upgrades: { ...c.upgrades, [id]: lvl + 1 },
+    }));
   }
 
   // ---------------- Guild actions (demo) ----------------
@@ -522,18 +531,27 @@ export default function MLEOTokenRushPage() {
 
   // ==== PART 12 — HELPERS (pure JS, before return) ====
 
-  // איסוף OFFLINE מיד (מעיר את המנוע שמסדיר OFFLINE→Vault)
+  // איסוף OFFLINE מיד (מעיר אם צריך)
   const collectOfflineNow = () => {
-    wake(); // wake כבר מסדיר את הרווחים האוף־ליינים לתוך ה־Vault
+    wake();
   };
 
-  // BRIDGE מ־MLEO-MINERS → המשחק הנוכחי (דרך localStorage)
-  const OTHER_GAME_CORE_KEY = "mleo_miners_v6_core";
+  // Claim כל ה-VAULT → ל-BALANCE (מה שביקשת)
+  const claimVaultToBalance = () => {
+    const amt = Math.floor(core.vault || 0);
+    if (amt <= 0) return;
+    setCore(c => ({
+      ...c,
+      vault: 0,                          // VAULT חוזר ל-0 ומתחיל לצבור מחדש
+      balance: (c.balance || 0) + amt,   // מעבירים ל-BALANCE
+    }));
+  };
+
+  // BRIDGE מ־MLEO-MINERS (localStorage) → BALANCE כאן
   const [bridgeAmount, setBridgeAmount] = useState("");
   const [otherVault, setOtherVault] = useState(() => {
     const other = safeRead(OTHER_GAME_CORE_KEY, null);
     return other && typeof other.vault === "number" ? other.vault : 0;
-    // אם המפתח שונה במשחק הישן – החלף כאן לשם העדכני
   });
   const refreshOtherVault = () => {
     const other = safeRead(OTHER_GAME_CORE_KEY, null);
@@ -550,12 +568,53 @@ export default function MLEOTokenRushPage() {
     const nextOther = { ...(other || {}), vault: available - amt };
     safeWrite(OTHER_GAME_CORE_KEY, nextOther);
 
-    // מוסיפים במשחק הנוכחי
-    setCore(c => ({ ...c, vault: (c.vault || 0) + amt, totalMined: (c.totalMined || 0) + amt }));
+    // מוסיפים לנו ל-BALANCE (כסף לשדרוגים)
+    setCore(c => ({ ...c, balance: (c.balance || 0) + amt }));
 
     setBridgeAmount("");
     setOtherVault(available - amt);
-    alert(`Bridged ${amt} tokens from MLEO-MINERS → this game`);
+    alert(`Bridged ${amt} tokens from MLEO-MINERS → BALANCE`);
+  };
+
+  // משיכה לארנק (on-chain) — מושך את כל ה-BALANCE, עם לחיצה כפולה
+  const withdrawAllToWallet = async () => {
+    const amount = Math.floor(core.balance || 0);
+    if (amount <= 0) { alert("Nothing to claim"); return; }
+
+    if (!claimArmed) { armClaimOnce(); return; } // anti-bot double-click
+
+    if (chainId !== ENV.CLAIM_CHAIN_ID) {
+      try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); return; }
+      catch { alert("Switch network to BSC Testnet (97)"); return; }
+    }
+    if (!isConnected) { alert("Connect wallet first"); return; }
+
+    const units = toUnits(amount);
+    try {
+      // ניסיון ראשון: claim(amount)
+      await writeContract({
+        address: ENV.CLAIM_ADDRESS,
+        abi: CLAIM_ABI_ONE_ARG,
+        functionName: ENV.CLAIM_FN,
+        args: [units],
+      });
+    } catch (e1) {
+      try {
+        // ניסיון שני: claim(gameId, amount)
+        await writeContract({
+          address: ENV.CLAIM_ADDRESS,
+          abi: CLAIM_ABI_TWO_ARGS,
+          functionName: ENV.CLAIM_FN,
+          args: [BigInt(ENV.GAME_ID), units],
+        });
+      } catch (e2) {
+        console.error("claim failed", e1, e2);
+        alert("TX rejected or failed");
+      }
+    } finally {
+      setClaimArmed(false);
+      claimArmRef.current = 0;
+    }
   };
 
   // ===== Mount gate =====
@@ -579,173 +638,201 @@ export default function MLEOTokenRushPage() {
         <div className="max-w-6xl mx-auto p-4">
 
           {/* PART 13 — HEADER */}
-          <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <h1 className="text-2xl font-bold">MLEO Token Rush</h1>
-              <div className="text-sm opacity-70">100B via gameplay only • idle→offline after 5m</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <WalletStatus />
-              <ActionButton onClick={wake}>Wake</ActionButton>
-            </div>
-          </header>
+<header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+  <div>
+    <h1 className="text-2xl font-bold">MLEO Token Rush</h1>
+    <div className="text-sm opacity-70">100B via gameplay only • idle→offline after 5m</div>
+  </div>
+  <div className="flex items-center gap-2">
+    <WalletStatus />
+    {/* הוסר כפתור Wake מההדר */}
+  </div>
+</header>
 
-          {/* PART 14 — TOP STATS */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <Stat label="Mode" value={core.mode.toUpperCase()} sub="Auto online • 5m idle → offline" />
-            <Stat label="Vault" value={fmt(core.vault)} sub="Tokens ready to claim" />
-            <Stat label="Total mined" value={fmt(core.totalMined)} sub={`Mult ${mult.toFixed(2)}×`} />
-            <Stat label="Boost" value={`${Math.round((sess.boost||0)*100)}%`} sub="Temporary online" />
-          </div>
+{/* PART 14 — TOP STATS */}
+<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+  <Stat
+    label="Mode"
+    value={core.mode.toUpperCase()}
+    sub="Auto online • 5m idle → offline"
+  />
+  <Stat
+    label="VAULT"
+    value={fmt(core.vault)}
+    sub="Unclaimed pool"
+  />
+  <Stat
+    label="Total mined"
+    value={fmt(core.totalMined)}
+    sub={`Mult ${mult.toFixed(2)}×`}
+  />
 
-
- {/* PART 15 — Vault & Wallet + Bridge (JSX only) */}
-
-<div className="grid lg:grid-cols-3 gap-4 mb-6">
-
-  {/* A) BALANCE & PRIMARY ACTIONS */}
-  <Section title="Balance & Actions">
-    <div className="flex flex-col gap-4">
-      {/* היתרה הזמינה לשדרוגים */}
-      <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex items-center justify-between">
-        <div className="text-sm opacity-70">Vault (available for upgrades)</div>
-        <div className="text-3xl font-bold tabular-nums">{fmt(core.vault)}</div>
+  {/* חלון WAKE הימני (עם Boost) */}
+  <div className="rounded-2xl p-4 bg-white/5 border border-white/10 shadow-sm flex items-center justify-between">
+    <div>
+      <div className="text-xs uppercase opacity-70">BOOST</div>
+      <div className="text-2xl font-semibold">
+        {Math.round((sess.boost || 0) * 100)}%
       </div>
-
-      {/* 2 כפתורים ראשיים בגובה/רוחב זהים */}
-      <div className="grid sm:grid-cols-2 gap-3">
-        {/* איסוף OFFLINE → Vault */}
-        <button
-          onClick={collectOfflineNow}
-          className="w-full h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
-        >
-         CLAIM TO VALUT
-        </button>
-
-        {/* Claim All — לארנק (on-chain + אישור כפול) */}
-        <button
-          onClick={async () => {
-            const amount = Math.floor(core.vault);
-            if (amount <= 0) { alert("Nothing to claim"); return; }
-            if (!claimArmed) { armClaimOnce(); return; } // anti-bot double-click
-
-            if (chainId !== ENV.CLAIM_CHAIN_ID) {
-              try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); return; }
-              catch { alert("Switch network to BSC Testnet (97)"); return; }
-            }
-            if (!isConnected) { alert("Connect wallet first"); return; }
-
-            const units = toUnits(amount);
-            try {
-              await writeContract({
-                address: ENV.CLAIM_ADDRESS,
-                abi: CLAIM_ABI_ONE_ARG,
-                functionName: ENV.CLAIM_FN,
-                args: [units],
-              });
-            } catch (e1) {
-              try {
-                await writeContract({
-                  address: ENV.CLAIM_ADDRESS,
-                  abi: CLAIM_ABI_TWO_ARGS,
-                  functionName: ENV.CLAIM_FN,
-                  args: [BigInt(ENV.GAME_ID), units],
-                });
-              } catch (e2) {
-                console.error("claim failed", e1, e2);
-                alert("TX rejected or failed");
-              }
-            } finally {
-              setClaimArmed(false);
-              claimArmRef.current = 0;
-            }
-          }}
-          disabled={isPending || isMining}
-          className={`w-full h-14 rounded-xl font-semibold text-white ${
-            (isPending || isMining) ? "bg-zinc-700 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-500"
-          }`}
-        >
-          {isPending || isMining ? "Claiming…" : (claimArmed ? "Click again to CONFIRM" : "CLAIM TO WALLET")}
-        </button>
-      </div>
-
-      {/* סטטוסים קלים */}
-      <div className="text-xs opacity-70">
-        Anti-bot: double-click within {CONFIG.DOUBLE_CLICK_WINDOW_MS}ms to confirm.&nbsp;
-        {txHash && (
-          <span className="ml-1">
-            TX: {txHash.slice(0, 8)}… {isConfirmed ? "✓ Confirmed" : "⏳ Pending"}
-          </span>
-        )}
-      </div>
+      <div className="text-xs opacity-60">Temporary online</div>
     </div>
-  </Section>
-
-  {/* B) BRIDGE — משיכת מטבעות מהמשחק MLEO-MINERS */}
-  <Section
-    title="Bridge from MLEO-MINERS"
-    right={
-      <div className="text-xs opacity-70">
-        Other game vault: <b>{fmt(otherVault)}</b>&nbsp;
-        <button className="underline" onClick={refreshOtherVault}>refresh</button>
-      </div>
-    }
-  >
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <input
-          type="number"
-          className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none w-40"
-          value={bridgeAmount}
-          onChange={e=>setBridgeAmount(e.target.value)}
-          placeholder="Amount"
-          min="0"
-        />
-        <button
-          onClick={bridgeFromOther}
-          disabled={(Number(bridgeAmount)||0) <= 0}
-          className={`h-12 px-5 rounded-xl font-semibold text-white ${
-            (Number(bridgeAmount)||0) <= 0 ? "bg-zinc-700 cursor-not-allowed" : "bg-teal-600 hover:bg-teal-500"
-          }`}
-        >
-          BRIDGE → VALUT
-        </button>
-      </div>
-      <div className="text-sm opacity-70">
-        Move tokens from your <b>MLEO-MINERS</b> local vault for upgrades here.
-      </div>
-    </div>
-  </Section>
-
-  {/* C) INFO */}
-  <Section title="Info">
-    <ul className="list-disc pl-5 space-y-1 text-sm opacity-80">
-      <li>Gifts every {CONFIG.GIFT_COOLDOWN_SEC/3600}h; Daily bonus resets at local midnight.</li>
-      <li>Idle 5m → OFFLINE; OFFLINE accrual capped at {CONFIG.OFFLINE_MAX_HOURS}h.</li>
-      <li>On-chain Claim requires BSC Testnet (97).</li>
-    </ul>
-  </Section>
-
+    <button
+      onClick={wake}
+      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white"
+    >
+      WAKE
+    </button>
+  </div>
 </div>
 
+
+          {/* PART 15 — BALANCE, WALLET & BRIDGE */}
+          <div className="grid lg:grid-cols-3 gap-4 mb-6">
+
+            {/* A) BALANCE & ACTIONS */}
+<Section title="Balance & Actions">
+  <div className="flex flex-col gap-4">
+    {/* BALANCE להצגת יתרה לשדרוגים */}
+    <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex items-center justify-between">
+      <div className="text-sm opacity-70">BALANCE (available for upgrades)</div>
+      <div className="text-3xl font-bold tabular-nums">{fmt(core.balance)}</div>
+    </div>
+
+    {/* שני כפתורים בלבד: VAULT→BALANCE, ו-CLAIM לארנק */}
+    <div className="grid sm:grid-cols-2 gap-3">
+      <button
+        onClick={claimVaultToBalance}
+        className="w-full h-14 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+      >
+        CLAIM TO VAULT
+      </button>
+
+      <button
+        onClick={withdrawAllToWallet}
+        disabled={isPending || isMining}
+        className={`w-full h-14 rounded-xl font-semibold text-white ${
+          (isPending || isMining) ? "bg-zinc-700 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-500"
+        }`}
+      >
+        {isPending || isMining ? "Claiming…" : (claimArmed ? "Click again to CONFIRM" : "CLAIM TO WALLET")}
+      </button>
+    </div>
+
+    {/* מידע קצר + מצב VAULT לצפייה */}
+    <div className="flex items-center justify-between text-xs opacity-70">
+      <span>Anti-bot: double-click within {CONFIG.DOUBLE_CLICK_WINDOW_MS}ms to confirm.</span>
+      <span>VAULT: {fmt(core.vault)}</span>
+    </div>
+
+    {txHash && (
+      <div className="text-xs opacity-80">
+        TX: {txHash.slice(0, 8)}… {isConfirmed ? "✓ Confirmed" : "⏳ Pending"}
+      </div>
+    )}
+  </div>
+</Section>
+
+
+            {/* B) BRIDGE — מה-MLEO-MINERS אל BALANCE כאן */}
+            <Section
+              title="Bridge from MLEO-MINERS"
+              right={
+                <div className="text-xs opacity-70">
+                  Other game vault: <b>{fmt(otherVault)}</b>&nbsp;
+                  <button className="underline" onClick={refreshOtherVault}>refresh</button>
+                </div>
+              }
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm outline-none w-40"
+                    value={bridgeAmount}
+                    onChange={e=>setBridgeAmount(e.target.value)}
+                    placeholder="Amount"
+                    min="0"
+                  />
+                  <button
+                    onClick={bridgeFromOther}
+                    disabled={(Number(bridgeAmount)||0) <= 0}
+                    className={`h-12 px-5 rounded-xl font-semibold text-white ${
+                      (Number(bridgeAmount)||0) <= 0 ? "bg-zinc-700 cursor-not-allowed" : "bg-teal-600 hover:bg-teal-500"
+                    }`}
+                  >
+                    BRIDGE → 
+                  </button>
+                </div>
+                <div className="text-sm opacity-70">
+                  Move tokens from your <b>MLEO-MINERS</b> local vault into your BALANCE for upgrades.
+                </div>
+              </div>
+            </Section>
+
+            {/* C) INFO */}
+            <Section title="Info">
+              <ul className="list-disc pl-5 space-y-1 text-sm opacity-80">
+                <li>Gifts every {CONFIG.GIFT_COOLDOWN_SEC/3600}h; Daily bonus resets at local midnight.</li>
+                <li>Idle 5m → OFFLINE; OFFLINE accrual capped at {CONFIG.OFFLINE_MAX_HOURS}h.</li>
+                <li>On-chain Claim uses your BALANCE and requires BSC Testnet (97).</li>
+              </ul>
+            </Section>
+
+          </div>
+
           {/* PART 16 — UPGRADES */}
-          <Section title="Upgrades">
+          <Section
+            title="Upgrades"
+            right={
+              <div className="text-xs opacity-70">
+                Balance: <b className="tabular-nums">{fmt(core.balance)}</b>
+              </div>
+            }
+          >
             <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
               {CONFIG.UPGRADES.map(u => {
                 const lvl = core.upgrades[u.id] || 0;
                 const maxed = lvl >= u.maxLvl;
                 const cost = calcUpgradeCost(u.baseCost, lvl);
+                const cantAfford = core.balance < cost;
+
                 return (
-                  <div key={u.id} className="rounded-xl p-3 bg-white/5 border border-white/10">
-                    <div className="font-semibold">{u.name}</div>
-                    <div className="text-xs opacity-70">Level: {lvl}/{u.maxLvl}</div>
-                    <div className="text-xs opacity-70 mb-2">+{Math.round(u.mult*100)}% / level</div>
-                    <ActionButton onClick={()=>buyUpgrade(u.id)} disabled={maxed || core.vault < cost}>
-                      {maxed ? "MAX" : `Buy (${fmt(cost)})`}
-                    </ActionButton>
+                  <div key={u.id} className="rounded-xl p-4 bg-white/5 border border-white/10 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold">{u.name}</div>
+                      <div className="text-xs px-2 py-0.5 rounded bg-white/10 border border-white/10">
+                        Lv {lvl}/{u.maxLvl}
+                      </div>
+                    </div>
+
+                    <div className="text-xs opacity-70">+{Math.round(u.mult * 100)}% / level</div>
+
+                    <div className="mt-1 flex items-center justify-between text-sm">
+                      <span className="opacity-70">Cost</span>
+                      <span className="font-semibold tabular-nums">{fmt(cost)}</span>
+                    </div>
+
+                    <button
+                      onClick={() => buyUpgrade(u.id)}
+                      disabled={maxed || cantAfford}
+                      className={[
+                        "mt-2 w-full h-11 rounded-xl font-semibold text-white",
+                        maxed
+                          ? "bg-zinc-700 cursor-not-allowed"
+                          : cantAfford
+                          ? "bg-zinc-700 cursor-not-allowed"
+                          : "bg-emerald-600 hover:bg-emerald-500"
+                      ].join(" ")}
+                    >
+                      {maxed ? "MAXED" : cantAfford ? "Not enough BALANCE" : `Buy for ${fmt(cost)}`}
+                    </button>
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-3 text-xs opacity-70">
+              Upgrades are paid from <b>BALANCE</b>. Collect VAULT → BALANCE first, or Bridge from MLEO-MINERS.
             </div>
           </Section>
 
@@ -770,17 +857,15 @@ export default function MLEOTokenRushPage() {
             )}
           </Section>
 
-{/* PART 18 — הוחלף (אין טבלה) */}
-
-<Section title="Economy & Limits">
-  <ul className="list-disc pl-6 space-y-1 text-sm opacity-80">
-    <li>All 100B tokens are distributed via gameplay only.</li>
-    <li>Idle 5m → OFFLINE; wake by any real input. OFFLINE accrual capped at {CONFIG.OFFLINE_MAX_HOURS}h.</li>
-    <li>Gifts every {CONFIG.GIFT_COOLDOWN_SEC/3600}h; Daily resets at local midnight.</li>
-    <li>On-chain Claim requires BSC Testnet (97) and double-click confirm.</li>
-  </ul>
-</Section>
-
+          {/* PART 18 — Economy & Limits */}
+          <Section title="Economy & Limits">
+            <ul className="list-disc pl-6 space-y-1 text-sm opacity-80">
+              <li>All 100B tokens are distributed via gameplay only.</li>
+              <li>Idle 5m → OFFLINE; wake by any real input. OFFLINE accrual capped at {CONFIG.OFFLINE_MAX_HOURS}h.</li>
+              <li>Gifts every {CONFIG.GIFT_COOLDOWN_SEC/3600}h; Daily resets at local midnight.</li>
+              <li>On-chain Claim requires BSC Testnet (97) and double-click confirm.</li>
+            </ul>
+          </Section>
 
           {/* PART 19 — ANTI-BOT HONEYPOT */}
           <HoneypotButton onTriggered={()=>setBotFlag(true)} />
