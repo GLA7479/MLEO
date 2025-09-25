@@ -1123,29 +1123,37 @@ export default function MLEOTokenRushPage() {
   <Stat label="VAULT" value={fmt(core.vault)} sub="Unclaimed pool" />
   <Stat label="Total mined" value={fmt(core.totalMined)} sub={`Mult ${mult.toFixed(2)}×`} />
 
-  {/* BOOST with bar — mobile-friendly */}
-  <div className="rounded-2xl p-4 bg-white/5 border border-white/10 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
-    <div className="min-w-0 sm:min-w-[160px] flex-1">
+{/* BOOST with bar — WAKE inline */}
+<div className="rounded-2xl p-4 bg-white/5 border border-white/10 shadow-sm flex flex-col gap-2">
+  {/* header line: label + % + WAKE */}
+  <div className="flex items-center justify-between">
+    <div className="flex items-baseline gap-2">
       <div className="text-xs uppercase opacity-70">BOOST</div>
       <div className="text-2xl font-semibold">{Math.round((sess.boost || 0) * 100)}%</div>
-      <div className="w-full h-2 rounded bg-white/10 mt-2 overflow-hidden">
-        <div className="h-full bg-emerald-500" style={{ width: `${(sess.boost || 0) * 100}%` }} />
-      </div>
-      <div className="text-xs opacity-60 mt-1">Decays automatically</div>
     </div>
 
     <button
       onClick={wake}
       aria-label={core.mode === "online" ? "Wake (ping activity)" : "Wake from offline and auto-claim"}
       className={[
-        "w-full sm:w-auto px-3 py-2 rounded-xl text-white text-center",
-        core.mode === "online" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-amber-600 hover:bg-amber-500"
+        "px-3 py-1.5 rounded-lg text-white text-sm",
+        core.mode === "online"
+          ? "bg-emerald-600 hover:bg-emerald-500"
+          : "bg-amber-600 hover:bg-amber-500"
       ].join(" ")}
       title={core.mode === "online" ? "Ping activity (+boost)" : "Wake from offline & auto-claim"}
     >
       WAKE
     </button>
   </div>
+
+  {/* bar */}
+  <div className="w-full h-2 rounded bg-white/10 overflow-hidden">
+    <div className="h-full bg-emerald-500" style={{ width: `${(sess.boost || 0) * 100}%` }} />
+  </div>
+  <div className="text-xs opacity-60">Decays automatically</div>
+</div>
+
 </div>
 
 
