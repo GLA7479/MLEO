@@ -919,29 +919,72 @@ export default function MLEOTokenRushPage() {
   };
 
   // ---------- On-chain CLAIM to wallet ----------
-  const withdrawAllToWallet = async () => {
+ const withdrawAllToWallet = async () => {
+  try {
     const amount = Math.floor(core.balance || 0);
-    if (amount <= 0) { alert("Nothing to claim"); return; }
+    if (!ENV.CLAIM_ADDRESS) { alert("CLAIM_ADDRESS env is missing"); return; }
+    if (amount <= 0)        { alert("Nothing to claim"); return; }
+
+    // anti-bot double click
     if (!claimArmed) { armClaimOnce(); return; }
+
+    // network & wallet
     if (chainId !== ENV.CLAIM_CHAIN_ID) {
-      try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); return; }
-      catch { alert("Switch network to BSC Testnet (97)"); return; }
+      try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); }
+      catch { alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`); }
+      return;
     }
     if (!isConnected) { alert("Connect wallet first"); return; }
-    const units = toUnits(amount);
+
+    const units = toUnits(amount); // BigInt
+
+    // viem client for simulation (comes from wagmi)
+    const client = (await import("wagmi")).getPublicClient();
+
+    // helper: simulate then write
+    const tryClaim = async (abi, args) => {
+      // 1) simulate to get readable error if revert
+      await client.simulateContract({
+        address: ENV.CLAIM_ADDRESS,
+        abi,
+        functionName: ENV.CLAIM_FN,
+        args,
+        account: undefined, // simulation only
+      });
+      // 2) send tx
+      await writeContract({
+        address: ENV.CLAIM_ADDRESS,
+        abi,
+        functionName: ENV.CLAIM_FN,
+        args,
+      });
+    };
+
     try {
-      await writeContract({ address: ENV.CLAIM_ADDRESS, abi: CLAIM_ABI_ONE_ARG, functionName: ENV.CLAIM_FN, args: [units] });
+      // קודם חד־פרמטר
+      await tryClaim(CLAIM_ABI_ONE_ARG, [units]);
     } catch (e1) {
+      // אם נכשל — ננסה דו־פרמטר (gameId, amount)
       try {
-        await writeContract({ address: ENV.CLAIM_ADDRESS, abi: CLAIM_ABI_TWO_ARGS, functionName: ENV.CLAIM_FN, args: [BigInt(ENV.GAME_ID), units] });
+        await tryClaim(CLAIM_ABI_TWO_ARGS, [BigInt(ENV.GAME_ID), units]);
       } catch (e2) {
+        // חילוץ סיבת שגיאה קריאה
+        const msg =
+          (e1?.shortMessage || e1?.cause?.shortMessage || e1?.message) ||
+          (e2?.shortMessage || e2?.cause?.shortMessage || e2?.message) ||
+          "TX rejected or reverted by contract";
         console.error("claim failed", e1, e2);
-        alert("TX rejected or failed");
+        alert(msg);
       }
     } finally {
       setClaimArmed(false); claimArmRef.current = 0;
     }
-  };
+  } catch (err) {
+    console.error(err);
+    alert(err?.shortMessage || err?.message || "Unexpected error");
+    setClaimArmed(false); claimArmRef.current = 0;
+  }
+};
 
   // ---------- Upgrades ----------
   function buyUpgrade(id) {
@@ -1072,31 +1115,39 @@ export default function MLEOTokenRushPage() {
         {core.mode.toUpperCase()}
       </span>
     }
-    sub={core.mode === "online" ? "Auto online • 5m idle → offline" :
-      `Offline • click WAKE to auto-claim (cap ${CONFIG.OFFLINE_MAX_HOURS}h)`}
+    sub={core.mode === "online"
+      ? "Auto online • 5m idle → offline"
+      : `Offline • click WAKE to auto-claim (cap ${CONFIG.OFFLINE_MAX_HOURS}h)`}
   />
+
   <Stat label="VAULT" value={fmt(core.vault)} sub="Unclaimed pool" />
   <Stat label="Total mined" value={fmt(core.totalMined)} sub={`Mult ${mult.toFixed(2)}×`} />
 
-  {/* BOOST with bar */}
-  <div className="rounded-2xl p-4 bg-white/5 border border-white/10 shadow-sm flex items-center justify-between">
-    <div className="min-w-[160px]">
+  {/* BOOST with bar — mobile-friendly */}
+  <div className="rounded-2xl p-4 bg-white/5 border border-white/10 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
+    <div className="min-w-0 sm:min-w-[160px] flex-1">
       <div className="text-xs uppercase opacity-70">BOOST</div>
       <div className="text-2xl font-semibold">{Math.round((sess.boost || 0) * 100)}%</div>
       <div className="w-full h-2 rounded bg-white/10 mt-2 overflow-hidden">
-        <div className="h-full bg-emerald-500" style={{ width: `${(sess.boost||0) * 100}%` }} />
+        <div className="h-full bg-emerald-500" style={{ width: `${(sess.boost || 0) * 100}%` }} />
       </div>
       <div className="text-xs opacity-60 mt-1">Decays automatically</div>
     </div>
+
     <button
       onClick={wake}
-      className={`px-3 py-2 rounded-xl text-white ${core.mode==="online" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-amber-600 hover:bg-amber-500"}`}
-      title={core.mode==="online" ? "Ping activity (+boost)" : "Wake from offline & auto-claim"}
+      aria-label={core.mode === "online" ? "Wake (ping activity)" : "Wake from offline and auto-claim"}
+      className={[
+        "w-full sm:w-auto px-3 py-2 rounded-xl text-white text-center",
+        core.mode === "online" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-amber-600 hover:bg-amber-500"
+      ].join(" ")}
+      title={core.mode === "online" ? "Ping activity (+boost)" : "Wake from offline & auto-claim"}
     >
-      {core.mode==="online" ? "WAKE" : "WAKE"}
+      WAKE
     </button>
   </div>
 </div>
+
 
 {/* PART 16.3 — ACTIONS & BRIDGE & INFO */}
 <div className="grid lg:grid-cols-3 gap-4 mb-6">
