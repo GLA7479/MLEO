@@ -1093,7 +1093,7 @@ export default function MLEOTokenRushPage() {
       className={`px-3 py-2 rounded-xl text-white ${core.mode==="online" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-amber-600 hover:bg-amber-500"}`}
       title={core.mode==="online" ? "Ping activity (+boost)" : "Wake from offline & auto-claim"}
     >
-      {core.mode==="online" ? "WAKE" : "WAKE (OFFLINE)"}
+      {core.mode==="online" ? "WAKE" : "WAKE"}
     </button>
   </div>
 </div>
