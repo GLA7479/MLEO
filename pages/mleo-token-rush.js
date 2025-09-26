@@ -26,9 +26,11 @@ import {
   useSwitchChain,
   useChainId,
   useConnect,
-  useDisconnect
+  useDisconnect,
+  usePublicClient   // ✅ עכשיו זה נכון
 } from "wagmi";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
+
 
 
 // ============================================================================
@@ -819,12 +821,14 @@ export default function MLEOTokenRushPage() {
     );
 
   // ---------------- wagmi hooks (CLAIM on-chain) ----------------
-  const { isConnected } = useAccount();
+    const { isConnected, address } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isMining, isSuccess: isConfirmed } =
     useWaitForTransactionReceipt({ hash: txHash });
+  const publicClient = usePublicClient(); // ✅ שימוש חדש
+
 
   // אחרי אישור טרנזאקציה — מאפסים BALANCE
   useEffect(() => {
@@ -919,72 +923,67 @@ export default function MLEOTokenRushPage() {
   };
 
   // ---------- On-chain CLAIM to wallet ----------
- const withdrawAllToWallet = async () => {
-  try {
-    const amount = Math.floor(core.balance || 0);
-    if (!ENV.CLAIM_ADDRESS) { alert("CLAIM_ADDRESS env is missing"); return; }
-    if (amount <= 0)        { alert("Nothing to claim"); return; }
-
-    // anti-bot double click
-    if (!claimArmed) { armClaimOnce(); return; }
-
-    // network & wallet
-    if (chainId !== ENV.CLAIM_CHAIN_ID) {
-      try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); }
-      catch { alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`); }
-      return;
-    }
-    if (!isConnected) { alert("Connect wallet first"); return; }
-
-    const units = toUnits(amount); // BigInt
-
-    // viem client for simulation (comes from wagmi)
-    const client = (await import("wagmi")).getPublicClient();
-
-    // helper: simulate then write
-    const tryClaim = async (abi, args) => {
-      // 1) simulate to get readable error if revert
-      await client.simulateContract({
-        address: ENV.CLAIM_ADDRESS,
-        abi,
-        functionName: ENV.CLAIM_FN,
-        args,
-        account: undefined, // simulation only
-      });
-      // 2) send tx
-      await writeContract({
-        address: ENV.CLAIM_ADDRESS,
-        abi,
-        functionName: ENV.CLAIM_FN,
-        args,
-      });
-    };
-
+   const withdrawAllToWallet = async () => {
     try {
-      // קודם חד־פרמטר
-      await tryClaim(CLAIM_ABI_ONE_ARG, [units]);
-    } catch (e1) {
-      // אם נכשל — ננסה דו־פרמטר (gameId, amount)
-      try {
-        await tryClaim(CLAIM_ABI_TWO_ARGS, [BigInt(ENV.GAME_ID), units]);
-      } catch (e2) {
-        // חילוץ סיבת שגיאה קריאה
-        const msg =
-          (e1?.shortMessage || e1?.cause?.shortMessage || e1?.message) ||
-          (e2?.shortMessage || e2?.cause?.shortMessage || e2?.message) ||
-          "TX rejected or reverted by contract";
-        console.error("claim failed", e1, e2);
-        alert(msg);
+      const amount = Math.floor(core.balance || 0);
+      if (!ENV.CLAIM_ADDRESS) { alert("CLAIM_ADDRESS env is missing"); return; }
+      if (amount <= 0)        { alert("Nothing to claim"); return; }
+
+      // anti-bot double click
+      if (!claimArmed) { armClaimOnce(); return; }
+
+      // network & wallet
+      if (chainId !== ENV.CLAIM_CHAIN_ID) {
+        try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); }
+        catch { alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`); }
+        return;
       }
-    } finally {
+      if (!isConnected) { alert("Connect wallet first"); return; }
+
+      const units = toUnits(amount); // BigInt
+
+      // helper: simulate then write
+      const tryClaim = async (abi, args) => {
+        // 1) simulate
+        await publicClient.simulateContract({
+          address: ENV.CLAIM_ADDRESS,
+          abi,
+          functionName: ENV.CLAIM_FN,
+          args,
+          account: address, // ✅ נדרש עבור סימולציה
+        });
+        // 2) send tx
+        await writeContract({
+          address: ENV.CLAIM_ADDRESS,
+          abi,
+          functionName: ENV.CLAIM_FN,
+          args,
+        });
+      };
+
+      try {
+        await tryClaim(CLAIM_ABI_ONE_ARG, [units]);
+      } catch (e1) {
+        try {
+          await tryClaim(CLAIM_ABI_TWO_ARGS, [BigInt(ENV.GAME_ID), units]);
+        } catch (e2) {
+          const msg =
+            (e1?.shortMessage || e1?.cause?.shortMessage || e1?.message) ||
+            (e2?.shortMessage || e2?.cause?.shortMessage || e2?.message) ||
+            "TX rejected or reverted by contract";
+          console.error("claim failed", e1, e2);
+          alert(msg);
+        }
+      } finally {
+        setClaimArmed(false); claimArmRef.current = 0;
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err?.shortMessage || err?.message || "Unexpected error");
       setClaimArmed(false); claimArmRef.current = 0;
     }
-  } catch (err) {
-    console.error(err);
-    alert(err?.shortMessage || err?.message || "Unexpected error");
-    setClaimArmed(false); claimArmRef.current = 0;
-  }
-};
+  };
+
 
   // ---------- Upgrades ----------
   function buyUpgrade(id) {
