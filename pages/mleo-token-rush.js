@@ -30,6 +30,8 @@ import {
   usePublicClient   // ✅ עכשיו זה נכון
 } from "wagmi";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
+import Link from "next/link";
+
 
 
 
@@ -1082,7 +1084,17 @@ export default function MLEOTokenRushPage() {
         <div className="max-w-6xl mx-auto p-4">
 
 {/* PART 16.1 — HEADER */}
-<header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+<header className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+  {/* כפתור BACK למובייל — קבוע בפינה הימנית העליונה */}
+  <Link
+    href="/"
+    className="sm:hidden absolute top-2 right-2 px-3 py-1.5 rounded-full text-xs font-bold
+               bg-white/5 border border-white/10 hover:bg-white/10"
+    aria-label="Back to Home"
+  >
+    BACK
+  </Link>
+
   <div>
     <h1 className="text-2xl font-bold">MLEO Token Rush</h1>
     <div className="text-sm opacity-70">100B via gameplay only • idle→offline after 5m</div>
@@ -1098,10 +1110,20 @@ export default function MLEOTokenRushPage() {
       <Chip>Squad: +{Math.round((squadMult()-1)*100)}%</Chip>
     </div>
   </div>
-  <div className="flex items-center gap-2">
+
+  {/* צד ימין בדסקטופ: Wallet + BACK */}
+  <div className="hidden sm:flex items-center gap-2">
     <WalletStatus />
+    <Link
+      href="/"
+      className="px-3 py-2 rounded-full text-xs font-bold bg-white/5 border border-white/10 hover:bg-white/10"
+      aria-label="Back to Home"
+    >
+      BACK
+    </Link>
   </div>
 </header>
+
 
 {/* PART 16.2 — TOP STATS */}
 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
