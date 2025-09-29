@@ -39,13 +39,13 @@ import Link from "next/link";
 // PART 1 — CONFIG & CONSTANTS
 // ============================================================================
 const LS_KEYS = {
-  CORE: "mleo_token_rush_core_v2",
-  SESSION: "mleo_token_rush_session_v2",
-  LEADERBOARD: "mleo_token_rush_lb_v1",
-  QUESTS: "mleo_token_rush_quests_v1",
-  SOCIAL: "mleo_token_rush_social_v1",
-  TECH: "mleo_token_rush_tech_v1",
-  GUILDWARS: "mleo_token_rush_gw_v1",
+  CORE: "mleo_token_rush_core_v2.1",
+  SESSION: "mleo_token_rush_session_v2.1",
+  LEADERBOARD: "mleo_token_rush_lb_v1.1",
+  QUESTS: "mleo_token_rush_quests_v1.1",
+  SOCIAL: "mleo_token_rush_social_v1.1",
+  TECH: "mleo_token_rush_tech_v1.1",
+  GUILDWARS: "mleo_token_rush_gw_v1.1",
 };
 
 // קובץ ה-Core של המשחק הישן (mleo-miners) ב-localStorage — לשימוש ה־Bridge
