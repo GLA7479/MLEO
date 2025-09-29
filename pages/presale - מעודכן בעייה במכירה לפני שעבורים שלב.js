@@ -74,35 +74,6 @@ const fmtNum = (n) => (Number.isFinite(n) ? nf.format(n) : "—");
 const shorten = (a) => (a ? `${a.slice(0,6)}…${a.slice(-4)}` : "—");
 const fmtTiny = (n, d = 12) => (n || n === 0 ? n.toFixed(d).replace(/0+$/,"").replace(/\.$/,"") : "—");
 
-// tokensForValue — חישוב כמו בחוזה (פיצול בין שלבים)
-function tokensForValueStageAware({ valueWei, totalSold, pricesWei, thresholdsWei }) {
-  if (!valueWei || !pricesWei?.length || !thresholdsWei?.length) return 0n;
-  let budget = valueWei;
-  let sold = totalSold;
-  let bought = 0n;
-
-  for (let i = 0; i < pricesWei.length && budget > 0n; i++) {
-    const cap = thresholdsWei[i];
-    const available = cap > sold ? (cap - sold) : 0n;
-    if (available === 0n) { sold = cap; continue; }
-
-    const price = pricesWei[i];
-    const maxByBudget = (budget * E18) / price;
-    if (maxByBudget === 0n) break;
-
-    const take = maxByBudget < available ? maxByBudget : available;
-    const cost = (take * price) / E18;
-
-    bought += take;
-    budget -= cost;
-    sold += take;
-
-    if (take < available) break; // נגמר התקציב בתוך השלב
-  }
-  return bought; // ב-wei של הטוקן (18d)
-}
-
-
 /* ======= Hydration-safe number ======= */
 function Num({ mounted, value, placeholder = "0", className = "" }) {
   return (
@@ -334,26 +305,29 @@ export default function Presale() {
   }
 
   async function onBuy() {
-  if (!PRESALE_ADDRESS) return alert("Missing PRESALE address (env).");
-  if (isPaused) return alert("Presale is paused.");
-  try { await ensureRightChain(PRESALE_CHAIN_ID); } catch { return alert("Switch to BSC Testnet (97)."); }
+    if (!PRESALE_ADDRESS) return alert("Missing PRESALE address (env).");
+    if (isPaused) return alert("Presale is paused.");
+    try { await ensureRightChain(PRESALE_CHAIN_ID); } catch { return alert("Switch to BSC Testnet (97)."); }
 
-  const value = parseEther(String(amount || "0"));
-  if (value <= 0n) return alert("Enter amount in tBNB (e.g., 0.05).");
+    const value = parseEther(String(amount || "0"));
+    if (value <= 0n) return alert("Enter amount in tBNB (e.g., 0.05).");
+    if (!targetPriceWei || targetPriceWei === 0n) return alert("Stage price not set.");
 
-  // קנייה לפי סכום — החוזה יפצל בין שלבים ויחזיר עודף אוטומטית
-  try {
-    writeContract({
-      address: PRESALE_ADDRESS,
-      abi: PRESALE_ABI,
-      functionName: "buyForValue",
-      args: [],
-      chainId: PRESALE_CHAIN_ID,
-      value,
-    });
-  } catch (e) { console.error(e); alert("Buy failed"); }
-}
+    // החוזה תומך גם בקנייה לפי סכום (buyForValue), אבל נשמור על buy(amount) כמו שהיה
+    const tokenAmountWei = (value * E18) / targetPriceWei;
+    if (tokenAmountWei <= 0n) return alert("Too low amount for current price.");
 
+    try {
+      writeContract({
+        address: PRESALE_ADDRESS,
+        abi: PRESALE_ABI,
+        functionName: "buy",
+        args: [tokenAmountWei],
+        chainId: PRESALE_CHAIN_ID,
+        value,
+      });
+    } catch (e) { console.error(e); alert("Buy failed"); }
+  }
 
   // CLAIM
   const { writeContract: writeClaim, data: claimTx, isPending: isClaiming } = useWriteContract();

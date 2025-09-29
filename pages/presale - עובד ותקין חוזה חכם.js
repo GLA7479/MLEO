@@ -35,30 +35,33 @@ const BNB_USD_OVERRIDE = Number(process.env.NEXT_PUBLIC_BNB_USD || 1000);
 const ROUND_SECONDS = Number(process.env.NEXT_PUBLIC_ROUND_SECONDS || 3 * 24 * 60 * 60);
 const ROUND_ANCHOR_TS = Number(process.env.NEXT_PUBLIC_ROUND_ANCHOR_TS || 0);
 
-/* =============== PRESALE ABI (מותאם לחוזה החדש) =============== */
+/* =============== PRESALE ABI (עם CLAIM) =============== */
 const PRESALE_ABI = [
   // core
   { type: "function", name: "buy", stateMutability: "payable", inputs: [{ name: "tokenAmount", type: "uint256" }], outputs: [] },
-  { type: "function", name: "buyForValue", stateMutability: "payable", inputs: [], outputs: [] },
-
   { type: "function", name: "tokensSold", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "stageCount", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "currentStage", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "paused", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
   { type: "function", name: "owner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
 
-  // price (WEI per token)
+  // price access (מנסים כמה חתימות נפוצות; יוצג המחיר הראשון שיחזור בהצלחה)
+  { type: "function", name: "stageInfo", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }] },
   { type: "function", name: "priceWei", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "tokenPriceWei", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "pricePerTokenWei", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
 
-  // claim API (שימו לב: amount חובה)
+  // claim API
   { type:"function", name:"purchasedOf", stateMutability:"view", inputs:[{type:"address"}], outputs:[{type:"uint256"}] },
   { type:"function", name:"claimedOf",   stateMutability:"view", inputs:[{type:"address"}], outputs:[{type:"uint256"}] },
   { type:"function", name:"claimableOf", stateMutability:"view", inputs:[{type:"address"}], outputs:[{type:"uint256"}] },
   { type:"function", name:"claimEnabled",stateMutability:"view", inputs:[], outputs:[{type:"bool"}] },
-  { type:"function", name:"claim",       stateMutability:"nonpayable", inputs:[{type:"uint256"}], outputs:[] },
+  { type:"function", name:"claim",       stateMutability:"nonpayable", inputs:[], outputs:[] },
 
-  // (אופציונלי) raw threshold ל-UI ישן
-  { type:"function", name:"stageSoldThresholdRaw", stateMutability:"view", inputs:[{type:"uint256"}], outputs:[{type:"uint256"}] },
+  // admin (לא בשימוש כאן)
+  { type: "function", name: "setAutoClaimAfterBuy", stateMutability: "nonpayable", inputs: [{ type: "bool" }], outputs: [] },
+  { type: "function", name: "pause", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "unpause", stateMutability: "nonpayable", inputs: [], outputs: [] }
 ];
 
 //END PART 1
@@ -73,35 +76,6 @@ const nf = new Intl.NumberFormat("en-US");
 const fmtNum = (n) => (Number.isFinite(n) ? nf.format(n) : "—");
 const shorten = (a) => (a ? `${a.slice(0,6)}…${a.slice(-4)}` : "—");
 const fmtTiny = (n, d = 12) => (n || n === 0 ? n.toFixed(d).replace(/0+$/,"").replace(/\.$/,"") : "—");
-
-// tokensForValue — חישוב כמו בחוזה (פיצול בין שלבים)
-function tokensForValueStageAware({ valueWei, totalSold, pricesWei, thresholdsWei }) {
-  if (!valueWei || !pricesWei?.length || !thresholdsWei?.length) return 0n;
-  let budget = valueWei;
-  let sold = totalSold;
-  let bought = 0n;
-
-  for (let i = 0; i < pricesWei.length && budget > 0n; i++) {
-    const cap = thresholdsWei[i];
-    const available = cap > sold ? (cap - sold) : 0n;
-    if (available === 0n) { sold = cap; continue; }
-
-    const price = pricesWei[i];
-    const maxByBudget = (budget * E18) / price;
-    if (maxByBudget === 0n) break;
-
-    const take = maxByBudget < available ? maxByBudget : available;
-    const cost = (take * price) / E18;
-
-    bought += take;
-    budget -= cost;
-    sold += take;
-
-    if (take < available) break; // נגמר התקציב בתוך השלב
-  }
-  return bought; // ב-wei של הטוקן (18d)
-}
-
 
 /* ======= Hydration-safe number ======= */
 function Num({ mounted, value, placeholder = "0", className = "" }) {
@@ -204,29 +178,36 @@ export default function Presale() {
 
   // Reads (Presale)
   const presaleCommon = { address: PRESALE_ADDRESS, abi: PRESALE_ABI, chainId: PRESALE_CHAIN_ID, query: { enabled: !!PRESALE_ADDRESS } };
-  const { data: tokensSold } = useReadContract({ ...presaleCommon, functionName: "tokensSold" });
-  const { data: stageCnt }   = useReadContract({ ...presaleCommon, functionName: "stageCount" });
-  const { data: curStage }   = useReadContract({ ...presaleCommon, functionName: "currentStage" });
-  const { data: pausedFlag } = useReadContract({ ...presaleCommon, functionName: "paused" });
-  const { data: owner }      = useReadContract({ ...presaleCommon, functionName: "owner" });
+  const { data: tokensSold }     = useReadContract({ ...presaleCommon, functionName: "tokensSold" });
+  const { data: stageCnt }       = useReadContract({ ...presaleCommon, functionName: "stageCount" });
+  const { data: curStage }       = useReadContract({ ...presaleCommon, functionName: "currentStage" });
+  const { data: pausedFlag }     = useReadContract({ ...presaleCommon, functionName: "paused" });
+  const { data: owner }          = useReadContract({ ...presaleCommon, functionName: "owner" });
 
-  // Price (מהחוזה בלבד; אין יותר USD/BNB בפנים)
-  const { data: priceWei_plain } = useReadContract({ ...presaleCommon, functionName: "priceWei" });
+  // Price from contract (ניסיון בכמה חתימות)
+  const { data: priceWeiStageInfo } = useReadContract({
+    ...presaleCommon,
+    functionName: "stageInfo",
+    args: curStage != null ? [curStage] : undefined,
+    query: { enabled: !!(PRESALE_ADDRESS && curStage != null) }
+  });
+  const { data: priceWei_plain }      = useReadContract({ ...presaleCommon, functionName: "priceWei" });
+  const { data: priceWei_tokenPrice } = useReadContract({ ...presaleCommon, functionName: "tokenPriceWei" });
+  const { data: priceWei_perToken }   = useReadContract({ ...presaleCommon, functionName: "pricePerTokenWei" });
 
   // Claim data
-  const { data: purchasedWei } = useReadContract({ ...presaleCommon, functionName: "purchasedOf", args: address ? [address] : undefined, query: { enabled: !!(PRESALE_ADDRESS && address) } });
-  const { data: claimedWei }   = useReadContract({ ...presaleCommon, functionName: "claimedOf",   args: address ? [address] : undefined, query: { enabled: !!(PRESALE_ADDRESS && address) } });
-  const { data: claimableWei } = useReadContract({ ...presaleCommon, functionName: "claimableOf", args: address ? [address] : undefined, query: { enabled: !!(PRESALE_ADDRESS && address) } });
-  const { data: claimEnabled } = useReadContract({ ...presaleCommon, functionName: "claimEnabled" });
+  const { data: purchasedWei }   = useReadContract({ ...presaleCommon, functionName: "purchasedOf", args: address ? [address] : undefined, query: { enabled: !!(PRESALE_ADDRESS && address) } });
+  const { data: claimedWei }     = useReadContract({ ...presaleCommon, functionName: "claimedOf",   args: address ? [address] : undefined, query: { enabled: !!(PRESALE_ADDRESS && address) } });
+  const { data: claimableWei }   = useReadContract({ ...presaleCommon, functionName: "claimableOf", args: address ? [address] : undefined, query: { enabled: !!(PRESALE_ADDRESS && address) } });
+  const { data: claimEnabled }   = useReadContract({ ...presaleCommon, functionName: "claimEnabled" });
 
   // persist purchased
   useEffect(() => {
     if (!address || purchasedWei==null) return;
     const val = Number(purchasedWei) / 1e18;
     const rec = { address: address.toLowerCase(), purchased: val, ts: Date.now() };
-    try { localStorage.setItem("mleo_last_purchased", JSON.stringify(rec)); } catch {}
+    try { localStorage.setItem("mleo_last_purchased", JSON.stringify(rec)); setLastKnown(rec); } catch {}
   }, [address, purchasedWei]);
-
 
 //END PART 4
 
@@ -247,7 +228,7 @@ export default function Presale() {
 
   // Stages (ENV fallback בלבד)
   const STAGE_PRICES_WEI = useMemo(() => (RAW_STAGE_PRICES.length ? RAW_STAGE_PRICES.map(v=>BigInt(v)) :
-    [1500000000n,2000000000n,3000000000n,4000000000n,5000000000n,6000000000n,7000000000n,8000000000n,8500000000n,9000000000n]), []);
+    [3750000000n,4200000000n,4704000000n,5268480000n,5900697600n,6608781312n,7401835069n,8290055278n,9284861911n,10399045340n]), []);
   const STAGE_COUNT = STAGE_PRICES_WEI.length;
   const SOLD_THRESHOLDS_E18 = useMemo(() => (RAW_SOLD_THRESHOLDS.length ? RAW_SOLD_THRESHOLDS.map(x=>BigInt(x.replace(/_/g,""))*E18) : []), []);
   const stageBySold = useMemo(() => {
@@ -259,11 +240,27 @@ export default function Presale() {
 
   const activeStageFallback = stageBySold;
 
-  // ---- מחיר מהחוזה (עדיפות) + נפילה ל-ENV ----
-  const priceFromPlain = priceWei_plain ? BigInt(priceWei_plain) : 0n;
+  // ---- מחיר מהחוזה (עדיפות) ----
+  const pickFirstBigInt = (v) => {
+    if (v == null) return 0n;
+    if (Array.isArray(v)) {
+      const x = v[0];
+      return x == null ? 0n : BigInt(x);
+    }
+    try { return BigInt(v); } catch { return 0n; }
+  };
+
+  const priceFromStageInfo = pickFirstBigInt(priceWeiStageInfo);
+  const priceFromPlain     = pickFirstBigInt(priceWei_plain);
+  const priceFromToken     = pickFirstBigInt(priceWei_tokenPrice);
+  const priceFromPerToken  = pickFirstBigInt(priceWei_perToken);
 
   let targetPriceWei = 0n;
-  if (priceFromPlain > 0n) targetPriceWei = priceFromPlain;
+  if (priceFromStageInfo > 0n)       targetPriceWei = priceFromStageInfo;
+  else if (priceFromPlain > 0n)      targetPriceWei = priceFromPlain;
+  else if (priceFromToken > 0n)      targetPriceWei = priceFromToken;
+  else if (priceFromPerToken > 0n)   targetPriceWei = priceFromPerToken;
+  // נפילה ל-ENV אם החוזה לא החזיר מחיר
   if (targetPriceWei === 0n) targetPriceWei = STAGE_PRICES_WEI[activeStageFallback] || 0n;
 
   const nextStage = Math.min(STAGE_COUNT - 1, activeStageFallback + 1);
@@ -292,7 +289,7 @@ export default function Presale() {
   const capTokens  = RAW_SOLD_THRESHOLDS.length ? Number(RAW_SOLD_THRESHOLDS[RAW_SOLD_THRESHOLDS.length - 1]) : 0;
   const progressPct = capTokens > 0 ? Math.min(100, (soldTokens / capTokens) * 100) : 0;
 
-  // Pricing / display (נגזר ישירות מה-WEI לטוקן)
+  // Pricing / display (נגזר **ישירות** מהמחיר שהגיע מהחוזה)
   const priceBNBPerToken = targetPriceWei ? Number(targetPriceWei) / 1e18 : 0; // BNB per token
   const priceUsdPerToken = (targetPriceWei && BNB_USD) ? priceBNBPerToken * BNB_USD : 0;
 
@@ -303,11 +300,11 @@ export default function Presale() {
   const nextPriceUsdPerToken = BNB_USD ? nextPriceBNBPerToken * BNB_USD : 0;
   const nextPriceUsdPerTokenStr = nextPriceUsdPerToken ? fmtTiny(nextPriceUsdPerToken, 9) : "—";
 
-  // Tokens per 1 BNB (BigInt מדויק)
-  const TOKENS_PER_1BNB_WEI = targetPriceWei ? (E18 * E18) / targetPriceWei : 0n;
+  // Tokens per 1 BNB (מדויק באמצעות BigInt)
+  const TOKENS_PER_1BNB_WEI = targetPriceWei ? (E18 * E18) / targetPriceWei : 0n; // token-wei per 1 BNB
   const tokensPer1BNB = Number(TOKENS_PER_1BNB_WEI) / 1e18;
 
-  // Tokens per 1 USD (תצוגה בלבד)
+  // Tokens per 1 USD (נגזר ישירות)
   const tokensPer1USD = BNB_USD ? tokensPer1BNB / BNB_USD : 0;
 
   // חישוב כמות לפי סכום BNB שהוזן (מדויק)
@@ -322,7 +319,6 @@ export default function Presale() {
   const estUsdPay = useMemo(() => BNB_USD ? Number(amount || 0) * BNB_USD : 0, [amount, BNB_USD]);
   const raisedUSD = priceUsdPerToken ? soldTokens * priceUsdPerToken : 0;
 
-
 //END PART 5
 
 
@@ -334,26 +330,28 @@ export default function Presale() {
   }
 
   async function onBuy() {
-  if (!PRESALE_ADDRESS) return alert("Missing PRESALE address (env).");
-  if (isPaused) return alert("Presale is paused.");
-  try { await ensureRightChain(PRESALE_CHAIN_ID); } catch { return alert("Switch to BSC Testnet (97)."); }
+    if (!PRESALE_ADDRESS) return alert("Missing PRESALE address (env).");
+    if (isPaused) return alert("Presale is paused.");
+    try { await ensureRightChain(PRESALE_CHAIN_ID); } catch { return alert("Switch to BSC Testnet (97)."); }
 
-  const value = parseEther(String(amount || "0"));
-  if (value <= 0n) return alert("Enter amount in tBNB (e.g., 0.05).");
+    const value = parseEther(String(amount || "0"));
+    if (value <= 0n) return alert("Enter amount in tBNB (e.g., 0.05).");
+    if (!targetPriceWei || targetPriceWei === 0n) return alert("Stage price not set (ENV).");
 
-  // קנייה לפי סכום — החוזה יפצל בין שלבים ויחזיר עודף אוטומטית
-  try {
-    writeContract({
-      address: PRESALE_ADDRESS,
-      abi: PRESALE_ABI,
-      functionName: "buyForValue",
-      args: [],
-      chainId: PRESALE_CHAIN_ID,
-      value,
-    });
-  } catch (e) { console.error(e); alert("Buy failed"); }
-}
+    const tokenAmountWei = (value * E18) / targetPriceWei;
+    if (tokenAmountWei <= 0n) return alert("Too low amount for current price.");
 
+    try {
+      writeContract({
+        address: PRESALE_ADDRESS,
+        abi: PRESALE_ABI,
+        functionName: "buy",
+        args: [tokenAmountWei],
+        chainId: PRESALE_CHAIN_ID,
+        value,
+      });
+    } catch (e) { console.error(e); alert("Buy failed"); }
+  }
 
   // CLAIM
   const { writeContract: writeClaim, data: claimTx, isPending: isClaiming } = useWriteContract();
@@ -363,18 +361,11 @@ export default function Presale() {
     if (!PRESALE_ADDRESS) return alert("Missing PRESALE address (env).");
     if (!isConnected || !address) return openConnectModal?.();
     if (!claimEnabled) return alert("Claim is disabled.");
-    if (!claimableWei || claimableWei === 0n) return alert("Nothing to claim.");
+    if (!(claimable > 0)) return alert("Nothing to claim.");
     try { await ensureRightChain(PRESALE_CHAIN_ID); } catch { return alert("Switch to BSC Testnet (97)."); }
 
     try {
-      // בחוזה: claim(uint256 amount) — נתבע את כל ה-claimable
-      writeClaim({
-        address: PRESALE_ADDRESS,
-        abi: PRESALE_ABI,
-        functionName: "claim",
-        args: [claimableWei],
-        chainId: PRESALE_CHAIN_ID
-      });
+      writeClaim({ address: PRESALE_ADDRESS, abi: PRESALE_ABI, functionName: "claim", chainId: PRESALE_CHAIN_ID });
     } catch (e) { console.error(e); alert("Claim failed"); }
   }
 
