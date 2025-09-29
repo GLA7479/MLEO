@@ -851,7 +851,7 @@ export default function MLEOTokenRushPage() {
   function armClaimOnce() {
     const now = Date.now();
     claimArmRef.current = now; setClaimArmed(true);
-    setTimeout(() => { if (claimArmRef.current === now) setClaimArmed(false); }, 1500);
+    setTimeout(() => { if (claimArmRef.current === now) setClaimArmed(false); }, 600);
   }
 
   // ---------- Gifts / Daily ----------
@@ -952,26 +952,15 @@ export default function MLEOTokenRushPage() {
           abi,
           functionName: ENV.CLAIM_FN,
           args,
-          account: address, // ✅ required on mobile
+          account: address, // ✅ נדרש עבור סימולציה
         });
         // 2) send tx
-        const hash = await writeContract({
+        await writeContract({
           address: ENV.CLAIM_ADDRESS,
           abi,
           functionName: ENV.CLAIM_FN,
           args,
         });
-
-        // 3) optimistic UI update + prevent double-claim
-        setCore(c => {
-          const nextBal = Math.max(0, Math.floor((c.balance || 0) - amount));
-          return { ...c, balance: nextBal, lastTxHash: String(hash) };
-        });
-
-        alert(`⏳ Sent ${amount} MLEO to wallet…`);
-        try { await publicClient.waitForTransactionReceipt({ hash }); } catch {}
-
-        alert(`✅ Claimed ${amount} MLEO to wallet`);
       };
 
       try {
