@@ -29,6 +29,7 @@ const CHAIN_ID        = Number(process.env.NEXT_PUBLIC_CLAIM_CHAIN_ID || 97);
 // 🔽 Fixed background image (served from public/images)
 const BG_PATH = "/images/staking-bg.jpg";
 
+
 /***************************************************
  * PART 3 — ABIs (as per your MLEOLockedStaking)
  ***************************************************/
@@ -102,6 +103,19 @@ export default function StakingPage(){
   const [positions, setPositions] = useState([]);
   const [sortDesc, setSortDesc]   = useState(true);
 
+// Only claim when position is exiting, cooldown finished, and has reward
+const claimableIds = positions
+  .filter(p => p.exiting && p.coolLeft === 0 && (p.rewardLive || 0n) > 0n)
+  .map(p => BigInt(p.id));
+
+const hasClaimable = claimableIds.length > 0;
+const totalClaimable = positions
+  .filter(p => p.exiting && p.coolLeft === 0 && (p.rewardLive || 0n) > 0n)
+  .reduce((acc, p) => acc + (p.rewardLive || 0n), 0n);
+
+
+
+
   // Token meta
   const symRead = useReadContract({ address:TOKEN_ADDRESS, abi:ERC20_ABI, functionName:"symbol" });
   useEffect(()=>{ if(symRead.data) setSymbol(symRead.data); }, [symRead.data]);
@@ -122,42 +136,71 @@ export default function StakingPage(){
   const totalP       = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"totalPrincipal", query:{refetchInterval:15000}});
   const cooldownRead = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"cooldown",       query:{refetchInterval:30000}});
 
-  // Positions
-  const posIdsRead = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"positionsOf", args:[address||zeroAddress], query:{enabled:!!address, refetchInterval:10000}});
-  useEffect(()=>{
-    async function hydrate(){
-      try{
-        if(!pc || !posIdsRead.data){ setPositions([]); return; }
-        const ids = posIdsRead.data.map(x=>BigInt(x));
-        if(!ids.length){ setPositions([]); return; }
-        const calls = [];
-        for(const id of ids){
-          calls.push({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"positions", args:[id] });
-          calls.push({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"earned",    args:[id] });
-        }
-        const res = await pc.multicall({ contracts:calls });
-        const cd  = Number(cooldownRead.data || 0n);
-        const arr = [];
-        for(let i=0;i<ids.length;i++){
-          const pos  = res[i*2]?.result || [];
-          const earn = res[i*2+1]?.result || 0n;
-          const principal = pos?.[0] ?? 0n;
-          const start     = pos?.[1] ?? 0n;
-          const unlock    = pos?.[2] ?? 0n;
-          const exiting   = pos?.[3] ?? false;
-          const requested = Number(pos?.[4] ?? 0n);
-          const weight    = pos?.[5] ?? 0n;
-          const reward    = pos?.[6] ?? 0n;
-          const coolEnds  = requested ? (requested + cd) : 0;
-          const coolLeft  = requested ? Math.max(0, coolEnds - now()) : 0;
-          arr.push({ id:ids[i].toString(), principal, start, unlock, exiting, requested:BigInt(requested), weight, rewardStored:reward, rewardLive:earn, coolEnds, coolLeft });
-        }
-        arr.sort((a,b)=> sortDesc ? Number(b.id)-Number(a.id) : Number(a.id)-Number(b.id));
-        setPositions(arr);
-      }catch(e){ console.error(e); }
+ // Positions
+const posIdsRead = useReadContract({
+  address: STAKING_ADDRESS,
+  abi: LOCKER_ABI,
+  functionName: "positionsOf",
+  args: [address || zeroAddress],
+  query: { enabled: !!address, refetchInterval: 10000 }
+});
+
+useEffect(() => {
+  let ignore = false;
+
+  (async () => {
+    try {
+      if (!pc || !posIdsRead.data) { if (!ignore) setPositions([]); return; }
+
+      const ids = posIdsRead.data.map(x => BigInt(x));
+      if (ids.length === 0) { if (!ignore) setPositions([]); return; }
+
+      // build multicall
+      const calls = ids.flatMap((id) => ([
+        { address: STAKING_ADDRESS, abi: LOCKER_ABI, functionName: "positions", args: [id] },
+        { address: STAKING_ADDRESS, abi: LOCKER_ABI, functionName: "earned",    args: [id] },
+      ]));
+
+      // ✅ THIS was missing
+      const res = await pc.multicall({ contracts: calls });
+
+      // build positions array (cooldownEnd is already an END timestamp on-chain)
+      const arr = [];
+      for (let i = 0; i < ids.length; i++) {
+        const pos  = res[i * 2]?.result || [];
+        const earn = res[i * 2 + 1]?.result || 0n;
+
+        const principal   = pos?.[0] ?? 0n;
+        const start       = pos?.[1] ?? 0n;
+        const unlock      = pos?.[2] ?? 0n;
+        const exiting     = pos?.[3] ?? false;
+        const cooldownEnd = Number(pos?.[4] ?? 0n); // end timestamp
+        const weight      = pos?.[5] ?? 0n;
+        const reward      = pos?.[6] ?? 0n;
+
+        const coolEnds = cooldownEnd || 0;
+        const coolLeft = coolEnds ? Math.max(0, coolEnds - now()) : 0;
+
+        arr.push({
+          id: ids[i].toString(),
+          principal, start, unlock, exiting,
+          requested: BigInt(cooldownEnd), // להצגה בלבד
+          weight, rewardStored: reward, rewardLive: earn,
+          coolEnds, coolLeft,
+        });
+      }
+
+      arr.sort((a, b) => (sortDesc ? Number(b.id) - Number(a.id) : Number(a.id) - Number(b.id)));
+      if (!ignore) setPositions(arr);
+    } catch (e) {
+      console.error("hydrate positions failed", e);
+      if (!ignore) setPositions([]);
     }
-    hydrate();
-  }, [pc, posIdsRead.data, cooldownRead.data, sortDesc, lastTx]);
+  })();
+
+  return () => { ignore = true; };
+}, [pc, posIdsRead.data, sortDesc, lastTx]);
+
 
   // Derived
   const required   = useMemo(()=>{ try{ return amount.trim()? parseUnits(amount.trim(),decimals):0n; }catch{ return 0n;}}, [amount,decimals]);
@@ -194,14 +237,21 @@ export default function StakingPage(){
       setLastTx(tx);
     }catch(e){ setErr(e?.shortMessage || e?.message || "Claim failed"); }
   }
-  async function onClaimAll(){
-    try{ setErr(""); await ensureNetwork();
-      const ids = positions.map(p=>BigInt(p.id)).filter((_,i)=> (positions[i].rewardLive||0n) > 0n);
-      if(!ids.length) throw new Error("Nothing to claim");
-      const tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"claimMany", args:[ids, address] });
-      setLastTx(tx);
-    }catch(e){ setErr(e?.shortMessage || e?.message || "Claim all failed"); }
-  }
+ async function onClaimAll(){
+  try{
+    setErr(""); await ensureNetwork();
+    if (!claimableIds.length) throw new Error("Nothing to claim");
+    const tx = await write({
+      address: STAKING_ADDRESS,
+      abi: LOCKER_ABI,
+      functionName: "claimMany",
+      args: [claimableIds, address],
+    });
+    setLastTx(tx);
+  }catch(e){ setErr(e?.shortMessage || e?.message || "Claim all failed"); }
+}
+
+
   async function onRequestExit(id){
     try{ setErr(""); await ensureNetwork();
       const tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"requestExit", args:[BigInt(id)] });
@@ -219,17 +269,16 @@ export default function StakingPage(){
    * PART 7 — UI (compact + fixed BG)
    ***************************************************/
  
-// replace bgStyle with this:
+// mobile-aware background (no side cropping on phones)
+const isMobile = typeof window !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 const bgStyle = BG_PATH
   ? {
       backgroundImage: `url("${BG_PATH}")`,
-      backgroundAttachment: typeof window !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  ? "scroll"
-  : "fixed",
-
+      backgroundAttachment: isMobile ? "scroll" : "fixed",
       backgroundRepeat: "no-repeat",
-      backgroundPosition: "center",    // center on all screens
-      backgroundSize: "cover",         // ALWAYS cover full viewport
+      backgroundPosition: isMobile ? "center top" : "center",
+      backgroundSize: isMobile ? "contain" : "cover",
       backgroundColor: "#000",
     }
   : { backgroundColor: "#000" };
@@ -240,7 +289,7 @@ const bgStyle = BG_PATH
     <>
       <Head><title>MLEO — Staking</title><meta name="robots" content="noindex" /></Head>
 
-      <div className="min-h-screen text-white relative" style={bgStyle}>
+<div className="text-white relative" style={{ ...bgStyle, minHeight: "100svh" }}>
         {/* Subtle overlay for readability */}
         <div className="absolute inset-0 bg-black/45" />
 
@@ -261,7 +310,16 @@ const bgStyle = BG_PATH
             <Stat label="APR (est)" value={fmtPct(aprPct)} />
             <Stat label="Program start" value={programStart.data ? new Date(ms(programStart.data)).toLocaleString() : "—"} />
             <Stat label="Period finish" value={finish.data ? new Date(ms(finish.data)).toLocaleString() : "—"} />
-            <Stat label="Cooldown (days)" value={cooldownRead.data ? (Number(cooldownRead.data)/86400).toFixed(2) : "—"} />
+            <Stat
+  label="Cooldown (days)"
+  value={
+    cooldownRead.data
+      ? ((Number(cooldownRead.data) >= 365 ? Number(cooldownRead.data) : Number(cooldownRead.data) * 86400) / 86400).toFixed(2)
+      : "—"
+  }
+/>
+
+
           </div>
 
           {/* Stake / Allowance — compact card */}
@@ -299,7 +357,15 @@ const bgStyle = BG_PATH
               ) : (
                 <button onClick={onStake} disabled={!isConnected || !amount.trim()} className="px-3.5 py-2 rounded-lg bg-emerald-500/85 hover:bg-emerald-500 disabled:opacity-50 text-xs">Stake</button>
               )}
-              <button onClick={onClaimAll} className="px-3.5 py-2 rounded-lg bg-blue-500/80 hover:bg-blue-500 text-xs">Claim all</button>
+             <button
+  onClick={onClaimAll}
+  disabled={!hasClaimable}
+  className="px-3.5 py-2 rounded-lg bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 text-xs"
+>
+  Claim all {hasClaimable ? `(${fmt(totalClaimable, decimals)} ${symbol})` : ""}
+</button>
+
+
             </div>
 
             {!!err && <div className="mt-2 text-red-400 text-xs break-all">{err}</div>}
@@ -335,13 +401,21 @@ const bgStyle = BG_PATH
                     <Info label="Reward stored"  value={`${fmt(p.rewardStored, decimals)} ${symbol}`} />
                     <Info label="Start"          value={p.start ? new Date(ms(p.start)).toLocaleString() : "—"} />
                     <Info label="Unlock"         value={p.unlock? new Date(ms(p.unlock)).toLocaleString() : "—"} />
-                    <Info label="Requested at"   value={p.requested? new Date(ms(p.requested)).toLocaleString() : "—"} />
-                    <Info label="Cooldown left"  value={p.requested? dhms(p.coolLeft) : "—"} />
+    <Info label="Cooldown ends" value={p.coolEnds ? new Date(ms(p.coolEnds)).toLocaleString() : "—"} />
+<Info label="Cooldown left" value={p.coolEnds ? dhms(p.coolLeft) : "—"} />
+
                   </div>
 
                   {/* actions */}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <button onClick={()=>onClaim(p.id)} className="px-3 py-1.5 rounded-lg bg-blue-500/80 hover:bg-blue-500 text-xs">Claim</button>
+                    <button
+  onClick={()=>onClaim(p.id)}
+  disabled={!(p.exiting && p.coolLeft === 0 && (p.rewardLive || 0n) > 0n)}
+  className="px-3 py-1.5 rounded-lg bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 text-xs"
+>
+  Claim
+</button>
+
                     {!p.exiting ? (
                       <button onClick={()=>onRequestExit(p.id)} className="px-3 py-1.5 rounded-lg bg-amber-500/80 hover:bg-amber-500 text-xs">Request exit</button>
                     ) : (
