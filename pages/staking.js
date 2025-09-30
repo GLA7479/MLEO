@@ -223,7 +223,10 @@ export default function StakingPage(){
 const bgStyle = BG_PATH
   ? {
       backgroundImage: `url("${BG_PATH}")`,
-      backgroundAttachment: "fixed",   // desktop parallax
+      backgroundAttachment: typeof window !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  ? "scroll"
+  : "fixed",
+
       backgroundRepeat: "no-repeat",
       backgroundPosition: "center",    // center on all screens
       backgroundSize: "cover",         // ALWAYS cover full viewport
@@ -239,7 +242,7 @@ const bgStyle = BG_PATH
 
       <div className="min-h-screen text-white relative" style={bgStyle}>
         {/* Subtle overlay for readability */}
-        <div className="absolute inset-0 bg-black/70" />
+        <div className="absolute inset-0 bg-black/45" />
 
         <div className="relative max-w-5xl mx-auto px-3 md:px-4 py-5 md:py-8">
           {/* Header */}
