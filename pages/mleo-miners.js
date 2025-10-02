@@ -49,9 +49,9 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_83_reset5";
+const LS_KEY = "mleoMiners_v5_84";
 // First–play terms acceptance gate (global versioned)
-const TERMS_VERSION = "v1.4"; // ⬅️ bump to force re-accept if text changes
+const TERMS_VERSION = "v1.5"; // ⬅️ bump to force re-accept if text changes
 const TERMS_KEY = `mleoMiners_termsAccepted_${TERMS_VERSION}`;
 
 // Assets
