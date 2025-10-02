@@ -907,23 +907,24 @@ async function onClaimMined() {
   }
 
   // ABI מינימלי עבור claim(amount)
- const MINING_CLAIM_ABI = [
-  {
-    type: "function",
-    name: "claim",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "gameId", type: "uint256" },
-      { name: "amount", type: "uint256" }
-    ],
-    outputs: []
-  }
-];
-
+  const MINING_CLAIM_ABI = [
+    {
+      type: "function",
+      name: "claim",
+      stateMutability: "nonpayable",
+      inputs: [
+        { name: "gameId", type: "uint256" },
+        { name: "amount", type: "uint256" }
+      ],
+      outputs: []
+    }
+  ];
 
   // 4) "הכול עכשיו": מושכים את כל ה-Vault לארנק
   const toClaim = vaultNow;
   setClaiming(true);
+  let rollbackState = null;
+
   try {
     const amountWei = parseUnits(
       Number(toClaim).toFixed(Math.min(2, MLEO_DECIMALS)),
@@ -935,15 +936,13 @@ async function onClaimMined() {
       abi: MINING_CLAIM_ABI,
       functionName: "claim",
       args: [BigInt(GAME_ID), amountWei],
-
       chainId: CLAIM_CHAIN_ID,
       account: address,
     });
 
-    await publicClient.waitForTransactionReceipt({ hash });
-
-    // 5) עדכון לוקאלי לאחר המשיכה
+    // ✅ ניכוי מקומי מיידי (לפני אישור)
     const after = loadMiningState();
+    rollbackState = { ...after }; // לשחזור אם ייכשל
     const delta = Number(toClaim);
     after.vault           = Math.max(0, Number(((after.vault || 0) - delta).toFixed(2)));
     after.claimedToWallet = Number(((after.claimedToWallet || 0) + delta).toFixed(2));
@@ -951,9 +950,19 @@ async function onClaimMined() {
     after.history.unshift({ t: Date.now(), kind: "claim_wallet_all", amount: delta, tx: String(hash) });
     saveMiningState(after);
     setMining(after);
+
+    // מחכים לאישור
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    // הצליח → כבר מעודכן
     setCenterPopup?.({ text: `✅ Sent ${formatMleoShort(delta)} MLEO to wallet`, id: Math.random() });
   } catch (err) {
     console.error(err);
+    // ❌ נכשל → החזרת מצב קודם
+    if (rollbackState) {
+      saveMiningState(rollbackState);
+      setMining(rollbackState);
+    }
     setGiftToastWithTTL("Claim failed or rejected");
   } finally {
     setClaiming(false);
