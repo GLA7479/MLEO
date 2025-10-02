@@ -8,8 +8,6 @@ import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
 import { useAccount, useDisconnect, useSwitchChain, useWriteContract, usePublicClient, useChainId } from "wagmi";
  import { parseUnits } from "viem";
 import { useRouter } from "next/router";
-// pending-claim localStorage key (CLAIM 1 only)
-const LS_PENDING_MINERS = "mleo_miners_pending_v1";
 
 
 // --- iOS 100vh fix (sets --app-100vh = window.innerHeight) ---
@@ -51,9 +49,9 @@ const LANES = 4;
 const SLOTS_PER_LANE = 4;
 const MAX_MINERS = LANES * SLOTS_PER_LANE;
 const PADDING = 6;
-const LS_KEY = "mleoMiners_v5_84";
+const LS_KEY = "mleoMiners_v5_83_reset5";
 // First–play terms acceptance gate (global versioned)
-const TERMS_VERSION = "v1.5"; // ⬅️ bump to force re-accept if text changes
+const TERMS_VERSION = "v1.4"; // ⬅️ bump to force re-accept if text changes
 const TERMS_KEY = `mleoMiners_termsAccepted_${TERMS_VERSION}`;
 
 // Assets
@@ -665,31 +663,6 @@ const router = useRouter();
 const chainId = useChainId();
  const { switchChain } = useSwitchChain();
  const publicClient = usePublicClient();
-// ——— Reconcile pending CLAIM (survives refresh) ———
-useEffect(() => {
-  try {
-    const raw = localStorage.getItem(LS_PENDING_MINERS);
-    if (!raw) return;
-    const pending = JSON.parse(raw);
-    if (!pending?.hash) { localStorage.removeItem(LS_PENDING_MINERS); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        await publicClient.waitForTransactionReceipt({ hash: pending.hash });
-        if (!cancelled) localStorage.removeItem(LS_PENDING_MINERS); // success
-      } catch {
-        // failed → restore local vault amount
-        const st = loadMiningState() || {};
-        st.vault = Number(((st.vault || 0) + (pending.amount || 0)).toFixed(2));
-        saveMiningState(st);
-        setMining(st);
-        localStorage.removeItem(LS_PENDING_MINERS);
-      }
-    })();
-    return () => { cancelled = true; };
-  } catch {}
-}, [publicClient]);
-
  const { writeContractAsync } = useWriteContract();
 const { disconnect } = useDisconnect();
 
@@ -893,11 +866,14 @@ const { disconnect } = useDisconnect();
     try { disconnect(); } catch {}
     setMenuOpen(false);
   }
-// החלפה מלאה לפונקציה הקיימת:
+
+// === MINING: CLAIM (איסוף כולל → לארנק) ===
+// חשוב: רק הכפתור בתוך מסך MINING עושה "איסוף כולל לארנק".
+// שני כפתורי CLAIM אחרים באפליקציה לא מושפעים.
 async function onClaimMined() {
   try { play?.(S_CLICK); } catch {}
 
-  // 0) לאסוף balance ל-Vault (מקומי בלבד) — בלי בלוקצ'יין
+  // 0) קודם לאסוף את ה-balance המקומי אל ה-Vault
   try {
     const st0 = loadMiningState();
     const bal = Number((st0?.balance || 0).toFixed(2));
@@ -924,32 +900,29 @@ async function onClaimMined() {
     catch { setGiftToastWithTTL("Switch to BSC Testnet (TBNB)"); return; }
   }
 
-  // 3) כתובת חוזה
+  // 3) בדיקת כתובת חוזה – חובה ENV תקין
   if (!isValidAddress(CLAIM_ADDRESS)) {
-    setGiftToastWithTTL("Missing/invalid CLAIM address");
+    setGiftToastWithTTL("Missing/invalid CLAIM address (set NEXT_PUBLIC_MLEO_CLAIM_ADDRESS)");
     return;
   }
 
-  // ABI מינימלי עבור claim(gameId, amount)
-  const MINING_CLAIM_ABI = [
-    {
-      type: "function",
-      name: "claim",
-      stateMutability: "nonpayable",
-      inputs: [
-        { name: "gameId", type: "uint256" },
-        { name: "amount", type: "uint256" },
-      ],
-      outputs: []
-    }
-  ];
+  // ABI מינימלי עבור claim(amount)
+ const MINING_CLAIM_ABI = [
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "gameId", type: "uint256" },
+      { name: "amount", type: "uint256" }
+    ],
+    outputs: []
+  }
+];
 
-  // 4) כמה למשוך — room/override
-  const testnetOverride = (ALLOW_TESTNET_WALLET_FLAG && chainId === CLAIM_CHAIN_ID);
-  const room = testnetOverride ? vaultNow : Math.max(0, remainingWalletClaimRoom());
-  const toClaim = Math.min(vaultNow, room);
-  if (toClaim <= 0) { setGiftToastWithTTL("Wallet claim locked"); return; }
 
+  // 4) "הכול עכשיו": מושכים את כל ה-Vault לארנק
+  const toClaim = vaultNow;
   setClaiming(true);
   try {
     const amountWei = parseUnits(
@@ -957,32 +930,27 @@ async function onClaimMined() {
       MLEO_DECIMALS
     );
 
-    // 5) שליחת עסקה
     const hash = await writeContractAsync({
       address: CLAIM_ADDRESS,
       abi: MINING_CLAIM_ABI,
       functionName: "claim",
       args: [BigInt(GAME_ID), amountWei],
+
       chainId: CLAIM_CHAIN_ID,
       account: address,
     });
 
-    // 6) קיזוז אופטימי + pending — מייד כשיש hash (כדי לשרוד רענון)
-    const after = loadMiningState() || {};
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    // 5) עדכון לוקאלי לאחר המשיכה
+    const after = loadMiningState();
     const delta = Number(toClaim);
     after.vault           = Math.max(0, Number(((after.vault || 0) - delta).toFixed(2)));
     after.claimedToWallet = Number(((after.claimedToWallet || 0) + delta).toFixed(2));
     after.history = Array.isArray(after.history) ? after.history : [];
-    after.history.unshift({ t: Date.now(), kind: "claim_wallet", amount: delta, tx: String(hash) });
+    after.history.unshift({ t: Date.now(), kind: "claim_wallet_all", amount: delta, tx: String(hash) });
     saveMiningState(after);
     setMining(after);
-    localStorage.setItem(LS_PENDING_MINERS, JSON.stringify({ hash, amount: delta, at: Date.now() }));
-
-    // 7) המתנה לאישור — כישלון יטופל באפקט ה-reconcile למעלה
-    await publicClient.waitForTransactionReceipt({ hash });
-
-    // 8) הצליח → ניקוי ה-pending
-    localStorage.removeItem(LS_PENDING_MINERS);
     setCenterPopup?.({ text: `✅ Sent ${formatMleoShort(delta)} MLEO to wallet`, id: Math.random() });
   } catch (err) {
     console.error(err);
