@@ -48,6 +48,10 @@ const LS_KEYS = {
   GUILDWARS: "mleo_token_rush_gw_v1.1",
 };
 
+// pending-claim for CLAIM→Wallet (survives refresh)
+const LS_PENDING_TR = "mleo_token_rush_pending_v1";
+
+
 // קובץ ה-Core של המשחק הישן (mleo-miners) ב-localStorage — לשימוש ה־Bridge
 const OTHER_GAME_CORE_KEY = "mleo_miners_v6_core";
 
@@ -823,7 +827,7 @@ export default function MLEOTokenRushPage() {
     );
 
   // ---------------- wagmi hooks (CLAIM on-chain) ----------------
-    const { isConnected, address } = useAccount();
+  const { isConnected, address } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { writeContract, data: txHash, isPending } = useWriteContract();
@@ -831,8 +835,27 @@ export default function MLEOTokenRushPage() {
     useWaitForTransactionReceipt({ hash: txHash });
   const publicClient = usePublicClient(); // ✅ שימוש חדש
 
+  // ——— Reconcile pending CLAIM (survives refresh & mobile refresh) ———
+  useEffect(() => {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(LS_PENDING_TR) : null;
+    if (!raw) return;
+    const pending = JSON.parse(raw || "null");
+    if (!pending?.hash) { localStorage.removeItem(LS_PENDING_TR); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        await publicClient.waitForTransactionReceipt({ hash: pending.hash });
+        if (!cancelled) localStorage.removeItem(LS_PENDING_TR); // success
+      } catch {
+        // failed → restore local BALANCE
+        setCore(c => ({ ...c, balance: (c.balance || 0) + (pending.amount || 0) }));
+        localStorage.removeItem(LS_PENDING_TR);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [publicClient, setCore]);
 
-  // אחרי אישור טרנזאקציה — מאפסים BALANCE
+  // אחרי אישור טרנזאקציה (מה-hook) — מאפסים BALANCE (safety net)
   useEffect(() => {
     if (isConfirmed && core.balance > 0) setCore(c => ({ ...c, balance: 0 }));
     // eslint-disable-next-line
@@ -851,7 +874,7 @@ export default function MLEOTokenRushPage() {
   function armClaimOnce() {
     const now = Date.now();
     claimArmRef.current = now; setClaimArmed(true);
-    setTimeout(() => { if (claimArmRef.current === now) setClaimArmed(false); }, 600);
+    setTimeout(() => { if (claimArmRef.current === now) setClaimArmed(false); }, 1500);
   }
 
   // ---------- Gifts / Daily ----------
@@ -924,8 +947,8 @@ export default function MLEOTokenRushPage() {
     alert(`Bridged ${amt} tokens from MLEO-MINERS → BALANCE`);
   };
 
-  // ---------- On-chain CLAIM to wallet ----------
-   const withdrawAllToWallet = async () => {
+  // ---------- On-chain CLAIM to wallet (CLAIM 1) ----------
+  const withdrawAllToWallet = async () => {
     try {
       const amount = Math.floor(core.balance || 0);
       if (!ENV.CLAIM_ADDRESS) { alert("CLAIM_ADDRESS env is missing"); return; }
@@ -934,33 +957,51 @@ export default function MLEOTokenRushPage() {
       // anti-bot double click
       if (!claimArmed) { armClaimOnce(); return; }
 
-      // network & wallet
-      if (chainId !== ENV.CLAIM_CHAIN_ID) {
-        try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); }
-        catch { alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`); }
-        return;
-      }
+      // network & wallet — אל תצא אחרי switchChain מוצלח!
       if (!isConnected) { alert("Connect wallet first"); return; }
+      if (chainId !== ENV.CLAIM_CHAIN_ID) {
+        try {
+          await switchChain({ chainId: ENV.CLAIM_CHAIN_ID });
+          // ⬅️ ממשיכים מיד ל-simulate/write באותה לחיצה
+        } catch {
+          alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`);
+          return;
+        }
+      }
 
       const units = toUnits(amount); // BigInt
 
-      // helper: simulate then write
+      // helper: simulate then write (תומך בשתי גרסאות ABI)
       const tryClaim = async (abi, args) => {
-        // 1) simulate
+        // 1) simulate (חשוב במובייל לציין account)
         await publicClient.simulateContract({
           address: ENV.CLAIM_ADDRESS,
           abi,
           functionName: ENV.CLAIM_FN,
           args,
-          account: address, // ✅ נדרש עבור סימולציה
+          account: address, // ✅ required on mobile
         });
         // 2) send tx
-        await writeContract({
+        const hash = await writeContract({
           address: ENV.CLAIM_ADDRESS,
           abi,
           functionName: ENV.CLAIM_FN,
           args,
         });
+
+        // 3) optimistic UI + persist pending (survive refresh)
+        localStorage.setItem(LS_PENDING_TR, JSON.stringify({ hash, amount, at: Date.now() }));
+        setCore(c => {
+          const nextBal = Math.max(0, Math.floor((c.balance || 0) - amount));
+          return { ...c, balance: nextBal, lastTxHash: String(hash) };
+        });
+
+        alert(`⏳ Sent ${amount} MLEO to wallet…`);
+        try { await publicClient.waitForTransactionReceipt({ hash }); } catch {}
+
+        // success → clear pending
+        localStorage.removeItem(LS_PENDING_TR);
+        alert(`✅ Claimed ${amount} MLEO to wallet`);
       };
 
       try {
@@ -985,7 +1026,6 @@ export default function MLEOTokenRushPage() {
       setClaimArmed(false); claimArmRef.current = 0;
     }
   };
-
 
   // ---------- Upgrades ----------
   function buyUpgrade(id) {
@@ -1073,7 +1113,7 @@ export default function MLEOTokenRushPage() {
       </Layout>
     );
   }
- 
+
 
     // ========================================================================
   // PART 16 — RENDER
