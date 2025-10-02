@@ -22,7 +22,7 @@ export default function Header() {
     { key: "about", href: "/about" },
     { key: "tokenomics", href: "/tokenomics" },
     { key: "presale", href: "/presale" },
-    { key: "staking", href: "/staking" },
+    { key: "staking", href: "/staking-hub" },
     { key: "gallery", href: "/gallery" },
     { key: "whitepaper", href: "/whitepaper" },
     { key: "contact", href: "/contact" },
