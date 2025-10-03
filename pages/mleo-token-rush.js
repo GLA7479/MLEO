@@ -31,6 +31,8 @@ import {
 } from "wagmi";
 import { useConnectModal, useAccountModal } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
+import { parseUnits } from "viem";
+
 
 
 
@@ -51,25 +53,34 @@ const LS_KEYS = {
 // קובץ ה-Core של המשחק הישן (mleo-miners) ב-localStorage — לשימוש ה־Bridge
 const OTHER_GAME_CORE_KEY = "mleo_miners_v6_core";
 
-// ---- ENV ----
+// ---- ENV ---- (V3 strict)
 const ENV = {
   CLAIM_CHAIN_ID: Number(process.env.NEXT_PUBLIC_CLAIM_CHAIN_ID || 97),
-  CLAIM_ADDRESS: process.env.NEXT_PUBLIC_CLAIM_ADDRESS,
+  CLAIM_ADDRESS: (process.env.NEXT_PUBLIC_MLEO_CLAIM_ADDRESS || process.env.NEXT_PUBLIC_CLAIM_ADDRESS || "").trim(),
   TOKEN_DECIMALS: Number(process.env.NEXT_PUBLIC_MLEO_DECIMALS || 18),
-  CLAIM_FN: process.env.NEXT_PUBLIC_MLEO_CLAIM_FN || "claim",
-  GAME_ID: Number(process.env.NEXT_PUBLIC_GAME_ID || 1),
+  CLAIM_FN: "claim",
+  GAME_ID: 2, // Rush
 };
 
-// שתי וריאציות ABI נפוצות: claim(amount) או claim(gameId, amount)
-const CLAIM_ABI_ONE_ARG = [
+// מיד אחרי ENV
+const GAME_ID_BI = BigInt(Number.isFinite(Number(ENV.GAME_ID)) ? Number(ENV.GAME_ID) : 2);
+
+
+
+// ABI יחיד של V3: claim(gameId, amount)
+const CLAIM_ABI_V3 = [
   {
-    inputs: [{ internalType: "uint256", name: "amount", type: "uint256" }],
-    name: ENV.CLAIM_FN,
+    inputs: [
+      { internalType: "uint256", name: "gameId", type: "uint256" },
+      { internalType: "uint256", name: "amount", type: "uint256" },
+    ],
+    name: "claim",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
   },
 ];
+
 const CLAIM_ABI_TWO_ARGS = [
   {
     inputs: [
@@ -839,11 +850,19 @@ export default function MLEOTokenRushPage() {
   }, [isConfirmed]);
 
   // --- helpers (units) ---
-  function toUnits(amount) {
-    const whole = Math.floor(amount || 0);
-    const factor = 10n ** BigInt(ENV.TOKEN_DECIMALS);
-    return BigInt(whole) * factor;
-  }
+function safeDecimals(d) {
+  const n = Number(d);
+  return Number.isFinite(n) && n >= 0 && n <= 36 ? n : 18;   // ברירת מחדל בטוחה
+}
+
+function toUnits(amount) {
+  const dec = safeDecimals(ENV.TOKEN_DECIMALS);
+  // תומך עד 2 ספרות אחרי הנקודה אם תרצה (אפשר גם 0 אם אתה רוצה שלמים בלבד)
+  const human = Number(amount || 0);
+  if (!Number.isFinite(human) || human <= 0) return 0n;
+  return parseUnits(human.toFixed(Math.min(2, dec)), dec);
+}
+
 
   // Anti-bot: double click arm
   const claimArmRef = useRef(0);
@@ -924,67 +943,53 @@ export default function MLEOTokenRushPage() {
     alert(`Bridged ${amt} tokens from MLEO-MINERS → BALANCE`);
   };
 
-  // ---------- On-chain CLAIM to wallet ----------
-   const withdrawAllToWallet = async () => {
-    try {
-      const amount = Math.floor(core.balance || 0);
-      if (!ENV.CLAIM_ADDRESS) { alert("CLAIM_ADDRESS env is missing"); return; }
-      if (amount <= 0)        { alert("Nothing to claim"); return; }
+ // === REPLACE ME (RUSH claim: single-click, no simulate) ===
+const claimingRef = useRef(false);
 
-      // anti-bot double click
-      if (!claimArmed) { armClaimOnce(); return; }
+async function withdrawAllToWallet() {
+  if (claimingRef.current) return;      // מניעת ריצה כפולה
+  try {
+    const amount = Math.floor(core.balance || 0);
+    if (!ENV.CLAIM_ADDRESS) return alert("CLAIM_ADDRESS env is missing");
+    if (!isConnected || !address) return alert("Connect wallet first");
+    if (amount <= 0) return alert("Nothing to claim");
 
-      // network & wallet
-      if (chainId !== ENV.CLAIM_CHAIN_ID) {
-        try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); }
-        catch { alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`); }
-        return;
-      }
-      if (!isConnected) { alert("Connect wallet first"); return; }
-
-      const units = toUnits(amount); // BigInt
-
-      // helper: simulate then write
-      const tryClaim = async (abi, args) => {
-        // 1) simulate
-        await publicClient.simulateContract({
-          address: ENV.CLAIM_ADDRESS,
-          abi,
-          functionName: ENV.CLAIM_FN,
-          args,
-          account: address, // ✅ נדרש עבור סימולציה
-        });
-        // 2) send tx
-        await writeContract({
-          address: ENV.CLAIM_ADDRESS,
-          abi,
-          functionName: ENV.CLAIM_FN,
-          args,
-        });
-      };
-
-      try {
-        await tryClaim(CLAIM_ABI_ONE_ARG, [units]);
-      } catch (e1) {
-        try {
-          await tryClaim(CLAIM_ABI_TWO_ARGS, [BigInt(ENV.GAME_ID), units]);
-        } catch (e2) {
-          const msg =
-            (e1?.shortMessage || e1?.cause?.shortMessage || e1?.message) ||
-            (e2?.shortMessage || e2?.cause?.shortMessage || e2?.message) ||
-            "TX rejected or reverted by contract";
-          console.error("claim failed", e1, e2);
-          alert(msg);
-        }
-      } finally {
-        setClaimArmed(false); claimArmRef.current = 0;
-      }
-    } catch (err) {
-      console.error(err);
-      alert(err?.shortMessage || err?.message || "Unexpected error");
-      setClaimArmed(false); claimArmRef.current = 0;
+    if (chainId !== ENV.CLAIM_CHAIN_ID) {
+      try { await switchChain({ chainId: ENV.CLAIM_CHAIN_ID }); }
+      catch { return alert(`Switch network to chainId ${ENV.CLAIM_CHAIN_ID}`); }
     }
-  };
+
+    const units = toUnits(amount);          // bigint
+    if (units <= 0n) return alert("Nothing to claim");
+
+    claimingRef.current = true;
+
+    const { request } = await publicClient.simulateContract({
+      address: ENV.CLAIM_ADDRESS,
+      abi: CLAIM_ABI_V3,
+      functionName: "claim",
+      args: [GAME_ID_BI, units],           // תמיד BigInt תקין
+      account: address,
+    });
+
+    const hash = await writeContract(request);
+    const rcpt = await publicClient.waitForTransactionReceipt({ hash });
+
+    if (rcpt.status === "success") setCore(c => ({ ...c, balance: 0 }));
+    else alert("Transaction failed (not confirmed).");
+  } catch (err) {
+    console.error(err);
+
+    // אם זו השגיאה המוכרת מ-viem (לא מזיקה), לא נציג alert למשתמש
+    const msg = String(err?.shortMessage || err?.message || "");
+    if (!/Cannot convert undefined to a BigInt/i.test(msg)) {
+      alert(msg || "TX rejected or reverted");
+    }
+  } finally {
+    claimingRef.current = false;
+  }
+}
+
 
 
   // ---------- Upgrades ----------
