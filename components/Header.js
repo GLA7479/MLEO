@@ -8,6 +8,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const { i18n } = useTranslation();
   const [rotate, setRotate] = useState(false);
   const { address, isConnected } = useAccount();
@@ -80,38 +81,28 @@ export default function Header() {
           />
           <div className="flex flex-col leading-tight">
             <span className="text-xl font-extrabold tracking-wide text-yellow-400">
-              LIOSH Token
+              MLEO Token
             </span>
             <span className="text-xs text-gray-300 italic">
-              Powered by LIO – The Real Shiba Inu
+              Powered by LEO – The Real Shiba Inu
             </span>
           </div>
         </Link>
 
         <div className="flex items-center gap-2">
-          {/* Wallet Connection Button */}
-          <div className="hidden md:block">
-            {isConnected ? (
-              <div className="flex items-center gap-2">
-                <div className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
-                  🟢 {address?.slice(0, 6)}...{address?.slice(-4)}
-                </div>
-                <button
-                  onClick={() => disconnect()}
-                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-xs font-semibold transition"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={openConnectModal}
-                className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-full text-sm font-semibold transition"
-              >
-                Connect Wallet
-              </button>
-            )}
-          </div>
+          {/* Wallet Button - Always visible */}
+          <button
+            onClick={() => {
+              if (isConnected) {
+                setShowWalletModal(true);
+              } else {
+                openConnectModal();
+              }
+            }}
+            className="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-1 rounded-lg text-xs font-semibold transition"
+          >
+            {isConnected ? `🟢 ${address?.slice(0, 6)}...${address?.slice(-4)}` : "Connect"}
+          </button>
 
           <select
             onChange={(e) => i18n.changeLanguage(e.target.value)}
@@ -164,6 +155,41 @@ export default function Header() {
                 {item.key}
               </Link>
             ))}
+          </div>
+        )}
+
+        {/* Wallet Status Modal */}
+        {showWalletModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full mx-4">
+              <div className="text-center">
+                <div className="text-green-400 text-2xl mb-4">🟢</div>
+                <h3 className="text-white text-xl font-bold mb-2">Wallet Connected</h3>
+                <div className="bg-gray-800 rounded-lg p-3 mb-4">
+                  <div className="text-gray-300 text-sm mb-1">Address:</div>
+                  <div className="text-white text-sm font-mono break-all">
+                    {address}
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      disconnect();
+                      setShowWalletModal(false);
+                    }}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                  >
+                    Disconnect
+                  </button>
+                  <button
+                    onClick={() => setShowWalletModal(false)}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
