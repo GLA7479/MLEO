@@ -681,9 +681,8 @@ const { disconnect } = useDisconnect();
   const [isMobileLandscape, setIsMobileLandscape] = useState(false);
 
   const [showIntro, setShowIntro] = useState(false);
-  const [gamePaused, setGamePaused] = useState(true);
+  const [gamePaused, setGamePaused] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
-  const [firstTimeNeedsTerms, setFirstTimeNeedsTerms] = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
 
   const [showHowTo, setShowHowTo] = useState(false);
@@ -747,6 +746,7 @@ const { disconnect } = useDisconnect();
 
   // === PATCH: auto-open "How it works" פעם לסשן ===
   useEffect(() => {
+    if (showIntro) return;
     try {
       const K = "mleo_howitworks_seen";
       if (sessionStorage.getItem(K) !== "1") {
@@ -754,14 +754,9 @@ const { disconnect } = useDisconnect();
         sessionStorage.setItem(K, "1");
       }
     } catch {}
-  }, []);
+  }, [showIntro]);
 
-
-  // Check terms status on mount
-  useEffect(() => {
-    const accepted = isTermsAccepted();
-    setFirstTimeNeedsTerms(!accepted);
-  }, []);
+  // Game starts immediately - terms handled in GAMES page
 
   // ===== Debug UI bootstrap =====
   useEffect(() => {
@@ -833,14 +828,9 @@ const { disconnect } = useDisconnect();
     setGiftToastWithTTL(`Moved ${formatMleoShort(amt)} MLEO to Vault`);
   }
 
-  // === Unified Wallet Modal Opener (מחובר/לא מחובר) + Terms gate ===
+  // === Unified Wallet Modal Opener (מחובר/לא מחובר) ===
   function openWalletModalUnified() {
     try { playSfx(S_CLICK); } catch {}
-    // שער תנאים
-    if (firstTimeNeedsTerms) {
-      setShowTerms(true);
-      return;
-    }
     // סגירת שכבות שיכולות לכסות את RainbowKit
     setMenuOpen(false);
     setShowHowTo(false);
@@ -981,14 +971,11 @@ async function onClaimMinedToWallet() {
       Number(toClaim).toFixed(Math.min(2, MLEO_DECIMALS)),
       MLEO_DECIMALS
     );
-    const fn   = CLAIM_FN === "mintto" ? "mintTo" : CLAIM_FN;
-    const args = (fn === "claim") ? [amountWei] : [address, amountWei];
-
     const hash = await writeContractAsync({
       address: CLAIM_ADDRESS,
-      abi: CLAIM_ABI,
-      functionName: fn,
-      args,
+      abi: MINING_CLAIM_ABI,
+      functionName: "claim",
+      args: [BigInt(GAME_ID), amountWei],
       chainId: CLAIM_CHAIN_ID,
     });
 
@@ -1209,20 +1196,6 @@ useEffect(() => {
   }));
   setGiftReadyFlag(!!init.giftReady);
 
-  // Start game immediately if not already started
-  if (!init.onceSpawned) {
-    spawnMiner(init, 1);
-    init.onceSpawned = true;
-    save();
-  }
-
-  // Enter fullscreen immediately
-  setTimeout(() => {
-    try {
-      enterFullscreenAndLockMobile();
-    } catch {}
-  }, 100);
-
   try {
 // ← החלף את הקטע הכפול בגרסה התקינה:
 const now = Date.now();
@@ -1276,7 +1249,7 @@ if ((init.giftNextAt || 0) <= now) {
     const portrait = h >= w, desktop = w >= 1024;
     setIsDesktop(desktop);
     setIsMobileLandscape(!portrait && !desktop);
-    setGamePaused(p => (!portrait && !desktop) ? true : false);
+    setGamePaused(p => (!portrait && !desktop) ? true : (showIntro ? true : false));
   };
   updateFlags();
   window.addEventListener("resize", updateFlags);
@@ -2396,6 +2369,8 @@ function rollGiftType() {
 }
 
 async function enterFullscreenAndLockMobile() { try {
+  const w = window.innerWidth, desktop = w >= 1024;
+  if (desktop) return;
   const el = wrapRef.current;
   if (el?.requestFullscreen) await el.requestFullscreen();
   if (screen.orientation?.lock) { try { await screen.orientation.lock("portrait-primary"); } catch {} }
@@ -2883,6 +2858,68 @@ const BTN_DIS  = "opacity-60 cursor-not-allowed";
           </div>
         )}
 
+        {showIntro && (
+          <div className="absolute inset-0 flex flex-col items-center justify-start pt-10 bg-black/80 z-[50] text-center p-6">
+            <img src="/images/leo-intro.png" alt="Leo" width={160} height={160} className="mb-4 rounded-full" />
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-yellow-400 mb-2">⛏️ MLEO Miners</h1>
+
+            <p className="text-sm sm:text-base text-gray-200 mb-4">Merge miners, break rocks, earn gold.</p>
+
+            {firstTimeNeedsTerms && (
+              <div className="mb-4 w-full max-w-md">
+                <div className="px-3 py-2 rounded-lg bg-yellow-300/20 text-yellow-200 border border-yellow-300/40 text-xs sm:text-sm">
+                  You must read and accept the <b>Terms &amp; Conditions</b> before playing for the first time.
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 flex-wrap justify-center">
+              {/* במסך פתיחה: טוגל חיבור/ניתוק */}
+              <button
+                onClick={toggleWallet}
+                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-indigo-400 hover:bg-indigo-300 text-black"
+              >
+                {isConnected ? "DISCONNECT" : "CONNECT WALLET"}
+              </button>
+
+              <button
+                onClick={async () => {
+                  try { play?.(S_CLICK); } catch {}
+                  if (firstTimeNeedsTerms) { setShowTerms(true); return; }
+                  const s = stateRef.current;
+                  if (s && !s.onceSpawned) { spawnMiner(s, 1); s.onceSpawned = true; save(); }
+                  setShowIntro(false);
+                  setGamePaused(false);
+                  try { await enterFullscreenAndLockMobile(); } catch {}
+                }}
+                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-yellow-400 hover:bg-yellow-300 text-black"
+              >
+                PLAY
+              </button>
+
+              <button
+                onClick={() => setShowHowTo(true)}
+                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-emerald-400 hover:bg-emerald-300 text-black"
+              >
+                HOW TO PLAY
+              </button>
+
+              <button
+                onClick={() => setShowMiningInfo(true)}
+                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-cyan-400 hover:bg-cyan-300 text-black"
+              >
+                MINING
+              </button>
+
+              <button
+                onClick={() => setShowTerms(true)}
+                className="px-5 py-3 font-bold rounded-lg text-base shadow bg-teal-400 hover:bg-teal-300 text-black"
+              >
+                TERMS
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* --- אל תסגור כאן את </div> / </Layout> / );  ---
              המשך PART 9/10 נכנס ישר אחרי זה בתוך אותו wrapper */}
@@ -3632,6 +3669,7 @@ MLEO
                   acceptTerms();
                   setFirstTimeNeedsTerms(false);
                   setShowTerms(false);
+                  setGamePaused(false); // Start the game after accepting terms
                 }}
                 className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-500 font-bold"
               >

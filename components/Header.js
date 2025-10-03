@@ -3,11 +3,16 @@ import { FaBars, FaTimes } from "react-icons/fa";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
+import { useAccount, useDisconnect } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const { i18n } = useTranslation();
   const [rotate, setRotate] = useState(false);
+  const { address, isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const { disconnect } = useDisconnect();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -23,6 +28,7 @@ export default function Header() {
     { key: "tokenomics", href: "/tokenomics" },
     { key: "presale", href: "/presale" },
     { key: "staking", href: "/staking-hub" },
+    { key: "mining", href: "/mining" },
     { key: "gallery", href: "/gallery" },
     { key: "whitepaper", href: "/whitepaper" },
     { key: "contact", href: "/contact" },
@@ -83,6 +89,30 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center gap-2">
+          {/* Wallet Connection Button */}
+          <div className="hidden md:block">
+            {isConnected ? (
+              <div className="flex items-center gap-2">
+                <div className="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                  🟢 {address?.slice(0, 6)}...{address?.slice(-4)}
+                </div>
+                <button
+                  onClick={() => disconnect()}
+                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-xs font-semibold transition"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={openConnectModal}
+                className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-full text-sm font-semibold transition"
+              >
+                Connect Wallet
+              </button>
+            )}
+          </div>
+
           <select
             onChange={(e) => i18n.changeLanguage(e.target.value)}
             value={i18n.language}
