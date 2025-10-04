@@ -15,6 +15,25 @@ const ENV_DECIMALS    = Number(process.env.NEXT_PUBLIC_MLEO_DECIMALS || 18);
 const CHAIN_ID        = Number(process.env.NEXT_PUBLIC_CLAIM_CHAIN_ID || 97);
 const BG_PATH         = "/images/staking-bg.jpg";
 
+// Background settings like main staking page
+const NAV_H_DESKTOP = 64;
+const NAV_H_MOBILE  = 56;
+const BG_SHIFT_DESKTOP = -160;
+const BG_SHIFT_MOBILE  = -40;
+
+const isMobile = typeof window !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+const bgStyle = BG_PATH
+  ? {
+      backgroundImage: `url("${BG_PATH}")`,
+      backgroundAttachment: isMobile ? "scroll" : "fixed",
+      backgroundRepeat: "no-repeat",
+      backgroundSize: isMobile ? "contain" : "cover",
+      backgroundPosition: `center calc(${isMobile ? NAV_H_MOBILE : NAV_H_DESKTOP}px + ${isMobile ? BG_SHIFT_MOBILE : BG_SHIFT_DESKTOP}px)`,
+      backgroundColor: "#000",
+    }
+  : { backgroundColor: "#000" };
+
 const ERC20_ABI = [
   { type:"function", name:"decimals",  stateMutability:"view", inputs:[], outputs:[{type:"uint8"}] },
   { type:"function", name:"symbol",    stateMutability:"view", inputs:[], outputs:[{type:"string"}] },
@@ -70,6 +89,7 @@ export default function StakingFlexPage(){
   const [err, setErr]           = useState("");
   const [positions, setPositions] = useState([]);
   const [sortDesc, setSortDesc]   = useState(true);
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   const symRead = useReadContract({ address:TOKEN_ADDRESS, abi:ERC20_ABI, functionName:"symbol" });
   useEffect(()=>{ if(symRead.data) setSymbol(symRead.data); }, [symRead.data]);
@@ -173,7 +193,7 @@ export default function StakingFlexPage(){
     }catch(e){ setErr(e?.shortMessage || e?.message || "Claim all failed"); }
   }
 
-  const bgStyle = BG_PATH ? { backgroundImage:`url("${BG_PATH}")`, backgroundAttachment:"fixed", backgroundRepeat:"no-repeat", backgroundSize:"cover", backgroundPosition:"center -160px", backgroundColor:"#000"} : { backgroundColor:"#000" };
+  // Use the new background style
 
   return (
     <Layout page="staking-flex">
@@ -186,7 +206,30 @@ export default function StakingFlexPage(){
               <h1 className="text-lg md:text-xl font-semibold tracking-tight">Stake MLEO — Flex</h1>
               <p className="text-white/70 text-xs">Choose lock duration in months • No early exit • Claim at unlock</p>
             </div>
-            <ConnectButton />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (isConnected) {
+                    // Show wallet status modal
+                    setShowWalletModal(true);
+                  } else {
+                    // Trigger connect modal
+                    const connectBtn = document.querySelector('[data-testid="rk-connect-button"]');
+                    if (connectBtn) connectBtn.click();
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+              >
+                {isConnected ? "🟢 Connected" : "Connect"}
+              </button>
+              <button
+                onClick={() => window.history.back()}
+                className="px-3 py-1.5 text-xs rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white/80 transition-colors"
+                title="Go back"
+              >
+                →
+              </button>
+            </div>
           </div>
 
           <div className="grid sm:grid-cols-3 gap-2.5 md:gap-3 mb-3 md:mb-4">
@@ -271,6 +314,41 @@ export default function StakingFlexPage(){
           </div>
         </div>
       </div>
+
+      {/* Wallet Status Modal */}
+      {showWalletModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full mx-4">
+            <div className="text-center">
+              <div className="text-green-400 text-2xl mb-4">🟢</div>
+              <h3 className="text-white text-xl font-bold mb-2">Wallet Connected</h3>
+              <div className="bg-gray-800 rounded-lg p-3 mb-4">
+                <div className="text-gray-300 text-sm mb-1">Address:</div>
+                <div className="text-white text-sm font-mono break-all">
+                  {address}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    disconnect();
+                    setShowWalletModal(false);
+                  }}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                >
+                  Disconnect
+                </button>
+                <button
+                  onClick={() => setShowWalletModal(false)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

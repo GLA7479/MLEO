@@ -120,7 +120,7 @@ export default function StakingHub(){
           </header>
 
           {/* Cards — equal height, metrics sit above the footer */}
-          <section className="grid gap-4 md:gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-3 md:gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <PoolCard
               tone="emerald"
               title="Dynamic (1Y lock)"
@@ -256,9 +256,9 @@ function PoolCard({
 
       {/* Equal-height card using flex column + spacer */}
       <div className={cx(
-        "relative rounded-3xl p-5 backdrop-blur-sm",
+        "relative rounded-3xl p-3 backdrop-blur-sm",
         "bg-white/[0.04] border border-white/10 shadow-xl",
-        "flex flex-col min-h-[440px]" // uniform height
+        "flex flex-col min-h-[320px]" // uniform height
       )}>
         {/* top tint */}
         <div className={cx(
@@ -267,10 +267,10 @@ function PoolCard({
         )} />
 
         {/* header */}
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-base font-semibold tracking-tight">{title}</h3>
           <span className={cx(
-            "shrink-0 text-[11px] px-2 py-0.5 rounded-full border",
+            "shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border",
             open
               ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-300"
               : "bg-rose-500/15 border-rose-400/30 text-rose-300"
@@ -281,10 +281,10 @@ function PoolCard({
 
         {/* bullets */}
         {bullets.length > 0 && (
-          <ul className="mt-3 space-y-1.5 text-[13px] text-white/85">
+          <ul className="mt-1.5 space-y-0.5 text-[11px] text-white/85">
             {bullets.map((b, i)=>(
-              <li key={i} className="flex items-start gap-2">
-                <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-white/40" />
+              <li key={i} className="flex items-start gap-1.5">
+                <span className="mt-[5px] h-0.5 w-0.5 rounded-full bg-white/40" />
                 <span>{b}</span>
               </li>
             ))}
@@ -295,19 +295,19 @@ function PoolCard({
         <div className="flex-1" />
 
         {/* metrics (equal height, just above footer) */}
-        <div className="mt-4">
-          <div className="grid grid-cols-2 gap-2 min-h-[88px]">
+        <div className="mt-2">
+          <div className="grid grid-cols-2 gap-1.5 min-h-[70px]">
             <Metric label="TVL" value={tvl} />
             <Metric label="APR (est)" value={apr} />
           </div>
         </div>
 
         {/* footer — copyable address + aligned buttons */}
-        <div className="pt-4">
-          <div className="flex items-center justify-between text-[12px] text-white/60">
+        <div className="pt-2">
+          <div className="flex items-center justify-between text-[11px] text-white/60">
             <button
               onClick={onLearnMore}
-              className="inline-flex items-center gap-1.5 px-3 h-11 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 transition-colors"
+              className="inline-flex items-center gap-1 px-2 h-9 rounded-md border border-white/15 bg-white/5 hover:bg-white/10 transition-colors"
               title="Learn more about APR and lock rules"
             >
               <span aria-hidden>ℹ️</span> <span>Learn more</span>
@@ -316,11 +316,11 @@ function PoolCard({
             <button
               type="button"
               onClick={onCopy}
-              className="group inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/10 transition-colors"
+              className="group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-white/10 transition-colors"
               title="Click to copy"
             >
               <span className="text-white/60">Contract:</span>
-              <code className="truncate max-w-[120px] md:max-w-[160px] text-white/80">
+              <code className="truncate max-w-[100px] md:max-w-[140px] text-white/80">
                 {shortAddr(contract)}
               </code>
               <span className="text-white/50 group-hover:text-white/80">⧉</span>
@@ -329,7 +329,7 @@ function PoolCard({
 
           <Link
             href={to}
-            className="mt-3 inline-flex w-full items-center justify-center h-11 rounded-xl bg-emerald-500/85 hover:bg-emerald-500 text-sm font-semibold shadow transition-colors"
+            className="mt-2 inline-flex w-full items-center justify-center h-9 rounded-xl bg-emerald-500/85 hover:bg-emerald-500 text-xs font-semibold shadow transition-colors"
           >
             Enter
           </Link>
@@ -349,9 +349,9 @@ function PoolCard({
 
 function Metric({ label, value }){
   return (
-    <div className="min-h-[64px] rounded-xl p-3 bg-black/30 border border-white/10 flex flex-col justify-center items-center text-center">
-      <div className="text-[11px] text-white/60">{label}</div>
-      <div className="text-sm font-semibold">{value ?? "—"}</div>
+    <div className="min-h-[55px] rounded-lg p-2.5 bg-black/30 border border-white/10 flex flex-col justify-center items-center text-center">
+      <div className="text-xs text-white/60">{label}</div>
+      <div className="text-base font-semibold">{value ?? "—"}</div>
     </div>
   );
 }

@@ -30,6 +30,12 @@ const CHAIN_ID        = Number(process.env.NEXT_PUBLIC_CLAIM_CHAIN_ID || 97);
 // Existing fixed background image (served from /public/images)
 const BG_PATH = "/images/staking-bg.jpg";
 
+// Background settings for all staking pages
+const NAV_H_DESKTOP = 64;
+const NAV_H_MOBILE  = 56;
+const BG_SHIFT_DESKTOP = -160;
+const BG_SHIFT_MOBILE  = -40;
+
 /***************************************************
  * PART 3 — ABIs (as per your MLEOLockedStaking)
  ***************************************************/
@@ -102,6 +108,7 @@ export default function StakingPage(){
   const [err, setErr]           = useState("");
   const [positions, setPositions] = useState([]);
   const [sortDesc, setSortDesc]   = useState(true);
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   // Claim only when: exiting && cooldown finished && has reward
   const claimableIds = positions
@@ -250,16 +257,7 @@ export default function StakingPage(){
    ***************************************************/
 
   // Preserve your mobile-aware background logic
-// למעלה בקובץ, שים ערכים שתואמים את האתר שלך
-const NAV_H_DESKTOP = 64;   // גובה ה־Navbar בדסקטופ (px)
-const NAV_H_MOBILE  = 56;   // גובה ה־Navbar במובייל (px)
-
-// כמה להזיז את התמונה יחסית לגובה ה־Navbar:
-// ערך שלילי => מעלה את התמונה (מציג חלק גבוה יותר שלה)
-// ערך חיובי  => מוריד את התמונה
-const BG_SHIFT_DESKTOP = -160;  // נסה -120 / -160 / -200 לפי הטעם
-const BG_SHIFT_MOBILE  = -40;   // הסט קטן יותר במובייל
-
+// Mobile detection
 const isMobile = typeof window !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 const bgStyle = BG_PATH
@@ -268,7 +266,6 @@ const bgStyle = BG_PATH
       backgroundAttachment: isMobile ? "scroll" : "fixed",
       backgroundRepeat: "no-repeat",
       backgroundSize: isMobile ? "contain" : "cover",
-      // מרכזים באופקית, ובאנכית מזיזים: גובה הכותרת + ההיסט (יכול להיות שלילי)
       backgroundPosition: `center calc(${isMobile ? NAV_H_MOBILE : NAV_H_DESKTOP}px + ${isMobile ? BG_SHIFT_MOBILE : BG_SHIFT_DESKTOP}px)`,
       backgroundColor: "#000",
     }
@@ -295,7 +292,30 @@ const bgStyle = BG_PATH
               <h1 className="text-lg md:text-xl font-semibold tracking-tight">Stake MLEO</h1>
               <p className="text-white/70 text-xs">Yearly linear pool • Live APR • Per-position</p>
             </div>
-            <ConnectButton />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (isConnected) {
+                    // Show wallet status modal
+                    setShowWalletModal(true);
+                  } else {
+                    // Trigger connect modal
+                    const connectBtn = document.querySelector('[data-testid="rk-connect-button"]');
+                    if (connectBtn) connectBtn.click();
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+              >
+                {isConnected ? "🟢 Connected" : "Connect"}
+              </button>
+              <button
+                onClick={() => window.history.back()}
+                className="px-3 py-1.5 text-xs rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white/80 transition-colors"
+                title="Go back"
+              >
+                →
+              </button>
+            </div>
           </div>
 
           {/* Global stats — unchanged visuals */}
@@ -422,6 +442,41 @@ const bgStyle = BG_PATH
           </div>
         </div>
       </div>
+
+      {/* Wallet Status Modal */}
+      {showWalletModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full mx-4">
+            <div className="text-center">
+              <div className="text-green-400 text-2xl mb-4">🟢</div>
+              <h3 className="text-white text-xl font-bold mb-2">Wallet Connected</h3>
+              <div className="bg-gray-800 rounded-lg p-3 mb-4">
+                <div className="text-gray-300 text-sm mb-1">Address:</div>
+                <div className="text-white text-sm font-mono break-all">
+                  {address}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    disconnect();
+                    setShowWalletModal(false);
+                  }}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                >
+                  Disconnect
+                </button>
+                <button
+                  onClick={() => setShowWalletModal(false)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
