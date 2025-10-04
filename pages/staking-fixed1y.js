@@ -1,10 +1,10 @@
 import Layout from "../components/Layout";
 import Head from "next/head";
 import { useEffect, useMemo, useState } from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import {
   useAccount, useChainId, usePublicClient, useReadContract,
-  useSwitchChain, useWaitForTransactionReceipt, useWriteContract,
+  useSwitchChain, useWaitForTransactionReceipt, useWriteContract, useDisconnect,
 } from "wagmi";
 import { formatUnits, parseUnits, zeroAddress, maxUint256 } from "viem";
 
@@ -74,6 +74,8 @@ export default function StakingFixed1YPage(){
   const { switchChain } = useSwitchChain();
   const pc = usePublicClient();
   const { writeContractAsync: write } = useWriteContract();
+  const { disconnect } = useDisconnect();
+  const { openConnectModal } = useConnectModal();
 
   const [lastTx, setLastTx] = useState();
   useWaitForTransactionReceipt({ hash: lastTx, confirmations: 1 });
@@ -196,17 +198,14 @@ export default function StakingFixed1YPage(){
               <button
                 onClick={() => {
                   if (isConnected) {
-                    // Show wallet status modal
                     setShowWalletModal(true);
                   } else {
-                    // Trigger connect modal
-                    const connectBtn = document.querySelector('[data-testid="rk-connect-button"]');
-                    if (connectBtn) connectBtn.click();
+                    openConnectModal();
                   }
                 }}
                 className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors"
               >
-                {isConnected ? "🟢 Connected" : "Connect"}
+                {isConnected ? "Connected" : "Connect"}
               </button>
               <button
                 onClick={() => window.history.back()}
