@@ -3,17 +3,28 @@ import { FaBars, FaTimes } from "react-icons/fa";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
-import { useAccount, useDisconnect } from "wagmi";
-import { useConnectModal } from "@rainbow-me/rainbowkit";
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [address, setAddress] = useState("");
   const { i18n } = useTranslation();
   const [rotate, setRotate] = useState(false);
-  const { address, isConnected } = useAccount();
-  const { openConnectModal } = useConnectModal();
-  const { disconnect } = useDisconnect();
+
+  const handleWalletConnect = () => {
+    // Simulate wallet connection
+    setIsConnected(true);
+    setAddress("0xSimulatedAddress1234567890");
+    setIsOpen(false); // Close menu on connect
+  };
+
+  const handleDisconnect = () => {
+    // Simulate wallet disconnect
+    setIsConnected(false);
+    setAddress("");
+    setShowWalletModal(false); // Close modal on disconnect
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -28,12 +39,12 @@ export default function Header() {
     { key: "about", href: "/about" },
     { key: "tokenomics", href: "/tokenomics" },
     { key: "presale", href: "/presale" },
-    { key: "staking", href: "/staking-hub" },
     { key: "mining", href: "/mining" },
+    { key: "staking", href: "/staking-hub" },
     { key: "gallery", href: "/gallery" },
     { key: "whitepaper", href: "/whitepaper" },
     { key: "contact", href: "/contact" },
-   { key: "games", href: "/game" }
+    { key: "games", href: "/game" }
   ];
 
   const languages = [
@@ -80,30 +91,16 @@ export default function Header() {
             }}
           />
           <div className="flex flex-col leading-tight">
-            <span className="text-xl font-extrabold tracking-wide text-yellow-400">
-              MLEO Token
-            </span>
-            <span className="text-xs text-gray-300 italic">
-              Powered by LEO – The Real Shiba Inu
-            </span>
+             <span className="text-xl font-extrabold tracking-wide text-yellow-400">
+               MLEO Token
+             </span>
+             <span className="text-xs text-gray-300 italic">
+               Powered by LEO – The Real Shiba Inu
+             </span>
           </div>
         </Link>
 
         <div className="flex items-center gap-2">
-          {/* Wallet Button - Always visible */}
-          <button
-            onClick={() => {
-              if (isConnected) {
-                setShowWalletModal(true);
-              } else {
-                openConnectModal();
-              }
-            }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-1 rounded-lg text-xs font-semibold transition"
-          >
-            {isConnected ? `🟢 ${address?.slice(0, 6)}...${address?.slice(-4)}` : "Connect"}
-          </button>
-
           <select
             onChange={(e) => i18n.changeLanguage(e.target.value)}
             value={i18n.language}
@@ -155,6 +152,23 @@ export default function Header() {
                 {item.key}
               </Link>
             ))}
+            
+            {/* Wallet Button in Mobile Menu */}
+            <button
+              onClick={() => {
+                if (isConnected) {
+                  setShowWalletModal(true);
+                } else {
+                  handleWalletConnect();
+                }
+              }}
+              className="relative text-lg font-bold pr-5 uppercase bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg transition"
+              style={{
+                textShadow: "0 0 6px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.6)",
+              }}
+            >
+              {isConnected ? `🟢 ${address?.slice(0, 6)}...${address?.slice(-4)}` : "Connect Wallet"}
+            </button>
           </div>
         )}
 
@@ -173,10 +187,7 @@ export default function Header() {
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => {
-                      disconnect();
-                      setShowWalletModal(false);
-                    }}
+                    onClick={handleDisconnect}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
                   >
                     Disconnect
@@ -213,21 +224,21 @@ export function Footer() {
     <footer className="bg-gray-900 text-gray-300 text-center py-6 mt-10">
       <p className="text-sm">
         📧 Contact us:{" "}
-        <a
-          href="mailto:contact@liosh.com"
-          className="text-yellow-400 hover:underline"
-        >
-          contact@liosh.com
-        </a>{" "}
-        | 🌐{" "}
-        <a
-          href="https://liosh.com"
-          className="text-yellow-400 hover:underline"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          liosh.com
-        </a>
+         <a
+           href="mailto:contact@mleo.com"
+           className="text-yellow-400 hover:underline"
+         >
+           contact@mleo.com
+         </a>{" "}
+         | 🌐{" "}
+         <a
+           href="https://mleo.com"
+           className="text-yellow-400 hover:underline"
+           target="_blank"
+           rel="noopener noreferrer"
+         >
+           mleo.com
+         </a>
       </p>
     </footer>
   );
