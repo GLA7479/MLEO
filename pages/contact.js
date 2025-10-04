@@ -13,12 +13,12 @@ export default function Contact() {
   ];
 
   const faqs = [
-    { q: "What is LIOSH Token?", a: "LIOSH is a meme coin inspired by Lio the Shiba Inu, combining fun, community, and utility." },
-    { q: "How can I buy LIOSH?", a: "You can join the presale on our website and purchase LIOSH using BNB, ETH, or SOL." },
-    { q: "Is there a staking option?", a: "Yes! After the presale ends, you will be able to stake LIOSH tokens and earn rewards." },
-    { q: "What is the total supply?", a: "The total supply is 1 trillion LIOSH tokens, with allocations for presale, staking rewards, and liquidity." },
+    { q: "What is MLEO Token?", a: "MLEO is a meme coin inspired by LEO the Shiba Inu, combining fun, community, and utility." },
+    { q: "How can I buy MLEO?", a: "You can join the presale on our website and purchase MLEO using BNB, ETH, or SOL." },
+    { q: "Is there a staking option?", a: "Yes! After the presale ends, you will be able to stake MLEO tokens and earn rewards." },
+    { q: "What is the total supply?", a: "The total supply is 1 trillion MLEO tokens, with allocations for presale, staking rewards, and liquidity." },
     { q: "Where can I find the roadmap?", a: "The roadmap is available in the whitepaper and includes future exchange listings and utilities." },
-    { q: "When will LIOSH be listed on exchanges?", a: "After the presale and token distribution, LIOSH aims to be listed on major decentralized and centralized exchanges." }
+    { q: "When will MLEO be listed on exchanges?", a: "After the presale and token distribution, MLEO aims to be listed on major decentralized and centralized exchanges." }
   ];
 
   const [activeAnswer, setActiveAnswer] = useState(null);
@@ -67,14 +67,14 @@ export default function Contact() {
           viewport={{ once: false, amount: 0.2 }}
           transition={{ duration: 0.8, delay: 0.3 }}
         >
-          Have questions about LIOSH Token? Reach out to us or check our FAQs below!
+          Have questions about MLEO Token? Reach out to us or check our FAQs below!
         </motion.p>
 
         <div className="flex flex-wrap justify-center gap-3 text-sm font-semibold z-20 mb-10">
           {contactButtons.map((btn, i) => (
             <motion.a
               key={i}
-              href="https://www.instagram.com/liotheshiba21"
+              href="https://www.instagram.com/leotheshiba21"
               target="_blank"
               rel="noopener noreferrer"
               className={`${btn.color} text-black px-4 py-2 rounded-md transition text-center`}

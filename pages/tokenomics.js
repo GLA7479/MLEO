@@ -49,7 +49,7 @@ export default function Tokenomics() {
       icon: <FaGift />,
       color: "#4ADE80",
       desc: "5% reserved as in-game rewards or community incentives.",
-      details: "Distributed to users who participate in competitions or achieve high scores in official LIOSH games."
+      details: "Distributed to users who participate in competitions or achieve high scores in official MLEO games."
     },
     {
       title: "Staking",
@@ -57,7 +57,7 @@ export default function Tokenomics() {
       icon: <FaLock />,
       color: "#FB923C",
       desc: "5% reserved for staking incentives to reward long-term holders.",
-      details: "Available for users who stake LIOSH in eligible contracts, offering real yield and benefits."
+      details: "Available for users who stake MLEO in eligible contracts, offering real yield and benefits."
     },
     {
       title: "Reserve",
@@ -125,7 +125,7 @@ export default function Tokenomics() {
 
 <motion.p className="text-base md:text-lg text-gray-300 mt-[-0px] mb-1 max-w-lg mx-auto z-20">
 
-          Transparent distribution of LIOSH Token designed for growth, stability, and rewarding the community.
+          Transparent distribution of MLEO Token designed for growth, stability, and rewarding the community.
         </motion.p>
 
 <div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
@@ -237,13 +237,13 @@ export default function Tokenomics() {
                   <tr key={i}>
                     <td className="p-4 border border-gray-700 font-bold" style={{ color: item.color }}>{item.title}</td>
                     <td className="p-4 border border-gray-700">
-                      {item.value}% ({(1000000000000 * item.value) / 100} LIOSH)
+                      {item.value}% ({(1000000000000 * item.value) / 100} MLEO)
                     </td>
                   </tr>
                 ))}
                 <tr>
                   <td className="p-4 border border-gray-700 font-bold text-white">Total Supply</td>
-                  <td className="p-4 border border-gray-700">1,000,000,000,000 LIOSH</td>
+                  <td className="p-4 border border-gray-700">1,000,000,000,000 MLEO</td>
                 </tr>
               </tbody>
             </table>

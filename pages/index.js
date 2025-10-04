@@ -8,10 +8,10 @@ export default function Home() {
   const [activeImage, setActiveImage] = useState(null);
 
   const images = [
-    { src: "/images/shiba1.jpg", alt: "Lio Shiba 1" },
-    { src: "/images/shiba2.jpg", alt: "Lio Shiba 2" },
-    { src: "/images/shiba3.jpg", alt: "Lio Shiba 3" },
-    { src: "/images/shiba4.jpg", alt: "Lio Shiba 4" },
+    { src: "/images/shiba1.jpg", alt: "LEO Shiba 1" },
+    { src: "/images/shiba2.jpg", alt: "LEO Shiba 2" },
+    { src: "/images/shiba3.jpg", alt: "LEO Shiba 3" },
+    { src: "/images/shiba4.jpg", alt: "LEO Shiba 4" },
   ];
 
   const tokenomics = [
@@ -48,17 +48,17 @@ export default function Home() {
           >
             <span className="flex items-center gap-3">
               <motion.div {...logoAnimation}>
-                <Image src="/images/logo2.png" alt="Liosh Logo Left" width={90} height={90} />
+                <Image src="/images/logo2.png" alt="MLEO Logo Left" width={90} height={90} />
               </motion.div>
               <span className="text-5xl md:text-7xl font-extrabold bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
-                LIOSH
+                MLEO
               </span>
               <motion.div {...logoAnimation}>
-                <Image src="/images/logo2.png" alt="Liosh Logo Right" width={90} height={90} />
+                <Image src="/images/logo2.png" alt="MLEO Logo Right" width={90} height={90} />
               </motion.div>
             </span>
             <span className="block text-2xl md:text-3xl lg:text-3.5xl mt-1 font-semibold bg-gradient-to-r from-yellow-200 to-yellow-400 bg-clip-text text-transparent drop-shadow-md">
-              LIO - THE REAL SHIBA INU
+              LEO - THE REAL SHIBA INU
             </span>
           </motion.h1>
 
@@ -100,7 +100,7 @@ export default function Home() {
             transition={{ duration: 0.8, delay: 0.3 }}
           >
             Join the revolution of meme coins with real utility and real community.
-            Be an early part of the LIOSH movement!
+            Be an early part of the MLEO movement!
           </motion.p>
 
           <motion.div
@@ -155,10 +155,10 @@ export default function Home() {
             exit={{ opacity: 0, y: 40 }}
             transition={{ duration: 0.8 }}
           >
-            <h2 className="text-4xl font-bold text-yellow-500 mb-4">🐕 What is LIOSH?</h2>
+            <h2 className="text-4xl font-bold text-yellow-500 mb-4">🐕 What is MLEO?</h2>
             <p className="text-gray-300 text-lg mb-6">
-              LIOSH is a next-gen meme coin inspired by Lio, the real Shiba Inu.
-              We combine fun, community, and real-world utility to create a token that’s here to stay.
+              MLEO is a next-gen meme coin inspired by LEO, the real Shiba Inu.
+              We combine fun, community, and real-world utility to create a token that's here to stay.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-[0.5cm] mt-8">
@@ -196,7 +196,7 @@ export default function Home() {
               <motion.img
                 key={activeImage}
                 src={activeImage}
-                alt="Fullscreen Lio"
+                alt="Fullscreen LEO"
                 className="rounded-2xl max-w-[90%] max-h-[90%] shadow-2xl"
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -244,7 +244,7 @@ export default function Home() {
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            Be Part of the LIOSH Journey 🚀
+            Be Part of the MLEO Journey 🚀
           </motion.h2>
           <motion.p
             className="text-lg mb-5 max-w-2xl mx-auto"

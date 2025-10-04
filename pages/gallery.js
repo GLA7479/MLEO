@@ -51,7 +51,7 @@ export default function Gallery() {
         >
           <span>🐾</span>
           <span className="bg-gradient-to-r from-yellow-300 via-yellow-500 to-orange-500 bg-clip-text text-transparent">
-            LIOSH Gallery
+            MLEO Gallery
           </span>
         </motion.h1>
 
@@ -62,7 +62,7 @@ export default function Gallery() {
           viewport={{ once: false, amount: 0.2 }}
           transition={{ duration: 0.8, delay: 0.3 }}
         >
-          Explore the best moments of Lio – The Real Shiba Inu! Photos, videos, and exclusive highlights.
+          Explore the best moments of LEO – The Real Shiba Inu! Photos, videos, and exclusive highlights.
         </motion.p>
 
         {items.length === 0 ? (

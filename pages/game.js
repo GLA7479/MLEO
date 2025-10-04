@@ -19,8 +19,8 @@ export default function Games() {
   const games = [
     { title: "Mleo Miners",  description: "Merge miners, break rocks, earn gold!",       link: "/mleo-miners",   icon: "⛏️",   available: true },
 { title: "Mleo Token Rush", description: "Build, upgrade & automate your mine. Idle + online.", link: "/mleo-token-rush", icon: "🏭", available: true },
-    { title: "Mleo Runner",  description: "Run with Lio and collect points!",            link: "/mleo-runner",   icon: "🏃‍♂️", available: true },
-    { title: "Mleo Flyer",   description: "Fly with Lio and collect coins!",             link: "/mleo-flyer",    icon: "🪂",   available: true },
+    { title: "Mleo Runner",  description: "Run with LEO and collect points!",            link: "/mleo-runner",   icon: "🏃‍♂️", available: true },
+    { title: "Mleo Flyer",   description: "Fly with LEO and collect coins!",             link: "/mleo-flyer",    icon: "🪂",   available: true },
     { title: "Mleo Catcher", description: "Catch coins & diamonds, avoid bombs!",        link: "/mleo-catcher",  icon: "🎯",   available: true },
     { title: "Mleo Puzzle",  description: "Match 3 tiles and score points!",             link: "/mleo-puzzle",   icon: "🧩",   available: true },
     { title: "Mleo Memory",  description: "Flip the cards and find matching pairs!",     link: "/mleo-memory",   icon: "🧠",   available: true },
@@ -30,8 +30,8 @@ export default function Games() {
 
     // Remaining Coming Soon cards stay as-is
 
-    { title: "Coming Soon",  description: "More fun Lio games are coming soon!",         link: "#",              icon: "⭐",    available: false },
-    { title: "Coming Soon",  description: "A surprise Lio game is coming soon!",         link: "#",              icon: "🎲",    available: false },
+    { title: "Coming Soon",  description: "More fun LEO games are coming soon!",         link: "#",              icon: "⭐",    available: false },
+    { title: "Coming Soon",  description: "A surprise LEO game is coming soon!",         link: "#",              icon: "🎲",    available: false },
   ];
 
   return (
@@ -74,7 +74,7 @@ export default function Games() {
         >
           🎮
           <span className="bg-gradient-to-r from-yellow-300 via-yellow-500 to-orange-500 bg-clip-text text-transparent">
-            LIOSH Games
+            MLEO Games
           </span>
         </motion.h1>
 
@@ -85,7 +85,7 @@ export default function Games() {
           viewport={{ once: false, amount: 0.2 }}
           transition={{ duration: 0.8, delay: 0.3 }}
         >
-          Play and enjoy our exclusive Lio-themed games! Collect points, fly high, and have fun with the real Shiba Inu hero.
+          Play and enjoy our exclusive LEO-themed games! Collect points, fly high, and have fun with the real Shiba Inu hero.
         </motion.p>
 
         <div

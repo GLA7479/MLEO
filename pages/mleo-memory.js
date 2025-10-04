@@ -202,7 +202,7 @@ style={{ top: "70px", right: "10px" }}
             </button>
 
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
-            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🧠 LIO Memory</h1>
+            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🧠 LEO Memory</h1>
 
             <input
               type="text"

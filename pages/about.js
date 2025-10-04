@@ -31,7 +31,7 @@ export default function About() {
             <div className="flex-shrink-0">
               <Image
                 src="/images/lio.png"
-                alt="LIO the Shiba Inu"
+                alt="LEO the Shiba Inu"
                 width={300}
                 height={300}
                 className="rounded-2xl border-2 border-cyan-300 shadow-lg"
@@ -45,17 +45,17 @@ export default function About() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 1 }}
               >
-                Meet LIO – The Real Shiba Inu Behind LIOSH
+                Meet LEO – The Real Shiba Inu Behind MLEO
               </motion.h1>
 
               <p className="text-lg md:text-xl mb-4 text-cyan-100">
-                LIO is our playful and loyal 3-year-old Shiba Inu – the heart and soul of LIOSH Token.
+                LEO is our playful and loyal 3-year-old Shiba Inu – the heart and soul of MLEO Token.
                 His charm and energy inspired the creation of a meme coin that combines fun, community power,
                 and real crypto utility.
               </p>
 
               <p className="text-lg md:text-xl text-cyan-100">
-                LIOSH is the only meme coin truly backed by a real Shiba Inu mascot, making it unique,
+                MLEO is the only meme coin truly backed by a real Shiba Inu mascot, making it unique,
                 authentic, and full of personality!
               </p>
             </div>
@@ -67,11 +67,11 @@ export default function About() {
               🌟 Our Mission & Vision
             </h2>
             <p className="text-lg md:text-xl text-cyan-100 max-w-3xl mx-auto mb-4">
-              Our mission is to build a fun, strong, and rewarding crypto community inspired by LIO.
+              Our mission is to build a fun, strong, and rewarding crypto community inspired by LEO.
               We aim to combine entertainment, utility, and community-driven growth.
             </p>
             <p className="text-lg md:text-xl text-cyan-100 max-w-3xl mx-auto">
-              Our vision is to make LIOSH Token the next big meme coin with staking, partnerships,
+              Our vision is to make MLEO Token the next big meme coin with staking, partnerships,
               NFTs, and metaverse integration.
             </p>
           </section>
@@ -79,11 +79,11 @@ export default function About() {
           {/* Why Choose Section */}
           <section className="mb-12">
             <h2 className="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-300 to-cyan-400 bg-clip-text text-transparent">
-              🚀 Why Choose LIOSH?
+              🚀 Why Choose MLEO?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
               {[
-                { title: "Strong Community", text: "A loyal and growing community driven by the spirit of LIO." },
+                { title: "Strong Community", text: "A loyal and growing community driven by the spirit of LEO." },
                 { title: "Real Utility", text: "Staking rewards, presale benefits, and future NFT integrations." },
                 { title: "Fun & Value", text: "A meme coin that is both fun and built for long-term growth." }
               ].map((item, i) => (

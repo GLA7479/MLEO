@@ -42,12 +42,12 @@ export default function Whitepaper() {
           <h1 className="text-5xl font-extrabold mb-6 flex items-center justify-center gap-2">
             <span>📄</span>
             <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-500 bg-clip-text text-transparent">
-              LIOSH Whitepaper
+              MLEO Whitepaper
             </span>
           </h1>
 
           <p className="mb-6 text-lg">
-            Discover everything about LIOSH Token – tokenomics, roadmap, and the vision behind the project.
+            Discover everything about MLEO Token – tokenomics, roadmap, and the vision behind the project.
           </p>
 
           <button className="bg-yellow-400 text-black px-6 py-3 rounded-lg font-bold text-lg hover:bg-yellow-500 transition transform hover:scale-105">

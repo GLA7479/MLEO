@@ -256,7 +256,7 @@ export default function MleoMatch() {
         {!isLandscape && showIntro ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <Image src="/images/leo-intro.png" alt="Leo" width={200} height={200} className="mb-6 animate-bounce" />
-            <h1 className="text-4xl font-bold text-yellow-400 mb-4">🍬 LIO Match</h1>
+            <h1 className="text-4xl font-bold text-yellow-400 mb-4">🍬 LEO Match</h1>
             <input
               type="text"
               placeholder="Enter your name"

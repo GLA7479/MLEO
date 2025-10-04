@@ -423,7 +423,7 @@ export default function MleoFlyer() {
         {showIntro && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-[999] text-center p-6">
             <img src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
-            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🛩️ LIO Flyer</h1>
+            <h1 className="text-4xl sm:text-5xl font-bold text-yellow-400 mb-2">🛩️ LEO Flyer</h1>
             <p className="text-base sm:text-lg text-gray-200 mb-4">Hold to fly. Collect coins, avoid obstacles.</p>
 
             <input
