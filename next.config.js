@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // הגדרות לייצוא סטטי (טוב ל-Capacitor)
-  output: 'export',
+  // הגדרות לייצוא סטטי (טוב ל-Capacitor) - מושבת זמנית עבור API routes
+  // output: 'export',
   trailingSlash: true,
   
   // הגדרות תמונות (ללא אופטימיזציה ל-Capacitor)
