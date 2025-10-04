@@ -1,11 +1,13 @@
 {
   "name": "liosh-site",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
   },
+  "engines": { "node": "20.x" },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
     "@capacitor/app": "^7.0.2",
@@ -41,14 +43,11 @@
   "main": "config.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GLA7479/EY.git"
+    "url": "git+https://github.com/GLA7479/MLEO.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "bugs": {
-    "url": "https://github.com/GLA7479/EY/issues"
+    "url": "https://github.com/GLA7479/MLEO/issues"
   },
-  "homepage": "https://github.com/GLA7479/EY#readme",
+  "homepage": "https://github.com/GLA7479/MLEO#readme",
   "description": ""
 }
