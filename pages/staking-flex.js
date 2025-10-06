@@ -42,29 +42,28 @@ const ERC20_ABI = [
   { type:"function", name:"approve",   stateMutability:"nonpayable", inputs:[{name:"s",type:"address"},{name:"a",type:"uint256"}], outputs:[{type:"bool"}] },
 ];
 
-// ABI מינימלי — מנסה קודם פונקציה עם חודשים; אם לא קיימת ניפול ל-stake(amount)
+// MLEOFlexMonthlyStaking ABI
 const LOCKER_ABI = [
-  { type:"function", name:"depositsOpen",   stateMutability:"view", inputs:[], outputs:[{type:"bool"}] },
-  { type:"function", name:"programStart",   stateMutability:"view", inputs:[], outputs:[{type:"uint64"}] },
-  { type:"function", name:"periodFinish",   stateMutability:"view", inputs:[], outputs:[{type:"uint64"}] },
-  { type:"function", name:"rewardRate",     stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
-  { type:"function", name:"totalPrincipal", stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
-  { type:"function", name:"positionsOf",    stateMutability:"view", inputs:[{name:"u",type:"address"}], outputs:[{type:"uint256[]"}] },
-  { type:"function", name:"positions",      stateMutability:"view", inputs:[{name:"id",type:"uint256"}], outputs:[
-    {name:"principal", type:"uint128"},
-    {name:"start",     type:"uint64"},
-    {name:"unlock",    type:"uint64"},
-    {name:"exiting",   type:"bool"},
-    {name:"requested", type:"uint64"},
-    {name:"weight",    type:"uint256"},
-    {name:"reward",    type:"uint256"},
+  { type:"function", name:"depositsOpen",     stateMutability:"view", inputs:[], outputs:[{type:"bool"}] },
+  { type:"function", name:"principalCap",     stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
+  { type:"function", name:"totalPrincipal",   stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
+  { type:"function", name:"rewardsBudget",    stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
+  { type:"function", name:"aprBps",          stateMutability:"view", inputs:[], outputs:[{type:"uint16"}] },
+  { type:"function", name:"minMonths",       stateMutability:"view", inputs:[], outputs:[{type:"uint8"}] },
+  { type:"function", name:"maxMonths",       stateMutability:"view", inputs:[], outputs:[{type:"uint8"}] },
+  { type:"function", name:"positionsOfOwner", stateMutability:"view", inputs:[{name:"user",type:"address"}], outputs:[{type:"uint256[]"}] },
+  { type:"function", name:"positions",        stateMutability:"view", inputs:[{name:"id",type:"uint256"}], outputs:[
+    {name:"owner",            type:"address"},
+    {name:"principal",        type:"uint256"},
+    {name:"start",            type:"uint64"},
+    {name:"unlockAt",         type:"uint64"},
+    {name:"interestReserved", type:"uint256"},
+    {name:"claimed",          type:"bool"},
+    {name:"monthsLocked",     type:"uint8"},
   ]},
-  { type:"function", name:"earned",          stateMutability:"view",      inputs:[{name:"id",type:"uint256"}], outputs:[{type:"uint256"}] },
-  { type:"function", name:"stake",           stateMutability:"nonpayable", inputs:[{name:"amount",type:"uint256"}], outputs:[] },
-  // אופציונלי: אם קיים בחוזה שלך
-  { type:"function", name:"stakeForMonths",  stateMutability:"nonpayable", inputs:[{name:"amount",type:"uint256"},{name:"months",type:"uint8"}], outputs:[] },
-  { type:"function", name:"claim",           stateMutability:"nonpayable", inputs:[{name:"id",type:"uint256"},{name:"to",type:"address"}], outputs:[] },
-  { type:"function", name:"claimMany",       stateMutability:"nonpayable", inputs:[{name:"ids",type:"uint256[]"},{name:"to",type:"address"}], outputs:[] },
+  { type:"function", name:"previewInterest", stateMutability:"view", inputs:[{name:"principal",type:"uint256"},{name:"monthsLocked",type:"uint8"}], outputs:[{type:"uint256"}] },
+  { type:"function", name:"stake",           stateMutability:"nonpayable", inputs:[{name:"principal",type:"uint256"},{name:"monthsLocked",type:"uint8"}], outputs:[] },
+  { type:"function", name:"claim",           stateMutability:"nonpayable", inputs:[{name:"id",type:"uint256"}], outputs:[] },
 ];
 
 const SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
@@ -103,14 +102,16 @@ export default function StakingFlexPage(){
   const balance   = balRead.data || 0n;
   const allowance = allowanceRead.data || 0n;
 
-  const depositsOpen = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"depositsOpen",   query:{refetchInterval:15000}});
-  const programStart = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"programStart",   query:{refetchInterval:15000}});
-  const finish       = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"periodFinish",   query:{refetchInterval:15000}});
-  const rewardRate   = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"rewardRate",     query:{refetchInterval:15000}});
-  const totalP       = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"totalPrincipal", query:{refetchInterval:15000}});
+  const depositsOpen = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"depositsOpen",     query:{refetchInterval:15000}});
+  const principalCap = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"principalCap",     query:{refetchInterval:15000}});
+  const totalP       = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"totalPrincipal",   query:{refetchInterval:15000}});
+  const rewardsBudget= useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"rewardsBudget",    query:{refetchInterval:15000}});
+  const aprBps       = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"aprBps",          query:{refetchInterval:15000}});
+  const minMonths    = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"minMonths",       query:{refetchInterval:15000}});
+  const maxMonths    = useReadContract({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"maxMonths",       query:{refetchInterval:15000}});
 
   const posIdsRead = useReadContract({
-    address: STAKING_ADDRESS, abi: LOCKER_ABI, functionName: "positionsOf",
+    address: STAKING_ADDRESS, abi: LOCKER_ABI, functionName: "positionsOfOwner",
     args: [address || zeroAddress], query: { enabled: !!address, refetchInterval: 10000 },
   });
 
@@ -121,24 +122,22 @@ export default function StakingFlexPage(){
         if(!pc || !posIdsRead.data){ if(!ignore) setPositions([]); return; }
         const ids = posIdsRead.data.map(x=>BigInt(x));
         if(!ids.length){ if(!ignore) setPositions([]); return; }
-        const calls = ids.flatMap((id)=>[
+        const calls = ids.map((id)=>[
           { address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"positions", args:[id] },
-          { address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"earned",    args:[id] },
-        ]);
+        ]).flat();
         const res = await pc.multicall({ contracts:calls });
 
         const arr = [];
         for(let i=0;i<ids.length;i++){
-          const pos  = res[i*2]?.result || [];
-          const earn = res[i*2+1]?.result || 0n;
+          const pos = res[i]?.result || [];
           arr.push({
             id: ids[i].toString(),
-            principal: pos?.[0] ?? 0n,
-            start:     pos?.[1] ?? 0n,
-            unlock:    pos?.[2] ?? 0n,
-            weight:    pos?.[5] ?? 0n,
-            rewardStored: pos?.[6] ?? 0n,
-            rewardLive:   earn,
+            principal: pos?.[1] ?? 0n,        // principal
+            start:     pos?.[2] ?? 0n,        // start
+            unlock:    pos?.[3] ?? 0n,        // unlockAt
+            interestReserved: pos?.[4] ?? 0n, // interestReserved
+            claimed:   pos?.[5] ?? false,     // claimed
+            monthsLocked: pos?.[6] ?? 0,      // monthsLocked
           });
         }
         arr.sort((a,b)=> sortDesc ? Number(b.id)-Number(a.id) : Number(a.id)-Number(b.id));
@@ -151,10 +150,10 @@ export default function StakingFlexPage(){
   const required   = useMemo(()=>{ try{ return amount.trim()? parseUnits(amount.trim(),decimals):0n; }catch{ return 0n;}}, [amount,decimals]);
   const needApprove= useMemo(()=> allowance < required, [allowance, required]);
   const aprPct     = useMemo(()=>{
-    const r = Number(rewardRate.data||0n) / 10**decimals;
-    const t = Number(totalP.data||0n)     / 10**decimals;
-    if(!r || !t) return 0; return (r * SECONDS_PER_YEAR / t) * 100;
-  }, [rewardRate.data,totalP.data,decimals]);
+    // For Flex Monthly Staking, APR is fixed (24%)
+    const aprBpsValue = Number(aprBps.data || 0);
+    return aprBpsValue / 100; // Convert basis points to percentage
+  }, [aprBps.data]);
 
   async function ensureNetwork(){ if(chainId!==CHAIN_ID) await switchChain({ chainId: CHAIN_ID }); }
   async function onApprove(max=false){
@@ -165,33 +164,36 @@ export default function StakingFlexPage(){
     }catch(e){ setErr(e?.shortMessage || e?.message || "Approval failed"); }
   }
 
-  // מנסה קודם stakeForMonths(amount, months); אם לא קיים — נופל ל-stake(amount)
   async function onStake(){
     try{
       setErr(""); await ensureNetwork();
       if(!amount.trim()) throw new Error("Enter an amount to stake");
-      let tx;
-      try{
-        tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"stakeForMonths", args:[required, Number(months)] });
-      }catch{
-        tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"stake", args:[required] });
+      if(months < (minMonths.data || 1) || months > (maxMonths.data || 6)) {
+        throw new Error(`Months must be between ${minMonths.data || 1} and ${maxMonths.data || 6}`);
       }
+      const tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"stake", args:[required, Number(months)] });
       setAmount(""); setLastTx(tx);
     }catch(e){ setErr(e?.shortMessage || e?.message || "Stake failed"); }
   }
 
   async function onClaim(id){
     try{ setErr(""); await ensureNetwork();
-      const tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"claim", args:[BigInt(id), address] });
+      const tx = await write({ address:STAKING_ADDRESS, abi:LOCKER_ABI, functionName:"claim", args:[BigInt(id)] });
       setLastTx(tx);
     }catch(e){ setErr(e?.shortMessage || e?.message || "Claim failed"); }
   }
   async function onClaimAll(){
     try{ setErr(""); await ensureNetwork();
-      const ids = positions.filter(p=>(p.rewardLive||0n)>0n).map(p=>BigInt(p.id));
-      if (!ids.length) throw new Error("Nothing to claim");
-      const tx = await write({ address: STAKING_ADDRESS, abi: LOCKER_ABI, functionName: "claimMany", args: [ids, address] });
-      setLastTx(tx);
+      const claimablePositions = positions.filter(p => 
+        !p.claimed && 
+        Number(p.unlock) <= Date.now() / 1000
+      );
+      if (!claimablePositions.length) throw new Error("Nothing to claim");
+      
+      // Claim each position individually since there's no claimMany
+      for (const pos of claimablePositions) {
+        await write({ address: STAKING_ADDRESS, abi: LOCKER_ABI, functionName: "claim", args: [BigInt(pos.id)] });
+      }
     }catch(e){ setErr(e?.shortMessage || e?.message || "Claim all failed"); }
   }
 
@@ -199,14 +201,14 @@ export default function StakingFlexPage(){
 
   return (
     <Layout page="staking-flex">
-      <Head><title>MLEO — Staking (Flex)</title><meta name="robots" content="noindex" /></Head>
+      <Head><title>MLEO — Staking (Flex Monthly)</title><meta name="robots" content="noindex" /></Head>
       <div className="text-white relative pt-[28px] md:pt-[10px]" style={{ ...bgStyle, minHeight: "100svh" }}>
         <div className="absolute inset-0 bg-black/45" />
         <div className="relative max-w-5xl mx-auto px-3 md:px-4 py-2 md:py-4">
           <div className="flex items-center justify-between mb-2 md:mb-3">
             <div>
-              <h1 className="text-lg md:text-xl font-semibold tracking-tight">Stake MLEO — Flex</h1>
-              <p className="text-white/70 text-xs">Choose lock duration in months • No early exit • Claim at unlock</p>
+              <h1 className="text-lg md:text-xl font-semibold tracking-tight">Stake MLEO — Flex Monthly</h1>
+              <p className="text-white/70 text-xs">Choose 1-6 months lock duration • No early exit • Claim at unlock</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -234,9 +236,10 @@ export default function StakingFlexPage(){
           <div className="grid sm:grid-cols-3 gap-2.5 md:gap-3 mb-3 md:mb-4">
             <Stat label="Deposits open" value={depositsOpen.data ? "Yes" : "No"} />
             <Stat label={`Total principal (${symbol})`} value={fmt(totalP.data, decimals)} />
-            <Stat label="APR (est)" value={fmtPct(aprPct)} />
-            <Stat label="Program start" value={programStart.data ? new Date(ms(programStart.data)).toLocaleString() : "—"} />
-            <Stat label="Period finish" value={finish.data ? new Date(ms(finish.data)).toLocaleString() : "—"} />
+            <Stat label="APR (fixed)" value={fmtPct(aprPct)} />
+            <Stat label={`Principal cap (${symbol})`} value={fmt(principalCap.data, decimals)} />
+            <Stat label={`Rewards budget (${symbol})`} value={fmt(rewardsBudget.data, decimals)} />
+            <Stat label="Lock range" value={`${minMonths.data || 1}-${maxMonths.data || 6} months`} />
           </div>
 
           <div className="rounded-xl bg-white/5 border border-white/10 shadow-xl p-3 md:p-4 mb-5">
@@ -293,15 +296,21 @@ export default function StakingFlexPage(){
 
                   <div className="grid md:grid-cols-4 gap-2 mt-2 text-[13px]">
                     <Info label="Principal"      value={`${fmt(p.principal, decimals)} ${symbol}`} />
-                    <Info label="Weight"         value={fmt(p.weight, decimals)} />
-                    <Info label="Earned (live)"  value={`${fmt(p.rewardLive, decimals)} ${symbol}`} />
-                    <Info label="Reward stored"  value={`${fmt(p.rewardStored, decimals)} ${symbol}`} />
+                    <Info label="Interest"       value={`${fmt(p.interestReserved, decimals)} ${symbol}`} />
+                    <Info label="Months"         value={`${p.monthsLocked} month${p.monthsLocked > 1 ? 's' : ''}`} />
+                    <Info label="Status"         value={p.claimed ? "Claimed" : "Active"} />
                     <Info label="Start"          value={p.start ? new Date(ms(p.start)).toLocaleString() : "—"} />
                     <Info label="Unlock"         value={p.unlock? new Date(ms(p.unlock)).toLocaleString() : "—"} />
                   </div>
 
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <button onClick={()=>onClaim(p.id)} className="px-3 py-1.5 rounded-lg bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 text-xs">Claim at unlock</button>
+                    {!p.claimed && Number(p.unlock) <= Date.now() / 1000 ? (
+                      <button onClick={()=>onClaim(p.id)} className="px-3 py-1.5 rounded-lg bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 text-xs">Claim Now</button>
+                    ) : (
+                      <span className="px-3 py-1.5 rounded-lg bg-gray-500/30 text-xs text-gray-300">
+                        {p.claimed ? "Claimed" : "Locked"}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

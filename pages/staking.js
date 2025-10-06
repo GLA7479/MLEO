@@ -292,8 +292,8 @@ const bgStyle = BG_PATH
           <div className="flex items-center justify-between mb-2 md:mb-3">
 
             <div>
-              <h1 className="text-lg md:text-xl font-semibold tracking-tight">Stake MLEO</h1>
-              <p className="text-white/70 text-xs">Yearly linear pool • Live APR • Per-position</p>
+              <h1 className="text-lg md:text-xl font-semibold tracking-tight">Stake MLEO — Dynamic Staking</h1>
+              <p className="text-white/70 text-xs">5 years lock • 30-day cooldown • Dynamic APR</p>
             </div>
             <div className="flex items-center gap-2">
               <button

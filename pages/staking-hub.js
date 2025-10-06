@@ -30,11 +30,30 @@ const ADDRS = {
 /*──────────────────────────────────────────────────
   2) MIN ABIs (Read-only)
 ──────────────────────────────────────────────────*/
-const LOCKER_ABI_MIN = [
+// Dynamic Staking ABI (MLEOLockedStaking)
+const DYNAMIC_ABI_MIN = [
   { type:"function", name:"depositsOpen",   stateMutability:"view", inputs:[], outputs:[{type:"bool"}] },
   { type:"function", name:"rewardRate",     stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
   { type:"function", name:"totalPrincipal", stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
   { type:"function", name:"totalDeposits",  stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
+];
+
+// Fixed Term Staking ABI (MLEOFixedTermStaking)
+const FIXED_ABI_MIN = [
+  { type:"function", name:"depositsOpen",     stateMutability:"view", inputs:[], outputs:[{type:"bool"}] },
+  { type:"function", name:"totalPrincipal",   stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
+  { type:"function", name:"aprBps1Y",         stateMutability:"view", inputs:[], outputs:[{type:"uint16"}] },
+  { type:"function", name:"aprBps3Y",         stateMutability:"view", inputs:[], outputs:[{type:"uint16"}] },
+  { type:"function", name:"lockYears",        stateMutability:"view", inputs:[], outputs:[{type:"uint8"}] },
+];
+
+// Flex Monthly Staking ABI (MLEOFlexMonthlyStaking)
+const FLEX_ABI_MIN = [
+  { type:"function", name:"depositsOpen",     stateMutability:"view", inputs:[], outputs:[{type:"bool"}] },
+  { type:"function", name:"totalPrincipal",   stateMutability:"view", inputs:[], outputs:[{type:"uint256"}] },
+  { type:"function", name:"aprBps",          stateMutability:"view", inputs:[], outputs:[{type:"uint16"}] },
+  { type:"function", name:"minMonths",       stateMutability:"view", inputs:[], outputs:[{type:"uint8"}] },
+  { type:"function", name:"maxMonths",       stateMutability:"view", inputs:[], outputs:[{type:"uint8"}] },
 ];
 
 const ERC20_ABI_MIN = [
@@ -58,31 +77,55 @@ function fmtPercent(n){
 }
 
 /*──────────────────────────────────────────────────
-  4) HOOK: usePoolMeta(address)
+  4) HOOK: usePoolMeta(address, type)
 ──────────────────────────────────────────────────*/
-function usePoolMeta(address){
+function usePoolMeta(address, type){
   const enabled = Boolean(address);
 
-  const dep = useReadContract({ address, abi: LOCKER_ABI_MIN, functionName: "depositsOpen",   query: { enabled, refetchInterval: 20000 }});
-  const rate= useReadContract({ address, abi: LOCKER_ABI_MIN, functionName: "rewardRate",     query: { enabled, refetchInterval: 20000 }});
-  const p  = useReadContract({ address, abi: LOCKER_ABI_MIN, functionName: "totalPrincipal", query: { enabled, refetchInterval: 20000 }});
-  const d  = useReadContract({ address, abi: LOCKER_ABI_MIN, functionName: "totalDeposits",  query: { enabled, refetchInterval: 20000 }});
-  const fb = useReadContract({ address: ADDRS.token, abi: ERC20_ABI_MIN, functionName: "balanceOf", args:[address], query: { enabled: enabled && !!ADDRS.token, refetchInterval: 20000 }});
+  // Choose ABI based on pool type
+  const abi = type === 'dynamic' ? DYNAMIC_ABI_MIN : 
+              type === 'fixed' ? FIXED_ABI_MIN : 
+              type === 'flex' ? FLEX_ABI_MIN : DYNAMIC_ABI_MIN;
+
+  const dep = useReadContract({ address, abi, functionName: "depositsOpen",   query: { enabled, refetchInterval: 20000 }});
+  const p   = useReadContract({ address, abi, functionName: "totalPrincipal", query: { enabled, refetchInterval: 20000 }});
+  const fb  = useReadContract({ address: ADDRS.token, abi: ERC20_ABI_MIN, functionName: "balanceOf", args:[address], query: { enabled: enabled && !!ADDRS.token, refetchInterval: 20000 }});
+
+  // Dynamic staking specific reads
+  const rate = useReadContract({ address, abi, functionName: "rewardRate", query: { enabled: enabled && type === 'dynamic', refetchInterval: 20000 }});
+  const d    = useReadContract({ address, abi, functionName: "totalDeposits", query: { enabled: enabled && type === 'dynamic', refetchInterval: 20000 }});
+
+  // Fixed term staking specific reads
+  const aprBps1Y = useReadContract({ address, abi, functionName: "aprBps1Y", query: { enabled: enabled && type === 'fixed', refetchInterval: 20000 }});
+  const aprBps3Y = useReadContract({ address, abi, functionName: "aprBps3Y", query: { enabled: enabled && type === 'fixed', refetchInterval: 20000 }});
+  const lockYears = useReadContract({ address, abi, functionName: "lockYears", query: { enabled: enabled && type === 'fixed', refetchInterval: 20000 }});
+
+  // Flex staking specific reads
+  const aprBps = useReadContract({ address, abi, functionName: "aprBps", query: { enabled: enabled && type === 'flex', refetchInterval: 20000 }});
 
   const { open, tvlFmt, aprFmt } = useMemo(() => {
     const open = !!dep.data;
 
     // TVL for display
-    const rawForCard = (p.data ?? d.data ?? fb.data ?? 0n);
+    const rawForCard = (p.data ?? d?.data ?? fb.data ?? 0n);
     const tvlFmt = fmtCompactFromRaw(rawForCard);
 
-    // APR only if totalPrincipal exists
+    // APR calculation based on type
     let apr = null;
-    if ((rate.data ?? 0n) > 0n && (p.data ?? 0n) > 0n) {
+    
+    if (type === 'dynamic' && (rate.data ?? 0n) > 0n && (p.data ?? 0n) > 0n) {
       apr = (Number(rate.data) * SECONDS_PER_YEAR / Number(p.data)) * 100;
+    } else if (type === 'fixed') {
+      const years = Number(lockYears?.data || 1);
+      const aprBpsValue = years === 1 ? Number(aprBps1Y?.data || 0) : Number(aprBps3Y?.data || 0);
+      apr = aprBpsValue / 100; // Convert basis points to percentage
+    } else if (type === 'flex') {
+      const aprBpsValue = Number(aprBps?.data || 0);
+      apr = aprBpsValue / 100; // Convert basis points to percentage
     }
+    
     return { open, tvlFmt, aprFmt: fmtPercent(apr) };
-  }, [dep.data, rate.data, p.data, d.data, fb.data]);
+  }, [dep.data, rate?.data, p.data, d?.data, fb.data, aprBps1Y?.data, aprBps3Y?.data, lockYears?.data, aprBps?.data, type]);
 
   return { open, tvlFmt, aprFmt };
 }
@@ -91,10 +134,10 @@ function usePoolMeta(address){
   5) PAGE: Staking Hub
 ──────────────────────────────────────────────────*/
 export default function StakingHub(){
-  const dyn  = usePoolMeta(ADDRS.dynamic);
-  const y1   = usePoolMeta(ADDRS.fixed1y);
-  const y3   = usePoolMeta(ADDRS.fixed3y);
-  const flex = usePoolMeta(ADDRS.flex);
+  const dyn  = usePoolMeta(ADDRS.dynamic, 'dynamic');
+  const y1   = usePoolMeta(ADDRS.fixed1y, 'fixed');
+  const y3   = usePoolMeta(ADDRS.fixed3y, 'fixed');
+  const flex = usePoolMeta(ADDRS.flex, 'flex');
 
   const [modal, setModal] = useState(null); // { title, details }
 
@@ -115,7 +158,7 @@ export default function StakingHub(){
           <header className="mb-6 md:mb-10">
             <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">MLEO — Staking Hub</h1>
             <p className="text-white/70 text-sm md:text-base mt-2">
-              Four staking options with consistent design. APR values are on-chain estimates updated in real time.
+              Four staking options: Dynamic (50B), Fixed 1Y (20B), Fixed 3Y (10B), Flex Monthly (20B). APR values are real-time on-chain data.
             </p>
           </header>
 
@@ -123,88 +166,88 @@ export default function StakingHub(){
           <section className="grid gap-3 md:gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <PoolCard
               tone="emerald"
-              title="Dynamic (1Y lock)"
+              title="Dynamic Staking"
               to="/staking"
               open={dyn.open}
               tvl={dyn.tvlFmt}
               apr={dyn.aprFmt}
               contract={ADDRS.dynamic}
               bullets={[
-                "12 months lock; no early exits or cooldowns.",
-                "Live APR based on on-chain TVL.",
-                "Rewards claimable at unlock.",
+                "5 years lock with 30-day cooldown for early exit.",
+                "Dynamic APR based on total TVL.",
+                "50B MLEO allocation.",
               ]}
               onLearnMore={()=> setModal({
-                title: "Dynamic (1Y lock) — Details",
+                title: "Dynamic Staking — Details",
                 details: learnMoreContent({
-                  lock: "Locked for 12 months. No early exit. Rewards are claimable at unlock.",
-                  aprNote: "APR adjusts with totalPrincipal (TVL). As TVL grows, APR typically decreases.",
+                  lock: "Locked for 5 years. Early exit available with 30-day cooldown. Rewards stop accumulating during cooldown.",
+                  aprNote: "Dynamic APR adjusts with totalPrincipal (TVL). Higher TVL typically means lower APR.",
                 })
               })}
             />
 
             <PoolCard
               tone="cyan"
-              title="Fixed 1Y"
+              title="Fixed 1Y Staking"
               to="/staking-fixed1y"
               open={y1.open}
               tvl={y1.tvlFmt}
               apr={y1.aprFmt}
               contract={ADDRS.fixed1y}
               bullets={[
-                "12 months lock; no early exit or cooldown.",
-                "Claim rewards at the end of the lock.",
-                "Designed for stability and predictability.",
+                "1 year lock with no early exit.",
+                "Fixed 40% APR guaranteed.",
+                "20B MLEO allocation.",
               ]}
               onLearnMore={()=> setModal({
-                title: "Fixed 1Y — Details",
+                title: "Fixed 1Y Staking — Details",
                 details: learnMoreContent({
-                  lock: "Locked for 12 months. No early exit. Rewards are claimable at unlock.",
-                  aprNote: "APR follows the same formula and depends on totalPrincipal.",
+                  lock: "Locked for exactly 1 year. No early exit allowed. Rewards are claimable at unlock.",
+                  aprNote: "Fixed 40% APR regardless of TVL. Interest is calculated as 40% of principal.",
                 })
               })}
             />
 
             <PoolCard
               tone="violet"
-              title="Fixed 3Y"
+              title="Fixed 3Y Staking"
               to="/staking-fixed3y"
               open={y3.open}
               tvl={y3.tvlFmt}
               apr={y3.aprFmt}
               contract={ADDRS.fixed3y}
               bullets={[
-                "36 months lock; no early exit.",
-                "Rewards become claimable at unlock.",
-                "Suited for long-term conviction.",
+                "3 years lock with no early exit.",
+                "Fixed 60% APR guaranteed.",
+                "10B MLEO allocation.",
               ]}
               onLearnMore={()=> setModal({
-                title: "Fixed 3Y — Details",
+                title: "Fixed 3Y Staking — Details",
                 details: learnMoreContent({
-                  lock: "Locked for 36 months. No early exit. Rewards are claimable at unlock.",
-                  aprNote: "Longer lock; APR still derived from rewardRate and totalPrincipal.",
+                  lock: "Locked for exactly 3 years. No early exit allowed. Rewards are claimable at unlock.",
+                  aprNote: "Fixed 60% APR regardless of TVL. Interest is calculated as 60% of principal per year.",
                 })
               })}
             />
 
             <PoolCard
               tone="amber"
-              title="Flex (choose months)"
+              title="Flex Monthly Staking"
               to="/staking-flex"
               open={flex.open}
               tvl={flex.tvlFmt}
               apr={flex.aprFmt}
               contract={ADDRS.flex}
               bullets={[
-                "Pick your lock duration in months on the next page.",
-                "No exit/cooldown; claim at unlock.",
-                "APR updates with TVL in real time.",
+                "Choose 1-6 months lock duration.",
+                "Fixed 24% APR guaranteed.",
+                "20B MLEO allocation.",
               ]}
               onLearnMore={()=> setModal({
-                title: "Flex — Details",
+                title: "Flex Monthly Staking — Details",
                 details: learnMoreContent({
-                  lock: "Choose lock length (in months) when staking. No early exit. Rewards at unlock.",
-                  aprNote: "APR is dynamic and recalculated from on-chain values.",
+                  lock: "Choose lock length from 1 to 6 months when staking. No early exit. Rewards at unlock.",
+                  aprNote: "Fixed 24% APR regardless of TVL. Interest is calculated as 24% of principal per year.",
                 })
               })}
             />
