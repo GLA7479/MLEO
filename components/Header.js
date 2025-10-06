@@ -140,9 +140,10 @@ export default function Header() {
           {/* Desktop Wallet Button */}
           <div className="hidden md:block">
             <ConnectButton 
-              chainStatus="icon"
-              accountStatus="address"
+              chainStatus="none"
+              accountStatus="avatar"
               showBalance={false}
+              label="CONNECT"
             />
           </div>
 
@@ -221,9 +222,10 @@ export default function Header() {
             {/* Wallet Button in Mobile Menu */}
             <div className="relative pr-5">
               <ConnectButton 
-                chainStatus="icon"
-                accountStatus="address"
+                chainStatus="none"
+                accountStatus="avatar"
                 showBalance={false}
+                label="CONNECT"
               />
             </div>
           </div>
