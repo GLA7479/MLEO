@@ -3,27 +3,40 @@ import { FaBars, FaTimes } from "react-icons/fa";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount, useDisconnect } from "wagmi";
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState("");
   const { i18n } = useTranslation();
   const [rotate, setRotate] = useState(false);
-
-  const handleWalletConnect = () => {
-    // Simulate wallet connection
-    setIsConnected(true);
-    setAddress("0xSimulatedAddress1234567890");
-    setIsOpen(false); // Close menu on connect
-  };
+  
+  // Use wagmi hooks
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
 
   const handleDisconnect = () => {
-    // Simulate wallet disconnect
-    setIsConnected(false);
-    setAddress("");
+    disconnect();
     setShowWalletModal(false); // Close modal on disconnect
+  };
+
+  const copyTokenAddress = () => {
+    const tokenAddress = process.env.NEXT_PUBLIC_MLEO_TOKEN_ADDRESS || "0xDe428F98f6CB756bBB436618E8a97e0aa9bb9787";
+    navigator.clipboard.writeText(tokenAddress);
+    
+    // Show temporary notification for all copy buttons
+    const buttons = document.querySelectorAll('[title="Click to copy MLEO token address"]');
+    buttons.forEach(button => {
+      const originalText = button.textContent;
+      const originalBg = button.style.backgroundColor;
+      button.textContent = "Copied! ✅";
+      button.style.backgroundColor = "rgba(34, 197, 94, 0.8)";
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg || "rgba(17, 24, 39, 0.6)";
+      }, 2000);
+    });
   };
 
   useEffect(() => {
@@ -39,7 +52,7 @@ export default function Header() {
     { key: "about", href: "/about" },
     { key: "tokenomics", href: "/tokenomics" },
     { key: "presale", href: "/presale" },
-    { key: "mining", href: "/mining" },
+    { key: "mining", href: "https://mleo-m.vercel.app/", external: true },
     { key: "staking", href: "/staking-hub" },
     { key: "gallery", href: "/gallery" },
     { key: "whitepaper", href: "/whitepaper" },
@@ -113,6 +126,26 @@ export default function Header() {
             ))}
           </select>
 
+          {/* Desktop Token Address */}
+          <div className="hidden md:block">
+            <button
+              onClick={copyTokenAddress}
+              className="bg-gray-900 bg-opacity-60 text-yellow-400 px-2 py-1 rounded-md text-xs hover:bg-opacity-80 transition"
+              title="Click to copy MLEO token address"
+            >
+              MLEO: 0xDe428F98f6CB756bBB436618E8a97e0aa9bb9787 📋
+            </button>
+          </div>
+
+          {/* Desktop Wallet Button */}
+          <div className="hidden md:block">
+            <ConnectButton 
+              chainStatus="icon"
+              accountStatus="address"
+              showBalance={false}
+            />
+          </div>
+
           <button
             className="text-yellow-400 text-2xl"
             onClick={() => setIsOpen(!isOpen)}
@@ -138,42 +171,66 @@ export default function Header() {
             </video>
             <div className="absolute inset-0 bg-black bg-opacity-30"></div>
 
-            {menuItems.map((item, index) => (
-              <Link
-                key={item.key}
-                href={item.href}
-                className="relative text-lg font-bold pr-5 uppercase"
-                style={{
-                  color: colors[index % colors.length],
-                  textShadow: "0 0 6px rgba(255,255,255,0.8), 0 0 10px rgba(255,255,255,0.6)",
-                }}
-                onClick={() => setIsOpen(false)}
+            {menuItems.map((item, index) => {
+              if (item.external) {
+                return (
+                  <a
+                    key={item.key}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative text-lg font-bold pr-5 uppercase"
+                    style={{
+                      color: colors[index % colors.length],
+                      textShadow: "0 0 6px rgba(255,255,255,0.8), 0 0 10px rgba(255,255,255,0.6)",
+                    }}
+                    onClick={() => setIsOpen(false)}
+                  >
+                    {item.key} 🔗
+                  </a>
+                );
+              }
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  className="relative text-lg font-bold pr-5 uppercase"
+                  style={{
+                    color: colors[index % colors.length],
+                    textShadow: "0 0 6px rgba(255,255,255,0.8), 0 0 10px rgba(255,255,255,0.6)",
+                  }}
+                  onClick={() => setIsOpen(false)}
+                >
+                  {item.key}
+                </Link>
+              );
+            })}
+            
+            {/* Token Address */}
+            <div className="relative pr-5">
+              <div className="text-sm text-gray-300 mb-1">MLEO Token:</div>
+              <button
+                onClick={copyTokenAddress}
+                className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-yellow-400 font-mono cursor-pointer transition"
+                title="Click to copy MLEO token address"
               >
-                {item.key}
-              </Link>
-            ))}
+                0xDe428F98f6CB756bBB436618E8a97e0aa9bb9787 📋
+              </button>
+            </div>
             
             {/* Wallet Button in Mobile Menu */}
-            <button
-              onClick={() => {
-                if (isConnected) {
-                  setShowWalletModal(true);
-                } else {
-                  handleWalletConnect();
-                }
-              }}
-              className="relative text-lg font-bold pr-5 uppercase bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg transition"
-              style={{
-                textShadow: "0 0 6px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.6)",
-              }}
-            >
-              {isConnected ? `🟢 ${address?.slice(0, 6)}...${address?.slice(-4)}` : "Connect Wallet"}
-            </button>
+            <div className="relative pr-5">
+              <ConnectButton 
+                chainStatus="icon"
+                accountStatus="address"
+                showBalance={false}
+              />
+            </div>
           </div>
         )}
 
         {/* Wallet Status Modal */}
-        {showWalletModal && (
+        {showWalletModal && isConnected && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full mx-4">
               <div className="text-center">

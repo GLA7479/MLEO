@@ -258,7 +258,7 @@ export default function StakingFlexPage(){
                 className="sm:col-span-2 bg-black/35 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-white/30" />
               <select value={months} onChange={(e)=>setMonths(Number(e.target.value))}
                 className="bg-black/35 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-white/30">
-                {Array.from({length:36},(_,i)=>i+1).map(m=><option key={m} value={m}>{m} months</option>)}
+                {Array.from({length:6},(_,i)=>i+1).map(m=><option key={m} value={m}>{m} month{m>1?'s':''}</option>)}
               </select>
             </div>
 
