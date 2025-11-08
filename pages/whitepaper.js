@@ -50,9 +50,13 @@ export default function Whitepaper() {
             Discover everything about MLEO Token – tokenomics, roadmap, and the vision behind the project.
           </p>
 
-          <button className="bg-yellow-400 text-black px-6 py-3 rounded-lg font-bold text-lg hover:bg-yellow-500 transition transform hover:scale-105">
+          <a
+            href="/whitepaper.pdf"
+            download
+            className="bg-yellow-400 text-black px-6 py-3 rounded-lg font-bold text-lg hover:bg-yellow-500 transition transform hover:scale-105 inline-block"
+          >
             Download PDF
-          </button>
+          </a>
         </div>
 
         <motion.h2

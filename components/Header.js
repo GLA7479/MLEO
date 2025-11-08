@@ -133,7 +133,7 @@ export default function Header() {
               className="bg-gray-900 bg-opacity-60 text-yellow-400 px-2 py-1 rounded-md text-xs hover:bg-opacity-80 transition"
               title="Click to copy MLEO token address"
             >
-              MLEO: 0xDe428F98f6CB756bBB436618E8a97e0aa9bb9787 📋
+              MLEO: 0xDe42…9787 📋
             </button>
           </div>
 
@@ -215,7 +215,7 @@ export default function Header() {
                 className="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-yellow-400 font-mono cursor-pointer transition"
                 title="Click to copy MLEO token address"
               >
-                0xDe428F98f6CB756bBB436618E8a97e0aa9bb9787 📋
+                0xDe42…9787 📋
               </button>
             </div>
             
