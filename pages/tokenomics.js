@@ -7,32 +7,34 @@ import Layout from "../components/Layout";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+const TOTAL_SUPPLY = 18000000000000; // 18,000,000,000,000 MLEO
+
 export default function Tokenomics() {
   const [activeIndex, setActiveIndex] = useState(null);
 
   const labels = [
     {
       title: "Presale",
-      value: 25,
+      value: 30,
       icon: <FaChartLine />,
       color: "#FACC15",
-      desc: "25% of the total supply allocated to early investors during the presale phase.",
+      desc: "30% of the total supply allocated to early investors during the presale phase.",
       details: "Tokens in the presale are distributed to early supporters before public launch. These are unlocked at launch to ensure wide distribution and liquidity injection."
     },
     {
       title: "Marketing",
-      value: 15,
+      value: 10,
       icon: <FaBullhorn />,
       color: "#A78BFA",
-      desc: "15% dedicated to marketing, partnerships, and community growth.",
+      desc: "10% dedicated to marketing, partnerships, and community growth.",
       details: "Used for influencer partnerships, social media campaigns, community giveaways, and ongoing promotional efforts across platforms."
     },
     {
       title: "Liquidity",
-      value: 15,
+      value: 10,
       icon: <FaLock />,
       color: "#22D3EE",
-      desc: "15% of tokens allocated to ensure stable and secure trading.",
+      desc: "10% of tokens allocated to ensure stable and secure trading.",
       details: "These tokens are paired with native coin (e.g., BNB) to create liquidity pools, ensuring buy/sell availability on DEXs."
     },
     {
@@ -45,34 +47,34 @@ export default function Tokenomics() {
     },
     {
       title: "Game Rewards",
-      value: 5,
+      value: 20,
       icon: <FaGift />,
       color: "#4ADE80",
-      desc: "5% reserved as in-game rewards or community incentives.",
+      desc: "20% reserved as in-game rewards or community incentives.",
       details: "Distributed to users who participate in competitions or achieve high scores in official MLEO games."
     },
     {
       title: "Staking",
-      value: 5,
+      value: 10,
       icon: <FaLock />,
       color: "#FB923C",
-      desc: "5% reserved for staking incentives to reward long-term holders.",
+      desc: "10% reserved for staking incentives to reward long-term holders.",
       details: "Available for users who stake MLEO in eligible contracts, offering real yield and benefits."
     },
     {
       title: "Reserve",
-      value: 10,
+      value: 5,
       icon: <FaLock />,
       color: "#60A5FA",
-      desc: "10% held in reserve for future use cases or emergencies.",
+      desc: "5% held in reserve for future use cases or emergencies.",
       details: "Kept aside for unexpected costs, partnerships, upgrades, or strategic moves as the project evolves."
     },
     {
       title: "Locks & Community",
-      value: 15,
+      value: 5,
       icon: <FaUsers />,
       color: "#F87171",
-      desc: "15% allocated for token locks, competitions, and community incentives.",
+      desc: "5% allocated for token locks, competitions, and community incentives.",
       details: "Used for competitions, token locks, governance bonuses, or loyalty programs that reward engagement."
     },
   ];
@@ -112,7 +114,7 @@ export default function Tokenomics() {
         transition={{ duration: 1 }}
       >
         - <div className="absolute inset-0 bg-black/50 z-10"></div>
-+ <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/30 to-black/80 z-10"></div>
+<div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/30 to-black/80 z-10"></div>
 
 
 <motion.h1 className="text-4xl md:text-5xl font-extrabold flex items-center justify-center gap-2 z-20 mb-0">
@@ -237,13 +239,13 @@ export default function Tokenomics() {
                   <tr key={i}>
                     <td className="p-4 border border-gray-700 font-bold" style={{ color: item.color }}>{item.title}</td>
                     <td className="p-4 border border-gray-700">
-                      {item.value}% ({(1000000000000 * item.value) / 100} MLEO)
+                      {item.value}% ({((TOTAL_SUPPLY * item.value) / 100).toLocaleString()} MLEO)
                     </td>
                   </tr>
                 ))}
                 <tr>
                   <td className="p-4 border border-gray-700 font-bold text-white">Total Supply</td>
-                  <td className="p-4 border border-gray-700">1,000,000,000,000 MLEO</td>
+                  <td className="p-4 border border-gray-700">{TOTAL_SUPPLY.toLocaleString()} MLEO</td>
                 </tr>
               </tbody>
             </table>
