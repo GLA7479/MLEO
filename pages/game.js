@@ -17,8 +17,9 @@ export default function Games() {
   };
 
   const games = [
-    { title: "Mleo Miners",  description: "Merge miners, break rocks, earn gold!",       link: "/mleo-miners",   icon: "⛏️",   available: true },
-{ title: "Mleo Token Rush", description: "Build, upgrade & automate your mine. Idle + online.", link: "/mleo-token-rush", icon: "🏭", available: true },
+    // Temporarily disabled games
+    // { title: "Mleo Miners",  description: "Merge miners, break rocks, earn gold!",       link: "/mleo-miners",   icon: "⛏️",   available: true },
+    // { title: "Mleo Token Rush", description: "Build, upgrade & automate your mine. Idle + online.", link: "/mleo-token-rush", icon: "🏭", available: true },
     { title: "Mleo Runner",  description: "Run with LEO and collect points!",            link: "/mleo-runner",   icon: "🏃‍♂️", available: true },
     { title: "Mleo Flyer",   description: "Fly with LEO and collect coins!",             link: "/mleo-flyer",    icon: "🪂",   available: true },
     { title: "Mleo Catcher", description: "Catch coins & diamonds, avoid bombs!",        link: "/mleo-catcher",  icon: "🎯",   available: true },
@@ -32,6 +33,8 @@ export default function Games() {
 
     { title: "Coming Soon",  description: "More fun LEO games are coming soon!",         link: "#",              icon: "⭐",    available: false },
     { title: "Coming Soon",  description: "A surprise LEO game is coming soon!",         link: "#",              icon: "🎲",    available: false },
+    { title: "Coming Soon",  description: "Stay tuned for a new multiplayer experience!", link: "#",              icon: "🤝",    available: false },
+    { title: "Coming Soon",  description: "A special event game is launching soon!",      link: "#",              icon: "🎉",    available: false },
   ];
 
   return (
