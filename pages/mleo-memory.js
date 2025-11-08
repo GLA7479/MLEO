@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
 import confetti from "canvas-confetti"; // ✅ אפקט קונפטי
+import { useRouter } from "next/router";
 
 export default function MleoMemory() {
+  const router = useRouter();
   useEffect(() => {
     const preventMenu = (e) => e.preventDefault();
     const preventSelection = (e) => e.preventDefault();
@@ -194,11 +196,18 @@ export default function MleoMemory() {
             
             {/* ✅ כפתור Exit בפינה הימנית העליונה */}
             <button
-              onClick={() => (window.location.href = "/game")}
- className="fixed px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
-style={{ top: "70px", right: "10px" }}
+              onClick={() => {
+                setGameRunning(false);
+                setGameOver(false);
+                setTimerRunning(false);
+                setDidWin(false);
+                setShowIntro(true);
+                router.push("/game");
+              }}
+              className="fixed px-5 py-3 bg-gray-700 text-white font-bold rounded-lg text-base sm:text-lg z-[999] hover:bg-gray-600 transition"
+              style={{ top: "70px", right: "10px" }}
             >
-              Exit
+              ✖ Exit
             </button>
 
             <Image src="/images/leo-intro.png" alt="Leo" width={220} height={220} className="mb-6 animate-bounce" />
@@ -242,6 +251,7 @@ style={{ top: "70px", right: "10px" }}
                 setGameOver(false);
                 setShowIntro(true);
                 setTimerRunning(false);
+                router.push("/game");
               }}
               className="fixed right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base sm:text-lg z-[999] hover:scale-105 transition"
               style={{

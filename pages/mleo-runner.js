@@ -2,8 +2,10 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
+import { useRouter } from "next/router";
 
 export default function MleoRunner() {
+  const router = useRouter();
   const canvasRef = useRef(null);
   const [gameRunning, setGameRunning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
@@ -527,24 +529,37 @@ export default function MleoRunner() {
               className="mb-4 px-4 py-2 rounded text-black w-64 text-center"
             />
 
-            <button
-              onClick={() => {
-                if (!playerName.trim()) return;
-                const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
-                if (!stored.find((p) => p.name === playerName)) {
-                  stored.push({ name: playerName, score: 0 });
-                  localStorage.setItem("leaderboard", JSON.stringify(stored.slice(-20)));
-                }
-                setShowIntro(false);
-                setGameRunning(true);
-              }}
-              disabled={!playerName.trim()}
-              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transform transition animate-pulse ${
-                playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
-              }`}
-            >
-              ▶ Start Game
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 mt-2">
+              <button
+                onClick={() => {
+                  if (!playerName.trim()) return;
+                  const stored = JSON.parse(localStorage.getItem("leaderboard") || "[]");
+                  if (!stored.find((p) => p.name === playerName)) {
+                    stored.push({ name: playerName, score: 0 });
+                    localStorage.setItem("leaderboard", JSON.stringify(stored.slice(-20)));
+                  }
+                  setShowIntro(false);
+                  setGameRunning(true);
+                }}
+                disabled={!playerName.trim()}
+                className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transform transition animate-pulse ${
+                  playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                ▶ Start Game
+              </button>
+              <button
+                onClick={() => {
+                  setGameRunning(false);
+                  setGameOver(false);
+                  setShowIntro(true);
+                  router.push("/game");
+                }}
+                className="px-8 py-4 font-bold rounded-lg text-xl shadow-lg bg-gray-700 text-white hover:bg-gray-600 transition"
+              >
+                ✖ Exit
+              </button>
+            </div>
 
             {/* 📊 טבלת השיאים */}
             <div className="absolute top-12 right-20 bg-black/50 p-4 rounded-lg w-72 shadow-lg hidden sm:block">
@@ -655,6 +670,7 @@ export default function MleoRunner() {
                 setGameRunning(false);
                 setGameOver(false);
                 setShowIntro(true);
+                router.push("/game");
               }}
               className="fixed top-4 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
             >

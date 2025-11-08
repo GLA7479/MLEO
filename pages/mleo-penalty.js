@@ -1,6 +1,7 @@
 // pages/mleo-penalty.js
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
+import { useRouter } from "next/router";
 
 const IMG_KEEPER = "/images/leo-keeper.png";
 const IMG_BALL   = "/images/ball.png";
@@ -41,6 +42,7 @@ const mmss = (sec) => {
 const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
 
 export default function MleoPenalty() {
+  const router = useRouter();
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const runningRef = useRef(false);
@@ -594,6 +596,7 @@ export default function MleoPenalty() {
             const hs = Number(localStorage.getItem(LS_HS) || 0);
             if (scoreRef.current > hs) { localStorage.setItem(LS_HS, String(scoreRef.current)); setHighScore(scoreRef.current); }
             runningRef.current = false; setShowIntro(true); setGameOver(false);
+            router.push("/game");
           }}
           className="fixed top-16 right-4 px-6 py-4 bg-yellow-400 text-black font-bold rounded-lg text-lg sm:text-xl z-[999]"
         >
@@ -624,15 +627,28 @@ export default function MleoPenalty() {
               ))}
             </div>
 
-            <button
-              onClick={() => handleChooseLevel(selectedLevel)}
-              disabled={!playerName.trim()}
-              className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition ${playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}
-            >
-              ▶ Start at Level {selectedLevel}
-            </button>
-          </div>
-        )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => handleChooseLevel(selectedLevel)}
+                disabled={!playerName.trim()}
+                className={`px-8 py-4 font-bold rounded-lg text-xl shadow-lg transition ${playerName.trim() ? "bg-yellow-400 text-black hover:scale-105" : "bg-gray-500 text-gray-300 cursor-not-allowed"}`}
+              >
+                ▶ Start at Level {selectedLevel}
+              </button>
+              <button
+                onClick={() => {
+                  runningRef.current = false;
+                  setShowIntro(true);
+                  setGameOver(false);
+                  router.push("/game");
+                }}
+                className="px-8 py-4 font-bold rounded-lg text-xl shadow-lg bg-gray-700 text-white hover:bg-gray-600 transition"
+              >
+                ✖ Exit
+              </button>
+            </div>
+        </div>
+      )}
 
         {/* Joysticks */}
         {!showIntro && !gameOver && (

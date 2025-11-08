@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Image from "next/image";
+import { useRouter } from "next/router";
 
 const SHAPES = [
   "heart.png",
@@ -20,6 +21,7 @@ const DIFFICULTY_SETTINGS = {
 };
 
 export default function MleoMatch() {
+  const router = useRouter();
   const [playerName, setPlayerName] = useState("");
   const [difficulty, setDifficulty] = useState("easy");
   const [grid, setGrid] = useState([]);
@@ -245,7 +247,13 @@ export default function MleoMatch() {
               <div className="bg-black/60 px-3 py-1 rounded">⭐ {score}</div>
             </div>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                setShowIntro(true);
+                setGameRunning(false);
+                setGameOver(false);
+                setDidWin(false);
+                router.push("/game");
+              }}
               className="fixed top-20 right-4 px-5 py-3 bg-yellow-400 text-black font-bold rounded-lg text-base z-[999] hover:scale-105 transition"
             >
               Exit
@@ -277,13 +285,27 @@ export default function MleoMatch() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={startGame}
-              disabled={!playerName.trim()}
-              className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-lg hover:scale-105 transition"
-            >
-              ▶ Start Game
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={startGame}
+                disabled={!playerName.trim()}
+                className="px-6 py-3 bg-yellow-400 text-black font-bold rounded text-lg hover:scale-105 transition"
+              >
+                ▶ Start Game
+              </button>
+              <button
+                onClick={() => {
+                  setShowIntro(true);
+                  setGameRunning(false);
+                  setGameOver(false);
+                  setDidWin(false);
+                  router.push("/game");
+                }}
+                className="px-6 py-3 bg-gray-700 text-white font-bold rounded text-lg hover:bg-gray-600 transition"
+              >
+                ✖ Exit
+              </button>
+            </div>
           </div>
         ) : null}
 
