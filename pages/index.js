@@ -20,21 +20,21 @@ export default function Home() {
       icon: "⛏️",
       title: "Mining",
       text: "Interactive mining systems built around progression, activity, and long-term engagement inside the MLEO ecosystem.",
-      href: "https://mleo-m.vercel.app/",
+      href: "https://mleo-m.vercel.app/?lang=en",
       cta: "Explore Mining",
     },
     {
       icon: "🎮",
       title: "Arcade",
       text: "Arcade-style games and fun experiences designed to keep the ecosystem active, entertaining, and rewarding.",
-      href: "/arcade",
+      href: "https://mleo-m.vercel.app/mining?lang=en",
       cta: "Enter Arcade",
     },
     {
       icon: "🌐",
       title: "Online",
       text: "Competitive and evolving multiplayer experiences that expand the MLEO world beyond a standard token project.",
-      href: "/arcade-online",
+      href: "https://mleo-m.vercel.app/mining?lang=en",
       cta: "Go Online",
     },
     {
@@ -146,7 +146,7 @@ export default function Home() {
             </a>
 
             <a
-              href="https://mleo-m.vercel.app/"
+              href="https://mleo-m.vercel.app/?lang=en"
               className="bg-transparent border-2 border-yellow-500 hover:bg-yellow-500 hover:text-black text-yellow-500 py-2 px-5 rounded-full text-lg font-semibold transition"
             >
               Enter Ecosystem
