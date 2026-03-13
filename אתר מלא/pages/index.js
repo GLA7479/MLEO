@@ -2,7 +2,6 @@ import Layout from "../components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { useState } from "react";
-import { TOTAL_SUPPLY, TOKENOMICS_ITEMS } from "../data/tokenomics";
 
 export default function Home() {
   const [activeVideo, setActiveVideo] = useState(null);
@@ -15,35 +14,11 @@ export default function Home() {
     { src: "/images/shiba4.jpg", alt: "LEO Shiba 4" },
   ];
 
-  const ecosystemCards = [
-    {
-      icon: "⛏️",
-      title: "Mining",
-      text: "Interactive mining systems built around progression, activity, and long-term engagement inside the MLEO ecosystem.",
-      href: "/mining",
-      cta: "Explore Mining",
-    },
-    {
-      icon: "🎮",
-      title: "Arcade",
-      text: "Arcade-style games and fun experiences designed to keep the ecosystem active, entertaining, and rewarding.",
-      href: "/arcade",
-      cta: "Enter Arcade",
-    },
-    {
-      icon: "🌐",
-      title: "Online",
-      text: "Competitive and evolving multiplayer experiences that expand the MLEO world beyond a standard token project.",
-      href: "/arcade-online",
-      cta: "Go Online",
-    },
-    {
-      icon: "🏦",
-      title: "Vault & Rewards",
-      text: "A connected environment where gameplay, progression, and future reward mechanics come together under one ecosystem.",
-      href: "/about",
-      cta: "Learn More",
-    },
+  const tokenomics = [
+    { percent: "40%", label: "Presale" },
+    { percent: "30%", label: "Team & Advisors" },
+    { percent: "20%", label: "Staking Rewards" },
+    { percent: "10%", label: "Reserve" },
   ];
 
   const logoAnimation = {
@@ -64,7 +39,7 @@ export default function Home() {
     <Layout page="home">
       <div className="mt-[50px]">
         {/* Hero Section */}
-        <section className="relative flex flex-col items-center text-center px-6 bg-gradient-to-b from-black via-gray-900 to-black pt-0 pb-8 -mt-6">
+        <section className="relative flex flex-col items-center text-center px-6 bg-gradient-to-b from-black via-gray-900 to-black pt-0 pb-6 -mt-6">
           <motion.h1
             className="mb-1 drop-shadow-lg leading-tight flex flex-col items-center"
             initial={{ opacity: 0, y: 20 }}
@@ -75,16 +50,13 @@ export default function Home() {
               <motion.div {...logoAnimation}>
                 <Image src="/images/logo2.png" alt="MLEO Logo Left" width={90} height={90} />
               </motion.div>
-
               <span className="text-5xl md:text-7xl font-extrabold bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
                 MLEO
               </span>
-
               <motion.div {...logoAnimation}>
                 <Image src="/images/logo2.png" alt="MLEO Logo Right" width={90} height={90} />
               </motion.div>
             </span>
-
             <span className="block text-2xl md:text-3xl lg:text-3.5xl mt-1 font-semibold bg-gradient-to-r from-yellow-200 to-yellow-400 bg-clip-text text-transparent drop-shadow-md">
               LEO - THE REAL SHIBA INU
             </span>
@@ -122,18 +94,17 @@ export default function Home() {
           </div>
 
           <motion.p
-            className="text-base md:text-lg text-gray-300 max-w-3xl mt-3 mb-4"
+            className="text-base md:text-lg text-gray-300 max-w-2xl mt-2 mb-3"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.3 }}
           >
-            Mine, play, compete, and grow inside the MLEO ecosystem. A Shiba-powered digital
-            world built around mining, arcade gameplay, online experiences, rewards, and long-term
-            expansion.
+            Join the revolution of meme coins with real utility and real community.
+            Be an early part of the MLEO movement!
           </motion.p>
 
           <motion.div
-            className="flex flex-col sm:flex-row gap-3"
+            className="flex flex-col sm:flex-row gap-2"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6 }}
@@ -144,12 +115,11 @@ export default function Home() {
             >
               🚀 Join Presale
             </a>
-
             <a
-              href="/mining"
+              href="/about"
               className="bg-transparent border-2 border-yellow-500 hover:bg-yellow-500 hover:text-black text-yellow-500 py-2 px-5 rounded-full text-lg font-semibold transition"
             >
-              Enter Ecosystem
+              Learn More
             </a>
           </motion.div>
         </section>
@@ -177,45 +147,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Core Ecosystem */}
-        <section className="py-16 bg-black text-center px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <h2 className="text-4xl font-bold text-yellow-500 mb-4">⚡ Core Ecosystem</h2>
-            <p className="text-gray-300 text-lg max-w-3xl mx-auto mb-10">
-              MLEO is more than a token. It is a growing digital ecosystem built around mining,
-              arcade gameplay, online competition, community activity, and connected rewards.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 max-w-6xl mx-auto">
-              {ecosystemCards.map((card, i) => (
-                <motion.div
-                  key={card.title}
-                  className="bg-gray-900 border border-yellow-500/20 rounded-2xl p-6 shadow-lg hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-1"
-                  initial={{ opacity: 0, y: 40 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: i * 0.15 }}
-                >
-                  <div className="text-4xl mb-3">{card.icon}</div>
-                  <h3 className="text-2xl font-bold text-yellow-400 mb-3">{card.title}</h3>
-                  <p className="text-gray-300 text-base leading-relaxed mb-5">{card.text}</p>
-                  <a
-                    href={card.href}
-                    className="inline-block bg-yellow-500 hover:bg-yellow-600 text-black py-2 px-4 rounded-full text-sm font-semibold transition"
-                  >
-                    {card.cta}
-                  </a>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        </section>
-
         {/* About Section */}
-        <section className="py-16 bg-gradient-to-r from-gray-900 to-black text-center px-6">
+        <section className="py-16 bg-gradient-to-r from-gray-900 to-black text-center">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -223,9 +156,9 @@ export default function Home() {
             transition={{ duration: 0.8 }}
           >
             <h2 className="text-4xl font-bold text-yellow-500 mb-4">🐕 What is MLEO?</h2>
-            <p className="text-gray-300 text-lg mb-6 max-w-3xl mx-auto">
-              Inspired by LEO, the real Shiba Inu, MLEO combines brand identity, community energy,
-              gaming experiences, and a scalable digital ecosystem designed to evolve over time.
+            <p className="text-gray-300 text-lg mb-6">
+              MLEO is a next-gen meme coin inspired by LEO, the real Shiba Inu.
+              We combine fun, community, and real-world utility to create a token that's here to stay.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-[0.5cm] mt-8">
@@ -284,80 +217,27 @@ export default function Home() {
           >
             📊 Tokenomics
           </motion.h2>
-
-          <p className="text-gray-300 text-lg mb-3 max-w-3xl mx-auto px-6">
-            Transparent token distribution designed to support growth, liquidity, long-term
-            development, and community rewards across the MLEO ecosystem.
+          <p className="text-gray-300 text-lg mb-8 max-w-3xl mx-auto">
+            A sustainable and fair token distribution designed to reward early supporters and long-term holders.
           </p>
-
-          <p className="text-yellow-400 text-base md:text-lg font-semibold mb-8">
-            Total Supply: {TOTAL_SUPPLY.toLocaleString()} MLEO
-          </p>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 px-6 max-w-6xl mx-auto">
-            {TOKENOMICS_ITEMS.map((item, i) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 px-6 max-w-6xl mx-auto">
+            {tokenomics.map((item, i) => (
               <motion.div
                 key={i}
                 className="bg-gray-800 rounded-xl p-5 shadow-lg hover:scale-105 transition-transform"
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: i * 0.12 }}
+                transition={{ duration: 0.8, delay: i * 0.2 }}
               >
-                <h3 className="text-3xl font-extrabold text-yellow-500">{item.value}%</h3>
-                <p className="text-base md:text-lg text-gray-300">{item.title}</p>
+                <h3 className="text-3xl font-extrabold text-yellow-500">{item.percent}</h3>
+                <p className="text-xl text-gray-300">{item.label}</p>
               </motion.div>
             ))}
           </div>
-
-          <div className="mt-8">
-            <a
-              href="/tokenomics"
-              className="inline-block bg-transparent border-2 border-yellow-500 hover:bg-yellow-500 hover:text-black text-yellow-500 py-2 px-5 rounded-full text-lg font-semibold transition"
-            >
-              View Full Tokenomics
-            </a>
-          </div>
-        </section>
-
-        {/* Future Expansion */}
-        <section className="py-16 bg-gradient-to-r from-gray-900 via-black to-gray-900 text-center px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="max-w-4xl mx-auto"
-          >
-            <h2 className="text-4xl font-bold text-yellow-500 mb-4">🚀 Future Expansion</h2>
-            <p className="text-gray-300 text-lg mb-6">
-              MLEO starts with mining, arcade gameplay, online experiences, and rewards —
-              but the
-              broader vision continues to grow. Future development may include additional
-              community-focused and family-friendly interactive experiences as part of the
-              expanding brand ecosystem.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <a
-                href="https://liosh-website.vercel.app/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-yellow-500 hover:bg-yellow-600 text-black py-2 px-5 rounded-full text-lg font-semibold shadow-lg transition"
-              >
-                Preview Future Concept
-              </a>
-
-              <a
-                href="/about"
-                className="bg-transparent border-2 border-yellow-500 hover:bg-yellow-500 hover:text-black text-yellow-500 py-2 px-5 rounded-full text-lg font-semibold transition"
-              >
-                Explore Vision
-              </a>
-            </div>
-          </motion.div>
         </section>
 
         {/* CTA */}
-        <section className="py-16 bg-gradient-to-r from-yellow-500 to-yellow-600 text-black text-center px-6">
+        <section className="py-16 bg-gradient-to-r from-yellow-500 to-yellow-600 text-black text-center">
           <motion.h2
             className="text-4xl font-extrabold mb-3"
             initial={{ opacity: 0, y: 40 }}
@@ -366,17 +246,14 @@ export default function Home() {
           >
             Be Part of the MLEO Journey 🚀
           </motion.h2>
-
           <motion.p
             className="text-lg mb-5 max-w-2xl mx-auto"
             initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.3 }}
           >
-            Join early and be part of a growing ecosystem built around mining, gameplay, rewards,
-            community, and long-term expansion.
+            Secure your place in the future of meme coins with real value and strong community support.
           </motion.p>
-
           <a
             href="/presale"
             className="bg-black text-yellow-500 px-8 py-3 rounded-full font-bold text-lg shadow-lg hover:bg-gray-900 transition"
