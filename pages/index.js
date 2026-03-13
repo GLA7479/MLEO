@@ -194,7 +194,7 @@ export default function Home() {
               {ecosystemCards.map((card, i) => (
                 <motion.div
                   key={card.title}
-                  className="bg-gray-900 border border-yellow-500/20 rounded-2xl p-6 shadow-lg hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-1"
+                  className="bg-gray-900 border border-yellow-500/20 rounded-2xl p-6 shadow-lg hover:shadow-yellow-500/20 transition-all duration-300 hover:-translate-y-1 flex flex-col h-full"
                   initial={{ opacity: 0, y: 40 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8, delay: i * 0.15 }}
@@ -204,7 +204,7 @@ export default function Home() {
                   <p className="text-gray-300 text-base leading-relaxed mb-5">{card.text}</p>
                   <a
                     href={card.href}
-                    className="inline-block bg-yellow-500 hover:bg-yellow-600 text-black py-2 px-4 rounded-full text-sm font-semibold transition"
+                    className="inline-block bg-yellow-500 hover:bg-yellow-600 text-black py-2 px-4 rounded-full text-sm font-semibold transition mt-auto self-center"
                   >
                     {card.cta}
                   </a>
