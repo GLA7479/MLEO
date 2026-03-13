@@ -20,7 +20,7 @@ export default function Home() {
       icon: "⛏️",
       title: "Mining",
       text: "Interactive mining systems built around progression, activity, and long-term engagement inside the MLEO ecosystem.",
-      href: "/mining",
+      href: "https://mleo-m.vercel.app/",
       cta: "Explore Mining",
     },
     {
@@ -146,7 +146,7 @@ export default function Home() {
             </a>
 
             <a
-              href="/mining"
+              href="https://mleo-m.vercel.app/"
               className="bg-transparent border-2 border-yellow-500 hover:bg-yellow-500 hover:text-black text-yellow-500 py-2 px-5 rounded-full text-lg font-semibold transition"
             >
               Enter Ecosystem
