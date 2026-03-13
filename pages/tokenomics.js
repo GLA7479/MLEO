@@ -60,7 +60,7 @@ export default function Tokenomics() {
       </video>
 
       <motion.main
-        className="relative min-h-screen flex flex-col items-center text-white overflow-hidden pt-2 md:pt-0 mt-[-40px]"
+        className="relative min-h-screen flex flex-col items-center text-white overflow-hidden pt-6 md:pt-8 mt-0"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1 }}
