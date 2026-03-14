@@ -747,12 +747,6 @@ function BuyClaimPanel({
         )}
       </div>
 
-      {/* BUY */}
-      <div className="flex items-center justify-between text-[12.5px] mb-2">
-        <span className={cls.muted}>BUY (tBNB)</span>
-        <span className={cls.subtle} suppressHydrationWarning>{mounted ? (amount || 0) : 0}</span>
-      </div>
-
       <div className="grid grid-cols-1 gap-2">
         {/* שדה הסכום */}
         <div className="flex items-center gap-2">
