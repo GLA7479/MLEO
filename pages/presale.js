@@ -189,6 +189,7 @@ export default function Presale() {
 
   const lifiConfig = useMemo(
     () => ({
+      integrator: "mleo-presale",
       fromChain: 56,
       toChain: 8453,
       toToken: "0x0000000000000000000000000000000000000000",
@@ -197,10 +198,15 @@ export default function Presale() {
         container: {
           border: "1px solid rgb(234, 179, 8)",
           borderRadius: "16px",
+          backgroundColor: "transparent",
         },
         palette: {
           primary: { main: "rgb(234, 179, 8)" },
-          mode: "dark",
+          mode: "light",
+          background: {
+            default: "#ffffff",
+            paper: "#ffffff",
+          },
         },
       },
     }),
@@ -859,25 +865,25 @@ function CrossChainPurchaseModal({ isOpen, onClose, config }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="relative w-full max-w-md rounded-2xl bg-zinc-900 p-6 border border-zinc-700">
+    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-20 p-2 bg-black/60" onClick={onClose}>
+      <div className="relative rounded-xl bg-zinc-900 p-0.5 border border-zinc-700 mt-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white"
+          className="absolute top-0.5 right-0.5 text-gray-400 hover:text-white z-10 text-xl bg-zinc-900 rounded-full w-6 h-6 flex items-center justify-center"
           aria-label="Close"
         >
           &times;
         </button>
 
-        <h2 className="text-xl font-bold text-center text-white mb-6">
+        <h2 className="text-sm font-bold text-center text-white mb-1 px-0.5 py-1">
           BUY FROM OTHER CHAINS
         </h2>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center -mb-32 -mx-8" style={{ transform: 'scale(0.75)', transformOrigin: 'top center' }}>
           <LiFiWidget config={config} />
         </div>
 
-        <p className="text-xs text-gray-500 text-center mt-4">
+        <p className="text-[10px] text-gray-500 text-center -mt-30 px-0.5 pb-1">
           Secured by Li.Fi - Fees may apply
         </p>
       </div>
