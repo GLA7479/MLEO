@@ -2,7 +2,7 @@ import Layout from "../components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { useState } from "react";
-import { TOTAL_SUPPLY, TOKENOMICS_ITEMS } from "../data/tokenomics";
+import { TOTAL_SUPPLY_LABEL, TOKENOMICS_ITEMS } from "../data/tokenomics";
 
 export default function Home() {
   const [activeVideo, setActiveVideo] = useState(null);
@@ -291,7 +291,7 @@ export default function Home() {
           </p>
 
           <p className="text-yellow-400 text-base md:text-lg font-semibold mb-8">
-            Total Supply: {TOTAL_SUPPLY.toLocaleString()} MLEO
+            Total Supply: {TOTAL_SUPPLY_LABEL} MLEO
           </p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5 px-6 max-w-6xl mx-auto">

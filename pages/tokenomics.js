@@ -4,12 +4,29 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { motion } from "framer-motion";
 import { FaUsers, FaLock, FaGift, FaChartLine, FaBullhorn } from "react-icons/fa";
 import Layout from "../components/Layout";
-import { TOTAL_SUPPLY, TOKENOMICS_ITEMS } from "../data/tokenomics";
+import { TOTAL_SUPPLY, TOTAL_SUPPLY_LABEL, TOKENOMICS_ITEMS } from "../data/tokenomics";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 export default function Tokenomics() {
   const [activeIndex, setActiveIndex] = useState(null);
+  const formatTokenAmountShort = (amount) => {
+    const units = [
+      { value: 1e12, suffix: "T" },
+      { value: 1e9, suffix: "B" },
+      { value: 1e6, suffix: "M" },
+      { value: 1e3, suffix: "K" },
+    ];
+
+    for (const unit of units) {
+      if (amount >= unit.value) {
+        const formatted = (amount / unit.value).toFixed(2).replace(/\.?0+$/, "");
+        return `${formatted}${unit.suffix}`;
+      }
+    }
+
+    return amount.toString();
+  };
 
   const labels = TOKENOMICS_ITEMS.map((item) => {
     let icon = <FaLock />;
@@ -80,7 +97,7 @@ export default function Tokenomics() {
         </motion.p>
 
         <motion.p className="text-yellow-400 text-sm md:text-lg font-semibold mt-2 mb-3 z-20">
-          Total Supply: {TOTAL_SUPPLY.toLocaleString()} MLEO
+          Total Supply: {TOTAL_SUPPLY_LABEL} MLEO
         </motion.p>
 
         <div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
@@ -180,13 +197,15 @@ export default function Tokenomics() {
                       {item.title}
                     </td>
                     <td className="p-4 border border-gray-700">
-                      {item.value}% ({((TOTAL_SUPPLY * item.value) / 100).toLocaleString()} MLEO)
+                      {item.value}% ({formatTokenAmountShort((TOTAL_SUPPLY * item.value) / 100)} MLEO)
                     </td>
                   </tr>
                 ))}
                 <tr>
                   <td className="p-4 border border-gray-700 font-bold text-white">Total Supply</td>
-                  <td className="p-4 border border-gray-700">{TOTAL_SUPPLY.toLocaleString()} MLEO</td>
+                  <td className="p-4 border border-gray-700">
+                    {TOTAL_SUPPLY_LABEL} MLEO ({TOTAL_SUPPLY.toLocaleString()})
+                  </td>
                 </tr>
               </tbody>
             </table>

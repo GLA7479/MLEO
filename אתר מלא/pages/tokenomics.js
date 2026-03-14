@@ -4,80 +4,44 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { motion } from "framer-motion";
 import { FaUsers, FaLock, FaGift, FaChartLine, FaBullhorn } from "react-icons/fa";
 import Layout from "../components/Layout";
+import { TOTAL_SUPPLY, TOTAL_SUPPLY_LABEL, TOKENOMICS_ITEMS } from "../data/tokenomics";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const TOTAL_SUPPLY = 18000000000000; // 18,000,000,000,000 MLEO
-
 export default function Tokenomics() {
   const [activeIndex, setActiveIndex] = useState(null);
+  const formatTokenAmountShort = (amount) => {
+    const units = [
+      { value: 1e12, suffix: "T" },
+      { value: 1e9, suffix: "B" },
+      { value: 1e6, suffix: "M" },
+      { value: 1e3, suffix: "K" },
+    ];
 
-  const labels = [
-    {
-      title: "Presale",
-      value: 30,
-      icon: <FaChartLine />,
-      color: "#FACC15",
-      desc: "30% of the total supply allocated to early investors during the presale phase.",
-      details: "Tokens in the presale are distributed to early supporters before public launch. These are unlocked at launch to ensure wide distribution and liquidity injection."
-    },
-    {
-      title: "Marketing",
-      value: 10,
-      icon: <FaBullhorn />,
-      color: "#A78BFA",
-      desc: "10% dedicated to marketing, partnerships, and community growth.",
-      details: "Used for influencer partnerships, social media campaigns, community giveaways, and ongoing promotional efforts across platforms."
-    },
-    {
-      title: "Liquidity",
-      value: 10,
-      icon: <FaLock />,
-      color: "#22D3EE",
-      desc: "10% of tokens allocated to ensure stable and secure trading.",
-      details: "These tokens are paired with native coin (e.g., BNB) to create liquidity pools, ensuring buy/sell availability on DEXs."
-    },
-    {
-      title: "Team",
-      value: 10,
-      icon: <FaUsers />,
-      color: "#F472B6",
-      desc: "10% allocated to the team with vesting for long-term commitment.",
-      details: "Locked with a 12-month cliff and 24-month vesting to ensure long-term alignment with project success."
-    },
-    {
-      title: "Game Rewards",
-      value: 20,
-      icon: <FaGift />,
-      color: "#4ADE80",
-      desc: "20% reserved as in-game rewards or community incentives.",
-      details: "Distributed to users who participate in competitions or achieve high scores in official MLEO games."
-    },
-    {
-      title: "Staking",
-      value: 10,
-      icon: <FaLock />,
-      color: "#FB923C",
-      desc: "10% reserved for staking incentives to reward long-term holders.",
-      details: "Available for users who stake MLEO in eligible contracts, offering real yield and benefits."
-    },
-    {
-      title: "Reserve",
-      value: 5,
-      icon: <FaLock />,
-      color: "#60A5FA",
-      desc: "5% held in reserve for future use cases or emergencies.",
-      details: "Kept aside for unexpected costs, partnerships, upgrades, or strategic moves as the project evolves."
-    },
-    {
-      title: "Locks & Community",
-      value: 5,
-      icon: <FaUsers />,
-      color: "#F87171",
-      desc: "5% allocated for token locks, competitions, and community incentives.",
-      details: "Used for competitions, token locks, governance bonuses, or loyalty programs that reward engagement."
-    },
-  ];
+    for (const unit of units) {
+      if (amount >= unit.value) {
+        const formatted = (amount / unit.value).toFixed(2).replace(/\.?0+$/, "");
+        return `${formatted}${unit.suffix}`;
+      }
+    }
+
+    return amount.toString();
+  };
+
+  const labels = TOKENOMICS_ITEMS.map((item) => {
+    let icon = <FaLock />;
+
+    if (item.title === "Presale") icon = <FaChartLine />;
+    if (item.title === "Marketing") icon = <FaBullhorn />;
+    if (item.title === "Team") icon = <FaUsers />;
+    if (item.title === "Game Rewards") icon = <FaGift />;
+    if (item.title === "Locks & Community") icon = <FaUsers />;
+
+    return {
+      ...item,
+      icon,
+    };
+  });
 
   const data = {
     labels: labels.map((l) => l.title),
@@ -101,41 +65,43 @@ export default function Tokenomics() {
 
   return (
     <Layout page="tokenomics">
-      <video autoPlay muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover z-0">
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        className="absolute inset-0 w-full h-full object-cover z-0"
+      >
         <source src="/videos/tokenomics-bg.mp4" type="video/mp4" />
       </video>
 
-<motion.main
-  className="relative min-h-screen flex flex-col items-center text-white overflow-hidden pt-2 md:pt-0 mt-[-40px]"
-
-
+      <motion.main
+        className="relative min-h-screen flex flex-col items-center text-white overflow-hidden pt-6 md:pt-8 mt-0"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1 }}
       >
-        - <div className="absolute inset-0 bg-black/50 z-10"></div>
-<div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/30 to-black/80 z-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/30 to-black/80 z-10"></div>
 
-
-<motion.h1 className="text-4xl md:text-5xl font-extrabold flex items-center justify-center gap-2 z-20 mb-0">
-
+        <motion.h1 className="text-4xl md:text-5xl font-extrabold flex items-center justify-center gap-2 z-20 mb-0">
           <span>📊</span>
           <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-500 bg-clip-text text-transparent">
             Tokenomics
           </span>
         </motion.h1>
 
-<motion.p className="text-base md:text-lg text-gray-300 mt-[-0px] mb-1 max-w-lg mx-auto z-20">
-
-          Transparent distribution of MLEO Token designed for growth, stability, and rewarding the community.
+        <motion.p className="text-base md:text-lg text-gray-300 mt-0 mb-1 max-w-lg mx-auto z-20 text-center px-4">
+          Transparent distribution of MLEO Token designed for growth, stability, liquidity,
+          long-term development, and rewarding the community.
         </motion.p>
 
-<div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
+        <motion.p className="text-yellow-400 text-sm md:text-lg font-semibold mt-2 mb-3 z-20">
+          Total Supply: {TOTAL_SUPPLY_LABEL} MLEO
+        </motion.p>
 
-<div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-[-40px] md:mt-[-50px] md:translate-x-[-150px]">
-
-
-
+        <div className="flex flex-col md:flex-row items-center justify-center gap-8 px-3 z-20 mt-20">
+          <div className="relative w-[320px] md:w-[500px] lg:w-[450px] mt-[-40px] md:mt-[-50px] md:translate-x-[-150px]">
             <Pie data={data} options={options} />
           </div>
 
@@ -162,66 +128,56 @@ export default function Tokenomics() {
           </div>
         </div>
 
-{/* Modal */}
-{activeIndex !== null && (
-  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4">
-    <div className="relative w-[90vw] max-w-[400px] aspect-square rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
+        {/* Modal */}
+        {activeIndex !== null && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center px-4">
+            <div className="relative w-[90vw] max-w-[400px] aspect-square rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
+              <div className="absolute inset-0 z-0">
+                <img
+                  src="/images/modal-bg.png"
+                  alt="Background"
+                  className="w-full h-full object-cover brightness-110 contrast-125"
+                />
+              </div>
 
-      {/* תמונת רקע */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src="/images/modal-bg.png"
-          alt="Background"
-          className="w-full h-full object-cover brightness-110 contrast-125"
-        />
-      </div>
+              <div className="absolute inset-0 bg-black/30 z-10"></div>
 
-      {/* שכבת כהות קלה */}
-      <div className="absolute inset-0 bg-black/30 z-10"></div>
+              <div className="relative z-20 h-full flex flex-col justify-between p-4">
+                <button
+                  onClick={() => setActiveIndex(null)}
+                  className="absolute top-2 right-4 text-white text-xl hover:text-red-400"
+                >
+                  ✖
+                </button>
 
-      {/* תוכן */}
-      <div className="relative z-20 h-full flex flex-col justify-between p-4">
-        {/* כפתור סגירה */}
-        <button
-          onClick={() => setActiveIndex(null)}
-          className="absolute top-2 right-4 text-white text-xl hover:text-red-400"
-        >
-          ✖
-        </button>
+                <div className="mt-4">
+                  <h2
+                    className="text-2xl font-extrabold text-center"
+                    style={{ color: labels[activeIndex].color }}
+                  >
+                    {labels[activeIndex].title} – {labels[activeIndex].value}%
+                  </h2>
+                </div>
 
-        {/* כותרת מוגדלת */}
-        <div className="mt-4">
-          <h2
-            className="text-2xl font-extrabold text-center"
-            style={{ color: "#22D3EE" }}
-          >
-            {labels[activeIndex].title} – {labels[activeIndex].value}%
-          </h2>
-        </div>
-
-        {/* טקסט תחתון מוגדל */}
-<div className="mt-auto">
-  <p
-    className="text-center px-3 py-2"
-    style={{
-      color: "#F87171", // לבן
-      fontWeight: "bold",
-      fontSize: "16px",
-     backgroundColor: "rgba(0, 0, 0, 0.5)", // רקע כהה שקוף
-      borderRadius: "10px",
-      lineHeight: "1.6",
-    }}
-  >
-    {labels[activeIndex].details}
-  </p>
-</div>
-
-
-      </div>
-    </div>
-  </div>
-)}
-
+                <div className="mt-auto">
+                  <p
+                    className="text-center px-3 py-2"
+                    style={{
+                      color: "#F87171",
+                      fontWeight: "bold",
+                      fontSize: "16px",
+                      backgroundColor: "rgba(0, 0, 0, 0.5)",
+                      borderRadius: "10px",
+                      lineHeight: "1.6",
+                    }}
+                  >
+                    {labels[activeIndex].details}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Table */}
         <div className="max-w-4xl mx-auto mt-10 px-3 pb-16 z-20">
@@ -237,15 +193,19 @@ export default function Tokenomics() {
               <tbody>
                 {labels.map((item, i) => (
                   <tr key={i}>
-                    <td className="p-4 border border-gray-700 font-bold" style={{ color: item.color }}>{item.title}</td>
+                    <td className="p-4 border border-gray-700 font-bold" style={{ color: item.color }}>
+                      {item.title}
+                    </td>
                     <td className="p-4 border border-gray-700">
-                      {item.value}% ({((TOTAL_SUPPLY * item.value) / 100).toLocaleString()} MLEO)
+                      {item.value}% ({formatTokenAmountShort((TOTAL_SUPPLY * item.value) / 100)} MLEO)
                     </td>
                   </tr>
                 ))}
                 <tr>
                   <td className="p-4 border border-gray-700 font-bold text-white">Total Supply</td>
-                  <td className="p-4 border border-gray-700">{TOTAL_SUPPLY.toLocaleString()} MLEO</td>
+                  <td className="p-4 border border-gray-700">
+                    {TOTAL_SUPPLY_LABEL} MLEO ({TOTAL_SUPPLY.toLocaleString()})
+                  </td>
                 </tr>
               </tbody>
             </table>

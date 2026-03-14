@@ -2,7 +2,7 @@ import Layout from "../components/Layout";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { TOTAL_SUPPLY, TOKENOMICS_ITEMS } from "../data/tokenomics";
+import { TOTAL_SUPPLY_LABEL, TOKENOMICS_ITEMS } from "../data/tokenomics";
 
 export default function About() {
   const highlights = [
@@ -150,7 +150,7 @@ export default function About() {
             </p>
 
             <p className="text-center text-yellow-300 text-lg font-bold mb-6">
-              Total Supply: {TOTAL_SUPPLY.toLocaleString()} MLEO
+              Total Supply: {TOTAL_SUPPLY_LABEL} MLEO
             </p>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
