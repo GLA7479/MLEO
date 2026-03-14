@@ -3,6 +3,7 @@
 // pages/presale.js
 import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import Layout from "../components/Layout";
 import {
@@ -18,6 +19,11 @@ import { parseEther } from "viem";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRouter } from "next/router";
 
+const LiFiWidget = dynamic(
+  () => import("@lifi/widget").then((mod) => mod.LiFiWidget),
+  { ssr: false }
+);
+
 /* ================= ENV ================= */
 const PRESALE_ADDRESS = process.env.NEXT_PUBLIC_PRESALE_ADDRESS;
 const PRESALE_CHAIN_ID = Number(process.env.NEXT_PUBLIC_PRESALE_CHAIN_ID || 97);
@@ -25,6 +31,9 @@ const PRESALE_CHAIN_ID = Number(process.env.NEXT_PUBLIC_PRESALE_CHAIN_ID || 97);
 const UI_VARIANT_ENV = (process.env.NEXT_PUBLIC_PRESALE_VARIANT || "dark").toLowerCase();
 const COIN_IMG = process.env.NEXT_PUBLIC_COIN_IMG || "/images/mleo-coin.png";
 const HERO_BG_IMG = process.env.NEXT_PUBLIC_HERO_BG_IMG || "/images/hero-bg.jpg";
+const BASE_PRESALE_TO_ADDRESS =
+  process.env.NEXT_PUBLIC_BASE_PRESALE_TO_ADDRESS ||
+  "YOUR_PRESALE_CONTRACT_ADDRESS_ON_BASE";
 
 const STAGE_MODE = (process.env.NEXT_PUBLIC_STAGE_MODE || "sold").toLowerCase();
 const RAW_STAGE_PRICES = (process.env.NEXT_PUBLIC_STAGE_PRICES_WEI || "")
@@ -176,6 +185,27 @@ export default function Presale() {
   const [tick, setTick] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [showCrossChainModal, setShowCrossChainModal] = useState(false);
+
+  const lifiConfig = useMemo(
+    () => ({
+      fromChain: 56,
+      toChain: 8453,
+      toToken: "0x0000000000000000000000000000000000000000",
+      toAddress: BASE_PRESALE_TO_ADDRESS,
+      theme: {
+        container: {
+          border: "1px solid rgb(234, 179, 8)",
+          borderRadius: "16px",
+        },
+        palette: {
+          primary: { main: "rgb(234, 179, 8)" },
+          mode: "dark",
+        },
+      },
+    }),
+    []
+  );
 
   // local cache of last known purchased (per address)
   const [lastKnown, setLastKnown] = useState(() => {
@@ -481,6 +511,7 @@ export default function Presale() {
                 priceUsdPerTokenStr={fmtTiny(priceUsdPerToken, 9)}
                 oneUsdToTokens={Math.floor(tokensPer1USD || 0)}
                 onBuy={onBuy}
+                onOpenCrossChain={() => setShowCrossChainModal(true)}
                 isPending={isPending}
                 isMining={isMining}
                 isSuccess={isSuccess}
@@ -560,6 +591,7 @@ export default function Presale() {
               priceUsdPerTokenStr={fmtTiny(priceUsdPerToken, 9)}
               oneUsdToTokens={Math.floor(tokensPer1USD || 0)}
               onBuy={onBuy}
+              onOpenCrossChain={() => setShowCrossChainModal(true)}
               isPending={isPending}
               isMining={isMining}
               isSuccess={isSuccess}
@@ -576,6 +608,12 @@ export default function Presale() {
           </div>
         </motion.div>
       </div>
+
+      <CrossChainPurchaseModal
+        isOpen={showCrossChainModal}
+        onClose={() => setShowCrossChainModal(false)}
+        config={lifiConfig}
+      />
     </Layout>
   );
 }
@@ -689,7 +727,7 @@ function BuyClaimPanel({
   cls, isPaused, isConnected, address, disconnect, openConnectModal,
   amount, setAmount, tokensToReceive, estUsdPay,
   priceBNBPerTokenStr, priceUsdPerTokenStr, oneUsdToTokens,
-  onBuy, isPending, isMining, isSuccess, isError,
+  onBuy, onOpenCrossChain, isPending, isMining, isSuccess, isError,
   purchased, claimed, claimable, claimEnabled, onClaim, isClaiming, claimOk,
   mounted,
 }) {
@@ -758,17 +796,26 @@ function BuyClaimPanel({
         </div>
       </div>
 
-      <button
-        className="mt-3 w-full rounded-xl py-2.5 text-[14px] font-bold bg-gradient-to-r from-cyan-400 to-sky-400 text-neutral-950 transition hover:brightness-105 active:scale-[0.995] disabled:opacity-60 disabled:cursor-not-allowed"
-        onClick={() => (!isConnected ? openConnectModal?.() : onBuy())}
-        disabled={isPending || isMining || isPaused}
-      >
-        {!isConnected ? "CONNECT WALLET"
-          : isPaused ? "PRESALE PAUSED"
-          : isPending ? "CONFIRM IN WALLET…"
-          : isMining ? "PENDING…"
-          : "BUY NOW"}
-      </button>
+      <div className="mt-3 flex flex-col items-center gap-2">
+        <button
+          className="w-full rounded-xl py-2.5 text-[14px] font-bold bg-gradient-to-r from-cyan-400 to-sky-400 text-neutral-950 transition hover:brightness-105 active:scale-[0.995] disabled:opacity-60 disabled:cursor-not-allowed"
+          onClick={() => (!isConnected ? openConnectModal?.() : onBuy())}
+          disabled={isPending || isMining || isPaused}
+        >
+          {!isConnected ? "CONNECT WALLET"
+            : isPaused ? "PRESALE PAUSED"
+            : isPending ? "CONFIRM IN WALLET…"
+            : isMining ? "PENDING…"
+            : "BUY NOW (tBNB)"}
+        </button>
+        <button
+          type="button"
+          onClick={onOpenCrossChain}
+          className="w-full rounded-xl py-2.5 text-[14px] font-bold bg-gradient-to-r from-yellow-500 to-orange-500 text-neutral-950 transition hover:brightness-105 active:scale-[0.995]"
+        >
+          BUY FROM BSC/POLYGON... (Cross-Chain)
+        </button>
+      </div>
 
       {isSuccess && <p className="mt-2 text-emerald-500 text-[12px]">Success! Your purchase is confirmed.</p>}
       {isError && <p className="mt-2 text-rose-500 text-[12px]">Transaction failed.</p>}
@@ -809,6 +856,36 @@ function BuyClaimPanel({
         </button>
 
         {claimOk && <p className="text-emerald-500 text-[12px]">Claim successful!</p>}
+      </div>
+    </div>
+  );
+}
+
+function CrossChainPurchaseModal({ isOpen, onClose, config }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+      <div className="relative w-full max-w-md rounded-2xl bg-zinc-900 p-6 border border-zinc-700">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-white"
+          aria-label="Close"
+        >
+          &times;
+        </button>
+
+        <h2 className="text-xl font-bold text-center text-white mb-6">
+          BUY FROM OTHER CHAINS
+        </h2>
+
+        <div className="flex justify-center">
+          <LiFiWidget config={config} />
+        </div>
+
+        <p className="text-xs text-gray-500 text-center mt-4">
+          Secured by Li.Fi - Fees may apply
+        </p>
       </div>
     </div>
   );

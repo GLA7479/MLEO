@@ -1,3 +1,5 @@
+const path = require("path");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // אפשר להשאיר Strict Mode
@@ -18,6 +20,15 @@ const nextConfig = {
 
   // שמירה על fallback כדי למנוע ניסיונות bundle ל-fs/net/tls בצד לקוח
   webpack: (config, { isServer }) => {
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@reown/appkit-controllers/node_modules/@walletconnect/keyvaluestorage/dist/index.es.js":
+        path.resolve(
+          __dirname,
+          "node_modules/@walletconnect/keyvaluestorage/dist/index.es.js"
+        ),
+    };
+
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

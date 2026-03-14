@@ -7,14 +7,20 @@
     "build": "next build",
     "start": "next start"
   },
-  "engines": { "node": "20.x" },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
+    "@bigmi/react": "^0.7.1",
     "@capacitor/android": "^7.4.3",
     "@capacitor/app": "^7.0.2",
     "@capacitor/browser": "^7.0.2",
     "@capacitor/ios": "^7.4.3",
+    "@lifi/widget": "^3.40.12",
+    "@mysten/dapp-kit": "^0.19.11",
     "@rainbow-me/rainbowkit": "2.2.8",
-    "@tanstack/react-query": "5.85.6",
+    "@solana/wallet-adapter-react": "^0.15.39",
+    "@tanstack/react-query": "^5.90.21",
     "canvas-confetti": "^1.9.3",
     "chart.js": "^4.5.0",
     "framer-motion": "^12.23.12",
@@ -28,8 +34,8 @@
     "react-i18next": "^15.6.1",
     "react-icons": "^5.5.0",
     "tailwindcss": "^3.4.0",
-    "viem": "2.36.0",
-    "wagmi": "2.16.9"
+    "viem": "^2.47.2",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
